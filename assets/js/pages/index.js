@@ -12,6 +12,7 @@ import { renderMarketsPage } from './marketsPage.js';
 import { renderTrackingPage } from './trackingPage.js';
 import { renderMarketplacePage } from './marketplacePage.js';
 import { renderWarPage } from './warPage.js';
+import { renderImpactPage } from './impactPage.js';
 
 /** Render the active page's module shell into `#module` (no-op on top page). */
 export function renderModule() {
@@ -33,6 +34,9 @@ export function renderModule() {
       break;
     case 'war':
       renderWarPage(root);
+      break;
+    case 'impact':
+      renderImpactPage(root);
       break;
   }
 }

@@ -18,7 +18,8 @@ const state = {
   activeSuggestion: -1,   // highlighted command suggestion
 
   // News
-  feed: 'global',         // current feed: global|bulgaria
+  feed: 'global',         // current feed: global|bulgaria|balkans
+  newsCountry: '',        // active Balkan country code or empty for all
   filter: 'all',          // topic filter chip
   news: [],               // merged headline rows
   newsSources: [],        // per-feed health statuses from the last fetch
@@ -46,6 +47,9 @@ const state = {
   warSelectedId: null,
   conflictQuery: '',
   conflictType: 'ALL',
+  impact: null,
+  impactGeography: 'ALL',
+  impactSeverity: 'ALL',
   shipsRegion: null,      // last fetched vessel region: 'minLat,minLon,maxLat,maxLon'
   airRegion: null,        // last fetched aircraft region: 'minLat,minLon,maxLat,maxLon'
   vesselAttribution: {},  // AIS source credits from the snapshot payload
@@ -63,7 +67,7 @@ const state = {
   // Monotonic request ids per feed: responses from superseded requests
   // are discarded instead of being rendered. Market is per group because
   // the dashboard polls CORE and the pinned CUSTOM set in parallel.
-  request: { news: 0, market: {}, marketplace: 0, track: 0, airInfo: 0 },
+  request: { news: 0, market: {}, marketplace: 0, track: 0, airInfo: 0, impact: 0 },
 
   // Map viewports per surface; userMoved suspends auto-centering.
   mapViews: {

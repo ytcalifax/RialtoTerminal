@@ -15,17 +15,19 @@ import { TOPIC_TERMS } from '../core/constants.js';
 
 /**
  * Load the merged news payload and repaint every news surface.
- * @param {string} [feed] - 'global' | 'bulgaria'.
+ * @param {string} [feed] - 'global' | 'bulgaria' | 'balkans'.
  * @param {string} [query] - headline search term.
+ * @param {string} [country] - Balkan country code.
  */
-async function loadNews(feed = state.feed, query = state.newsQuery || '') {
+async function loadNews(feed = state.feed, query = state.newsQuery || '', country = state.newsCountry) {
   state.feed = feed;
+  state.newsCountry = feed === 'balkans' ? country : '';
   state.newsQuery = query.trim();
   const id = ++state.request.news; // superseded responses are dropped below
   setHealth('news', 'loading');
-  $('#newsStatus').textContent = 'UPDATING PUBLIC FEEDS · AUTO 3M';
+  updateNewsStatus('UPDATING PUBLIC FEEDS · AUTO 3M');
   try {
-    const result = await req(`/api/news?feed=${encodeURIComponent(feed)}&q=${encodeURIComponent(query)}`);
+    const result = await req(`/api/news?feed=${encodeURIComponent(feed)}&q=${encodeURIComponent(query)}&country=${encodeURIComponent(state.newsCountry)}`);
     if (id !== state.request.news) return;
     state.newsSources = result.sources || [];
     const sourceCount = result.sourceCount || 0;
@@ -37,22 +39,27 @@ async function loadNews(feed = state.feed, query = state.newsQuery || '') {
     state.errors.news = failed ? `${failed} FEED${failed === 1 ? '' : 'S'} UNAVAILABLE` : '';
     setHealth('news', failed ? 'delayed' : 'ok', state.errors.news);
     renderNews();
-    const status = `${state.news.length} STORIES · ${sourceCount}/${state.newsSources.length} FEEDS · ${feed === 'bulgaria' ? 'BULGARIA' : 'GLOBAL'} · ${fmtTime(state.timestamps.news)} · AUTO 3M`;
-    const ns = $('#newsStatus');
-    if (ns) ns.textContent = status;
+    const feedLabel = feed === 'bulgaria' ? 'BULGARIA · EN' : feed === 'balkans' ? `BALKANS${state.newsCountry ? ` · ${state.newsCountry}` : ''}` : 'GLOBAL';
+    const status = `${state.news.length} STORIES · ${sourceCount}/${state.newsSources.length} FEEDS · ${feedLabel} · ${fmtTime(state.timestamps.news)} · AUTO 3M`;
+    updateNewsStatus(status);
     const lsh = $('#leadSubhead');
-    if (lsh) lsh.textContent = `${feed === 'bulgaria' ? 'BULGARIA' : 'GLOBAL'} HEADLINES · ${query ? 'SEARCH: ' + query.toUpperCase() : 'PUBLIC FEEDS'}`;
+    if (lsh) lsh.textContent = `${feedLabel} HEADLINES · ${query ? 'SEARCH: ' + query.toUpperCase() : 'PUBLIC FEEDS'}`;
   } catch (e) {
     if (id !== state.request.news) return;
     state.errors.news = e.message;
     setHealth('news', 'error', e.message);
     renderNews();
-    const ns = $('#newsStatus');
-    if (ns) ns.textContent = `FEED ERROR · ${e.message} · LAST DATA RETAINED · AUTO 3M`;
+    updateNewsStatus(`FEED ERROR · ${e.message} · LAST DATA RETAINED · AUTO 3M`);
     const lsh = $('#leadSubhead');
     if (lsh) lsh.textContent = 'PUBLIC FEED STATUS · LAST SUCCESSFUL HEADLINES RETAINED';
     setStatus(`NEWS FEED ERROR · ${e.message}`);
   }
+}
+
+/** Update the dashboard news status only when that surface is mounted. */
+function updateNewsStatus(message) {
+  const element = $('#newsStatus');
+  if (element) element.textContent = message;
 }
 
 /** Repaint the dashboard lead stories + compact news column. */
@@ -78,7 +85,7 @@ function renderNews() {
   const visible = state.filter === 'all' ? rows
     : state.filter === 'bulgaria' ? rows.filter((x) => x.region === 'BULGARIA')
     : state.filter === 'europe' ? rows.filter((x) => x.region === 'EUROPE')
-    : state.filter === 'balkans' ? rows.filter((x) => x.region === 'BALKANS')
+    : state.filter === 'balkans' ? rows.filter((x) => x.region === 'BALKANS' || x.region === 'BULGARIA')
     : rows.filter((x) => TOPIC_TERMS[state.filter]?.test(x.title) || String(x.category || '').toLowerCase() === state.filter);
 
   if (compact) {
@@ -183,8 +190,10 @@ function initNewsChrome() {
         x.classList.toggle('active', active);
         x.setAttribute('aria-pressed', String(active));
       });
-      $$('.feed-tab').forEach((x) => x.classList.toggle('on', x.dataset.feed === (state.filter === 'bulgaria' ? 'bulgaria' : 'global')));
+      const activeFeed = state.filter === 'bulgaria' ? 'bulgaria' : state.filter === 'balkans' ? 'balkans' : 'global';
+      $$('.feed-tab').forEach((x) => x.classList.toggle('on', x.dataset.feed === activeFeed));
       if (state.filter === 'bulgaria') loadNews('bulgaria');
+      else if (state.filter === 'balkans') loadNews('balkans');
       else if (state.feed !== 'global') loadNews('global');
       else renderNews();
     };

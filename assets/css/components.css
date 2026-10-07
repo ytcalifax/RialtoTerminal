@@ -117,6 +117,10 @@
   background: #e5bc31;
 }
 
+ .key.orange {
+  background: #f7a82b;
+ }
+
 .dot {
   display: inline-block;
   width: 7px;

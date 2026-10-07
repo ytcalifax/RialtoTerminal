@@ -40,7 +40,7 @@
     </header>
     <div class="command-row">
       <button class="menu-btn" id="menuBtn">≡ MENU</button>
-      <div class="command-wrap"><span class="cmd-label">COMMAND</span><input id="command" autocomplete="off" spellcheck="false" placeholder="Enter function (TOP, NEWS, MKT, SHIP, AIR, CON, MPL)" aria-label="Command line"><button id="goBtn" class="go-btn">GO ↵</button><div id="suggestions" class="suggestions"></div></div>
+      <div class="command-wrap"><span class="cmd-label">COMMAND</span><input id="command" autocomplete="off" spellcheck="false" placeholder="Enter function (TOP, NEWS, MKT, SHIP, AIR, CON, IMP, MPL)" aria-label="Command line"><button id="goBtn" class="go-btn">GO ↵</button><div id="suggestions" class="suggestions"></div></div>
       <div class="cmd-hint">F2 HELP &nbsp; <kbd>↑</kbd> HISTORY &nbsp; <kbd>ESC</kbd> CANCEL</div>
     </div>
     <nav class="function-nav" aria-label="Terminal functions">
@@ -50,13 +50,14 @@
       <button data-page="ships"><span class="key yellow">SHIP</span> VESSELS</button>
       <button data-page="air"><span class="key yellow">AIR</span> AIRCRAFT</button>
       <button data-page="war"><span class="key yellow">CON</span> CONFLICT</button>
+      <button data-page="impact"><span class="key orange">IMP</span> EARLY WARNING</button>
       <button data-page="marketplace"><span class="key yellow">MPL</span> MARKETPLACE</button>
       <div class="nav-spacer"></div><button class="tab-small selected" data-screen="1" title="Screen 1 · Home">1</button><button class="tab-small" data-screen="2" title="Screen 2 · News">2</button><button class="tab-small" data-screen="3" title="Screen 3 · Markets">3</button><button class="tab-small" data-screen="4" title="Screen 4 · Vessels">4</button>
     </nav>
     <div class="ticker" id="ticker"><span class="ticker-label">MARKET SNAPSHOT</span><span id="tickerQuotes" class="ticker-quotes">FETCHING PUBLIC QUOTES…</span><span class="ticker-source">YAHOO FINANCE · BSE SOFIX · SOME EXCHANGES REPORT DELAYED</span></div>
     <main id="workspace" class="workspace">
       <section class="panel panel-tall" id="leadPanel">
-        <div class="panel-head"><span><i class="dot orange"></i> TOP NEWS <small>GLOBAL / PUBLIC FEEDS</small></span><div class="head-actions"><button data-feed="global" class="feed-tab on">Global</button><button data-feed="bulgaria" class="feed-tab">Bulgaria</button><button class="refresh" data-refresh="news">↻</button></div></div>
+        <div class="panel-head"><span><i class="dot orange"></i> TOP NEWS <small>GLOBAL / PUBLIC FEEDS</small></span><div class="head-actions"><button data-feed="global" class="feed-tab on">Global</button><button data-feed="bulgaria" class="feed-tab">Bulgaria · EN</button><button data-feed="balkans" class="feed-tab">Balkans</button><button class="refresh" data-refresh="news">↻</button></div></div>
         <div class="lead-layout"><div class="story-column"><div class="subhead" id="leadSubhead">GLOBAL HEADLINES · PUBLIC FEEDS</div><div id="leadStories" class="story-list"><div class="loading">CONNECTING TO PUBLIC NEWS FEEDS…</div></div></div><aside class="spotlight"><div class="spot-head">SPOTLIGHT <button data-page="news">› MORE</button></div><div class="spot-chart"><div class="chart-label">S&amp;P 500 / INTRADAY · PUBLIC</div><svg viewBox="0 0 280 82" preserveAspectRatio="none"><path class="chart-grid" d="M0 20H280M0 41H280M0 62H280"/><path class="chart-line" id="spotLine" d=""/></svg><div class="chart-foot"><span>LOW</span><span>09:00</span><span>12:00</span><span>16:00</span><span>HIGH</span></div></div><div class="spot-item"><b>FIRST WORD</b><span>Breaking developments, in brief</span></div><div class="spot-item"><b>DAYBREAK</b><span>Overnight developments &amp; events</span></div><div class="spot-item"><b>NEWS TRENDS</b><span>Coverage, velocity &amp; sentiment</span></div><div id="sourceNote" class="source-note">Headlines link to original publishers. News metadata via public feeds.</div></aside></div>
       </section>
       <section class="panel" id="marketPanel">

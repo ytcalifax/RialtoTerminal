@@ -58,10 +58,11 @@ export function renderTrackingPage(root, air) {
   };
 
   const applyTrackFilters = () => updateTrackingView();
-  $('#trackType').value = state.trackMoving ? 'moving' : 'all';
+  const typeSelect = $('#trackType');
+  typeSelect.value = state.trackMoving ? 'moving' : 'all';
   $('#trackRefresh').onclick = () => air ? loadAir() : loadShips();
   $('#trackQuery').oninput = applyTrackFilters;
-  $('#trackType').onchange = applyTrackFilters;
+  typeSelect.onchange = applyTrackFilters;
   applyTrackFilters();
   setupMapInteraction();
 }

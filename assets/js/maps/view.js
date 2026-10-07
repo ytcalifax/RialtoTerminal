@@ -102,15 +102,18 @@ function renderMapView(map) {
     const py = p.y - center.y + h / 2;
     if (px < -100 || px > w + 100 || py < -20 || py > h + 20) return '';
     const count = (map._hotspotSource || []).filter((vessel) => distanceNm(point, vessel) <= 25).length;
-    const currentPoint = { ...point, count };
+    const currentPoint = { ...point, count, x: px, y: py };
     const index = visibleChokepoints.push(currentPoint) - 1;
-    return `<button class="traffic-hotspot" style="left:${px}px;top:${py}px" title="${esc(point.name)} · ${count} AIS vessels within 25 nautical miles" aria-label="${esc(point.name)}: ${count} AIS vessels within 25 nautical miles" data-index="${index}"><b>${count}</b><span>${esc(point.name)}</span></button>`;
+    return `<button class="traffic-hotspot" title="${esc(point.name)} · ${count} AIS vessels within 25 nautical miles" aria-label="${esc(point.name)}: ${count} AIS vessels within 25 nautical miles" data-index="${index}"><b>${count}</b><span>${esc(point.name)}</span></button>`;
   }).join('');
   layer.insertAdjacentHTML('beforeend', chokepointMarkers);
   map._visibleChokepoints = visibleChokepoints;
   $$('.traffic-hotspot', layer).forEach((button) => {
+    const point = visibleChokepoints[Number(button.dataset.index)];
+    button.style.left = `${point.x}px`;
+    button.style.top = `${point.y}px`;
     button.onclick = () => {
-      if (!map.dataset.dragged) map._onChokepointClick?.(visibleChokepoints[Number(button.dataset.index)]);
+      if (!map.dataset.dragged) map._onChokepointClick?.(point);
     };
   });
 

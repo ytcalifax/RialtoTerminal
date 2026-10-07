@@ -16,7 +16,7 @@ from ...core.cache import TTLCache
 from ...core.parsing.rss import rss_items
 from ...core.pool import shared_pool
 from ...core.text import clean, parse_timestamp
-from .feeds import NEWS_FEEDS
+from .feeds import BALKAN_COUNTRIES, BALKAN_RSS_FEEDS, NEWS_FEEDS
 
 # Per-feed cache: on upstream failure the last good rows are served stale.
 _feed_cache: TTLCache[list[dict]] = TTLCache(NEWS_TTL_S)
@@ -42,6 +42,7 @@ def google_news(
         "BULGARIA" if is_bulgarian else "WORLD",
         "BULGARIA" if is_bulgarian else "GLOBAL",
         language,
+        country if country in BALKAN_COUNTRIES else "",
     )
 
 
@@ -71,6 +72,7 @@ def _cached_feed(config: dict) -> tuple[list[dict], dict]:
             config["category"],
             config["region"],
             config.get("language", ""),
+            config.get("country", ""),
         )
         _feed_cache.store(feed_id, rows)
         return rows, {
@@ -124,7 +126,7 @@ def _deduplicate(rows: list[dict]) -> list[dict]:
     return output
 
 
-def aggregate_news(feed: str = "global", query: str = "") -> dict:
+def aggregate_news(feed: str = "global", query: str = "", country: str = "") -> dict:
     """Merge all configured feeds into the news payload served to the UI.
 
     ``feed`` selects the publisher set (``global`` or ``bulgaria``); a
@@ -132,18 +134,29 @@ def aggregate_news(feed: str = "global", query: str = "") -> dict:
     search so fresh stories are reachable before they hit the static feeds.
     """
     term = clean(query)
-    selected = [
-        config
-        for config in NEWS_FEEDS
-        if config.get("language") != "bg"
-        and (
-            feed != "bulgaria"
-            or (
-                config["region"] in {"BULGARIA", "BALKANS"}
-                and config.get("language") == "en"
+    country = country.upper() if country.upper() in BALKAN_COUNTRIES else ""
+    if feed == "balkans":
+        selected = [
+            config
+            for config in (
+                *(item for item in NEWS_FEEDS if item["id"] in {"novinite", "sofia-globe", "balkan-insight"}),
+                *BALKAN_RSS_FEEDS,
             )
-        )
-    ]
+            if config.get("region") in {"BULGARIA", "BALKANS"}
+            and (not country or config.get("country") == country)
+        ]
+        google_codes = [country] if country else list(BALKAN_COUNTRIES)
+        selected.extend(_google_balkan_config(code) for code in google_codes)
+    elif feed == "bulgaria":
+        selected = [
+            config
+            for config in (*NEWS_FEEDS, *BALKAN_RSS_FEEDS)
+            if config.get("region") in {"BULGARIA", "BALKANS"}
+            and config.get("country") == "BG"
+            and config.get("language", "en") == "en"
+        ]
+    else:
+        selected = [config for config in NEWS_FEEDS if config.get("language", "en") == "en"]
 
     batches = list(shared_pool().map(_cached_feed, selected))
     results = [row for batch, _ in batches for row in batch]
@@ -167,17 +180,53 @@ def aggregate_news(feed: str = "global", query: str = "") -> dict:
             results.extend(searched_rows)
             statuses.append(search_status)
 
+    if feed == "balkans" and country:
+        results = [row for row in results if row.get("country") == country]
     output = _deduplicate(results)
     output.sort(
         key=lambda item: parse_timestamp(item.get("published", "")), reverse=True
     )
+    if feed == "balkans" and not country:
+        # Keep the broad view balanced: one fast country feed cannot crowd
+        # every other country out of the latest 160 rows.
+        by_country = {
+            code: [row for row in output if row.get("country") == code][:16]
+            for code in BALKAN_COUNTRIES
+        }
+        general = [row for row in output if not row.get("country")][:24]
+        output = [row for rank in range(16) for code in BALKAN_COUNTRIES if len(by_country[code]) > rank for row in [by_country[code][rank]]]
+        output.extend(general)
+        output.sort(key=lambda item: parse_timestamp(item.get("published", "")), reverse=True)
     return {
-        "items": output[:160],
+        "items": output[:240 if feed == "balkans" else 160],
         "feed": feed,
+        "country": country,
         "query": term,
         "sources": statuses,
         "sourceCount": sum(bool(status["ok"]) for status in statuses),
         "fetched": time.time(),
+    }
+
+
+def _google_balkan_config(code: str) -> dict[str, str]:
+    """Make a locale-specific Google News RSS config for one country."""
+    details = BALKAN_COUNTRIES[code]
+    params = urlencode(
+        {
+            "q": details["query"],
+            "hl": details["locale"],
+            "gl": code,
+            "ceid": details["edition"],
+        }
+    )
+    return {
+        "id": f"google-balkan-{code.lower()}",
+        "url": f"{GOOGLE_NEWS_SEARCH_URL}?{params}",
+        "source": "GOOGLE NEWS INDEX",
+        "category": details["name"].upper(),
+        "region": "BALKANS",
+        "language": details["locale"],
+        "country": code,
     }
 
 

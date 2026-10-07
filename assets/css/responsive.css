@@ -67,4 +67,7 @@
     font-size: 8px;
     gap: 7px;
   }
+
+  .impact-grid { grid-template-columns: minmax(0, 1fr); }
+  .impact-signals { border-right: 0; border-bottom: 1px solid #394247; }
 }

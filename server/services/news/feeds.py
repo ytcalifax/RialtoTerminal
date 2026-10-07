@@ -159,6 +159,7 @@ NEWS_FEEDS: list[dict[str, str]] = [
         "category": "BULGARIA",
         "region": "BULGARIA",
         "language": "bg",
+        "country": "BG",
     },
     {
         "id": "capital",
@@ -167,6 +168,7 @@ NEWS_FEEDS: list[dict[str, str]] = [
         "category": "BUSINESS",
         "region": "BULGARIA",
         "language": "bg",
+        "country": "BG",
     },
     {
         "id": "novinite",
@@ -175,6 +177,7 @@ NEWS_FEEDS: list[dict[str, str]] = [
         "category": "BULGARIA",
         "region": "BULGARIA",
         "language": "en",
+        "country": "BG",
     },
     {
         "id": "offnews",
@@ -183,6 +186,7 @@ NEWS_FEEDS: list[dict[str, str]] = [
         "category": "BULGARIA",
         "region": "BULGARIA",
         "language": "bg",
+        "country": "BG",
     },
     {
         "id": "sofia-globe",
@@ -191,6 +195,7 @@ NEWS_FEEDS: list[dict[str, str]] = [
         "category": "BULGARIA",
         "region": "BULGARIA",
         "language": "en",
+        "country": "BG",
     },
     {
         "id": "balkan-insight",
@@ -201,3 +206,39 @@ NEWS_FEEDS: list[dict[str, str]] = [
         "language": "en",
     },
 ]
+
+BALKAN_RSS_FEEDS: list[dict[str, str]] = [
+    {"id": "bta-bulgaria-en", "url": "https://www.bta.bg/en/news/bulgaria/rss", "source": "BTA", "category": "BULGARIA", "region": "BULGARIA", "language": "en", "country": "BG"},
+    {"id": "bta-balkans-en", "url": "https://www.bta.bg/en/news/balkans/rss", "source": "BTA", "category": "BALKANS", "region": "BALKANS", "language": "en", "country": ""},
+    {"id": "bta-bulgaria-bg", "url": "https://www.bta.bg/bg/news/bulgaria/rss", "source": "BTA", "category": "BULGARIA", "region": "BULGARIA", "language": "bg", "country": "BG"},
+    {"id": "dnevnik-bg", "url": "https://www.dnevnik.bg/rss/", "source": "DNEVNIK", "category": "BULGARIA", "region": "BULGARIA", "language": "bg", "country": "BG"},
+    {"id": "capital-bg", "url": "https://www.capital.bg/rss/", "source": "CAPITAL", "category": "BUSINESS", "region": "BULGARIA", "language": "bg", "country": "BG"},
+    {"id": "rri-en", "url": "https://www.rri.ro/en/feed", "source": "RADIO ROMANIA INTERNATIONAL", "category": "ROMANIA", "region": "BALKANS", "language": "en", "country": "RO"},
+    {"id": "vijesti-me", "url": "https://www.vijesti.me/rss", "source": "VIJESTI", "category": "MONTENEGRO", "region": "BALKANS", "language": "sr-Latn", "country": "ME"},
+    {"id": "balkan-insight-al", "url": "https://balkaninsight.com/category/bi/albania/feed", "source": "BALKAN INSIGHT", "category": "ALBANIA", "region": "BALKANS", "language": "en", "country": "AL"},
+    {"id": "balkan-insight-ba", "url": "https://balkaninsight.com/category/bi/bosnia-and-herzegovina/feed", "source": "BALKAN INSIGHT", "category": "BOSNIA AND HERZEGOVINA", "region": "BALKANS", "language": "en", "country": "BA"},
+    {"id": "balkan-insight-bg", "url": "https://balkaninsight.com/category/bi/bulgaria/feed", "source": "BALKAN INSIGHT", "category": "BULGARIA", "region": "BULGARIA", "language": "en", "country": "BG"},
+    {"id": "balkan-insight-hr", "url": "https://balkaninsight.com/category/bi/croatia/feed", "source": "BALKAN INSIGHT", "category": "CROATIA", "region": "BALKANS", "language": "en", "country": "HR"},
+    {"id": "balkan-insight-xk", "url": "https://balkaninsight.com/category/bi/kosovo/feed", "source": "BALKAN INSIGHT", "category": "KOSOVO", "region": "BALKANS", "language": "en", "country": "XK"},
+    {"id": "balkan-insight-mk", "url": "https://balkaninsight.com/category/bi/macedonia/feed", "source": "BALKAN INSIGHT", "category": "NORTH MACEDONIA", "region": "BALKANS", "language": "en", "country": "MK"},
+    {"id": "balkan-insight-md", "url": "https://balkaninsight.com/category/bi/moldova/feed", "source": "BALKAN INSIGHT", "category": "MOLDOVA", "region": "BALKANS", "language": "en", "country": "MD"},
+    {"id": "balkan-insight-me", "url": "https://balkaninsight.com/category/bi/montenegro/feed", "source": "BALKAN INSIGHT", "category": "MONTENEGRO", "region": "BALKANS", "language": "en", "country": "ME"},
+    {"id": "balkan-insight-ro", "url": "https://balkaninsight.com/category/bi/romania/feed", "source": "BALKAN INSIGHT", "category": "ROMANIA", "region": "BALKANS", "language": "en", "country": "RO"},
+    {"id": "balkan-insight-rs", "url": "https://balkaninsight.com/category/bi/serbia/feed", "source": "BALKAN INSIGHT", "category": "SERBIA", "region": "BALKANS", "language": "en", "country": "RS"},
+]
+
+BALKAN_COUNTRIES: dict[str, dict[str, str]] = {
+    "BG": {"name": "Bulgaria", "locale": "bg", "edition": "BG:bg", "query": "България OR София OR Пловдив"},
+    "RO": {"name": "Romania", "locale": "ro", "edition": "RO:ro", "query": "România OR București OR Moldova"},
+    "GR": {"name": "Greece", "locale": "el", "edition": "GR:el", "query": "Ελλάδα OR Αθήνα"},
+    "RS": {"name": "Serbia", "locale": "sr", "edition": "RS:sr", "query": "Srbija OR Beograd"},
+    "MK": {"name": "North Macedonia", "locale": "mk", "edition": "MK:mk", "query": "Северна Македонија OR Скопје"},
+    "AL": {"name": "Albania", "locale": "sq", "edition": "AL:sq", "query": "Shqipëri OR Tiranë"},
+    "XK": {"name": "Kosovo", "locale": "sq", "edition": "XK:sq", "query": "Kosovë OR Prishtinë"},
+    "ME": {"name": "Montenegro", "locale": "sr", "edition": "ME:sr", "query": "Crna Gora OR Podgorica"},
+    "BA": {"name": "Bosnia and Herzegovina", "locale": "bs", "edition": "BA:bs", "query": "Bosna i Hercegovina OR Sarajevo"},
+    "HR": {"name": "Croatia", "locale": "hr", "edition": "HR:hr", "query": "Hrvatska OR Zagreb"},
+    "SI": {"name": "Slovenia", "locale": "sl", "edition": "SI:sl", "query": "Slovenija OR Ljubljana"},
+    "TR": {"name": "Türkiye", "locale": "tr", "edition": "TR:tr", "query": "Türkiye OR Ankara OR İstanbul"},
+    "MD": {"name": "Moldova", "locale": "ro", "edition": "MD:ro", "query": "Moldova OR Chișinău"},
+}

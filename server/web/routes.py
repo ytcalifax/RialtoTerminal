@@ -15,6 +15,8 @@ import re
 from collections.abc import Callable
 
 from ..services.airinfo import aircraft_info
+from ..services.conflict import war_snapshot
+from ..services.impact import impact_snapshot
 from ..services.marketplace import listing_search
 from ..services.markets.quotes import (
     market_snapshot,
@@ -28,7 +30,6 @@ from ..services.tracking import (
     vessel_snapshot,
     vessel_track,
 )
-from ..services.conflict import war_snapshot
 
 Params = dict[str, list[str]]
 RouteHandler = Callable[[Params], tuple[int, dict]]
@@ -40,7 +41,11 @@ def _first(params: Params, name: str, default: str = "") -> str:
 
 
 def _news(params: Params) -> tuple[int, dict]:
-    return 200, aggregate_news(_first(params, "feed", "global"), _first(params, "q"))
+    return 200, aggregate_news(
+        _first(params, "feed", "global"),
+        _first(params, "q"),
+        _first(params, "country"),
+    )
 
 
 def _market(params: Params) -> tuple[int, dict]:
@@ -95,6 +100,10 @@ def _war(params: Params) -> tuple[int, dict]:
     return war_snapshot()
 
 
+def _impact(params: Params) -> tuple[int, dict]:
+    return impact_snapshot()
+
+
 API_ROUTES: dict[str, RouteHandler] = {
     "/api/news": _news,
     "/api/market": _market,
@@ -107,4 +116,5 @@ API_ROUTES: dict[str, RouteHandler] = {
     "/api/air-info": _air_info,
     "/api/air-track": _air_track,
     "/api/war": _war,
+    "/api/impact": _impact,
 }

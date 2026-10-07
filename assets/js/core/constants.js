@@ -47,6 +47,7 @@ const SESSION_LABELS = {
   markets: 'MARKET MONITOR',
   ships: 'MARITIME',
   war: 'CONFLICT MONITOR',
+  impact: 'EARLY WARNING · BALKAN IMPACT',
 };
 
 // --- Command line ---------------------------------------------------------------
@@ -60,6 +61,7 @@ const COMMAND_PAGES = {
   MKT: 'markets', MARKET: 'markets', MON: 'markets',
   MPL: 'marketplace', MARKETPLACE: 'marketplace',
   CON: 'war', CONFLICT: 'war',
+  IMP: 'impact', IMPACT: 'impact', EARLY: 'impact',
 };
 
 /** Command word → description, used for autocomplete suggestions. */
@@ -71,6 +73,7 @@ const COMMAND_NAMES = {
   MKT: 'Market Monitor',
   MPL: 'Marketplace',
   CON: 'Conflict Monitor',
+  IMP: 'Early Warning & Impact',
 };
 
 /** Function menu entries, in their own display order: [command, description]. */
@@ -82,6 +85,7 @@ const MENU_ITEMS = [
   ['AIR', 'Aircraft Tracking'],
   ['MPL', 'Marketplace'],
   ['CON', 'Conflict Monitor'],
+  ['IMP', 'Early Warning & Impact'],
 ];
 
 /** Help-panel function directory, in its own display order. */
@@ -93,6 +97,7 @@ const HELP_ITEMS = [
   ['MKT', 'Market Monitor'],
   ['MPL', 'Marketplace'],
   ['CON', 'Conflict Monitor'],
+  ['IMP', 'Early Warning & Impact'],
 ];
 
 // --- News --------------------------------------------------------------------------

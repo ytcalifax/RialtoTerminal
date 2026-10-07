@@ -26,6 +26,7 @@ import { CUSTOM_GROUP } from './core/constants.js';
 import { loadShips, loadAir, renderDashboardShips, selectTrack, trackingViewChanged } from './features/tracking.js';
 import { loadMarketplace } from './features/marketplace.js';
 import { loadWar } from './features/conflict.js';
+import { loadImpact } from './features/impact.js';
 
 // --- Hook wiring (the seams described in core/hooks.js) ---------------------
 
@@ -49,6 +50,7 @@ on('page:changed', (page) => {
   if (page === 'ships' && ['idle', 'error'].includes(state.health.vessels)) loadShips();
   if (page === 'air' && (['idle', 'error'].includes(state.health.air) || Date.now() - (state.timestamps.air || 0) > 900000)) loadAir();
   if (page === 'war') loadWar();
+  if (page === 'impact') loadImpact();
 });
 
 // Feature flows that rebuild the module shell after changing selection state.
@@ -75,6 +77,9 @@ setInterval(() => {
 setInterval(() => {
   if (state.page === 'war') loadWar();
 }, 600000);
+setInterval(() => {
+  if (state.page === 'impact') loadImpact(true);
+}, 300000);
 // Markets poll: fresh quotes every minute. The 150-symbol STOCKS group is
 // throttled to every 4 min — Yahoo rate-limits per-request bursts, and one
 // snapshot of that group is 150 requests.

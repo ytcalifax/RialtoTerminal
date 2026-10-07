@@ -50,6 +50,7 @@ def rss_items(
     category: str = "WORLD",
     region: str = "GLOBAL",
     language: str = "",
+    country: str = "",
 ) -> list[dict]:
     """Parse a feed URL into normalised headline rows.
 
@@ -87,6 +88,7 @@ def rss_items(
                 "category": category,
                 "region": region,
                 "language": language,
+                "country": country,
                 "timeType": "PUBLISHED",
             }
         )

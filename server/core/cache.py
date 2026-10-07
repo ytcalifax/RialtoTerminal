@@ -4,6 +4,7 @@ The terminal polls the same handful of feeds over and over. Keeping the last
 good payload per key lets the UI degrade to slightly stale data instead of
 showing an error whenever one upstream hiccups.
 """
+
 from __future__ import annotations
 
 import threading

@@ -7,6 +7,7 @@ Per-symbol failures return ``None`` so one dead symbol never breaks the
 whole snapshot, and successful quotes are cached so repeated polls stay
 within upstream courtesy limits.
 """
+
 from __future__ import annotations
 
 import html
@@ -64,16 +65,13 @@ def _yahoo_quote(symbol: str, name: str | None = None) -> dict | None:
         url = YAHOO_CHART_URL.format(symbol=quote(symbol, safe=""))
         result = json.loads(fetch(url, "application/json"))["chart"]["result"][0]
         meta = result.get("meta") or {}
-        resolved_name = (
-            name
-            or meta.get("shortName")
-            or meta.get("longName")
-            or symbol
-        )
+        resolved_name = name or meta.get("shortName") or meta.get("longName") or symbol
         timestamps = result.get("timestamp") or []
         quote_indicators = result.get("indicators", {}).get("quote") or []
         raw_closes = quote_indicators[0].get("close", []) if quote_indicators else []
-        closes = [v for v in raw_closes if v is not None and isinstance(v, (int, float))]
+        closes = [
+            v for v in raw_closes if v is not None and isinstance(v, (int, float))
+        ]
 
         # The live last price is whichever is fresher: Yahoo's consolidated
         # regularMarketPrice or the newest 1-minute bar close.
@@ -86,8 +84,14 @@ def _yahoo_quote(symbol: str, name: str | None = None) -> dict | None:
             last = closes[-1] if closes else regular_price
         if last is None:
             return None
-        previous = meta.get("chartPreviousClose") or meta.get("previousClose") or (closes[0] if closes else last)
-        change = (last - previous) if (last is not None and previous is not None) else 0.0
+        previous = (
+            meta.get("chartPreviousClose")
+            or meta.get("previousClose")
+            or (closes[0] if closes else last)
+        )
+        change = (
+            (last - previous) if (last is not None and previous is not None) else 0.0
+        )
         pct = (change / previous * 100) if (previous and previous != 0) else 0.0
         row = {
             "symbol": symbol,
@@ -99,7 +103,8 @@ def _yahoo_quote(symbol: str, name: str | None = None) -> dict | None:
             "high": max(closes) if closes else None,
             "series": closes[-24:],
             "currency": meta.get("currency", ""),
-            "asof": meta.get("regularMarketTime") or (timestamps[-1] if timestamps else 0),
+            "asof": meta.get("regularMarketTime")
+            or (timestamps[-1] if timestamps else 0),
             "group": SYMBOL_GROUP.get(symbol, "INDICES"),
         }
         _QUOTE_CACHE.store(symbol, dict(row))
@@ -136,7 +141,8 @@ def _bse_sofix_row() -> dict:
     # The index sits in the first row of the exchange's "top 5" widget.
     match = re.search(
         r'<div class="top5_row secondary" data-id="0">(.*?)(?=<div class="top5_row secondary")',
-        page, re.S,
+        page,
+        re.S,
     )
     if not match:
         raise ValueError("BSE Sofia index widget unavailable")
@@ -146,7 +152,11 @@ def _bse_sofix_row() -> dict:
         found = re.search(
             r'<div class="' + re.escape(class_name) + r'"[^>]*>(.*?)</div>', block, re.S
         )
-        return clean(html.unescape(re.sub(r"<[^>]+>", " ", found.group(1)))) if found else ""
+        return (
+            clean(html.unescape(re.sub(r"<[^>]+>", " ", found.group(1))))
+            if found
+            else ""
+        )
 
     def number(value: str) -> float:
         try:
@@ -175,9 +185,18 @@ def _bse_sofix_row() -> dict:
     high = number(high_parts[-1]) if high_parts else 0.0
 
     row = {
-        "symbol": "^SOFIX", "name": "SOFIX", "last": last, "change": change,
-        "pct": pct, "low": low, "high": high, "series": [], "currency": "EUR",
-        "asof": source_time, "source": "BSE SOFIA · 3 MIN DELAY", "group": "INDICES",
+        "symbol": "^SOFIX",
+        "name": "SOFIX",
+        "last": last,
+        "change": change,
+        "pct": pct,
+        "low": low,
+        "high": high,
+        "series": [],
+        "currency": "EUR",
+        "asof": source_time,
+        "source": "BSE SOFIA · 3 MIN DELAY",
+        "group": "INDICES",
     }
     _SOFIX_CACHE.store("^SOFIX", dict(row))
     return dict(row)
@@ -189,9 +208,12 @@ def market_snapshot(group: str = "CORE") -> dict:
     ``group`` is an upper-cased key of :data:`MARKET_GROUPS`, or ``CORE`` for
     the dashboard cross-section. Unknown groups fall back to ``CORE``.
     """
-    symbols = CORE_MARKETS if group == "CORE" else MARKET_GROUPS.get(group, CORE_MARKETS)
+    symbols = (
+        CORE_MARKETS if group == "CORE" else MARKET_GROUPS.get(group, CORE_MARKETS)
+    )
     rows = [
-        row for row in shared_pool().map(_quoted_pair, symbols.items())
+        row
+        for row in shared_pool().map(_quoted_pair, symbols.items())
         if row is not None
     ]
     if "^SOFIX" in symbols:
@@ -226,18 +248,22 @@ def search_symbols(query: str) -> dict:
     cached = _SEARCH_CACHE.get(cache_key)
     if cached is not None:
         return {"results": cached, "query": term}
-    data = json.loads(fetch(YAHOO_SEARCH_URL.format(query=quote(term)), "application/json"))
+    data = json.loads(
+        fetch(YAHOO_SEARCH_URL.format(query=quote(term)), "application/json")
+    )
     results = []
     for entry in (data.get("quotes") or [])[:8]:
         symbol = entry.get("symbol")
         if not symbol or not _SYMBOL_RE.fullmatch(symbol):
             continue
-        results.append({
-            "symbol": symbol,
-            "name": entry.get("shortname") or entry.get("longname") or symbol,
-            "type": entry.get("quoteType") or "",
-            "exchange": entry.get("exchDisp") or entry.get("exchange") or "",
-        })
+        results.append(
+            {
+                "symbol": symbol,
+                "name": entry.get("shortname") or entry.get("longname") or symbol,
+                "type": entry.get("quoteType") or "",
+                "exchange": entry.get("exchDisp") or entry.get("exchange") or "",
+            }
+        )
     _SEARCH_CACHE.store(cache_key, results)
     return {"results": results, "query": term}
 
@@ -262,4 +288,9 @@ def quotes_for_symbols(raw: str | None) -> dict:
         for row in shared_pool().map(lambda s: _yahoo_quote(s), symbols)
         if row is not None
     ]
-    return {"items": rows, "group": "CUSTOM", "expected": len(symbols), "fetched": time.time()}
+    return {
+        "items": rows,
+        "group": "CUSTOM",
+        "expected": len(symbols),
+        "fetched": time.time(),
+    }

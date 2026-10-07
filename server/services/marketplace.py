@@ -4,6 +4,7 @@ The broad public index covers all categories; rows are capped to keep the
 response bounded. Listings are metadata plus outbound links only — pricing
 and availability remain with the publisher.
 """
+
 from __future__ import annotations
 
 import time
@@ -54,7 +55,9 @@ def listing_search(query: str = "", limit: str | int = _DEFAULT_LIMIT) -> dict:
             if row["url"] in seen:
                 continue
             seen.add(row["url"])
-            haystack = " ".join((row["title"], row["location"], row["price"])).casefold()
+            haystack = " ".join(
+                (row["title"], row["location"], row["price"])
+            ).casefold()
             if not query or query.casefold() in haystack:
                 rows.append(row)
             if len(rows) >= limit:

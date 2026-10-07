@@ -3,6 +3,7 @@
 Only the standard library parser is used; feeds are fetched exclusively from
 the fixed endpoints listed in :mod:`server.services.news_feeds`.
 """
+
 from __future__ import annotations
 
 # noinspection PyPep8Naming — `ET` is the universal stdlib idiom
@@ -57,12 +58,17 @@ def rss_items(
     skipped rather than emitted half-formed (fail soft per row, fail loud
     per feed — parse errors propagate to the caller).
     """
-    body = fetch(url, "application/rss+xml, application/atom+xml, application/xml, text/xml")
+    body = fetch(
+        url, "application/rss+xml, application/atom+xml, application/xml, text/xml"
+    )
     try:
         root = ET.fromstring(body)
     except ET.ParseError:
         import re
-        clean_xml = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F]", "", body.decode("utf-8", "replace"))
+
+        clean_xml = re.sub(
+            r"[\x00-\x08\x0B\x0C\x0E-\x1F]", "", body.decode("utf-8", "replace")
+        )
         root = ET.fromstring(clean_xml)
     items = [item for item in root.iter() if _tag_name(item) in _ITEM_TAGS]
 
@@ -72,14 +78,16 @@ def rss_items(
         link = _item_link(item)
         if not (title and link):
             continue
-        rows.append({
-            "title": title,
-            "url": link,
-            "published": local_text(item, _DATE_TAGS),
-            "source": local_text(item, {"source"}) or source_override or "NEWSWIRE",
-            "category": category,
-            "region": region,
-            "language": language,
-            "timeType": "PUBLISHED",
-        })
+        rows.append(
+            {
+                "title": title,
+                "url": link,
+                "published": local_text(item, _DATE_TAGS),
+                "source": local_text(item, {"source"}) or source_override or "NEWSWIRE",
+                "category": category,
+                "region": region,
+                "language": language,
+                "timeType": "PUBLISHED",
+            }
+        )
     return rows

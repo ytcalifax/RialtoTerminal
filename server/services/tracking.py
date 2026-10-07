@@ -8,6 +8,7 @@ Aircraft rows are normalised to the conventions the UI already expects
 surfaces share one rendering path. Caller-supplied parts (MMSI, ICAO24) are
 validated by the HTTP boundary before they reach here.
 """
+
 from __future__ import annotations
 
 import json
@@ -19,10 +20,10 @@ from urllib.parse import urlencode
 from ..config import (
     AIR_SNAPSHOT_TTL_S,
     DEFAULT_VESSELS_BBOX,
-    OPENWATERS_TRACK_URL,
-    OPENWATERS_VESSELS_URL,
     OPENSKY_STATES_URL,
     OPENSKY_TRACKS_URL,
+    OPENWATERS_TRACK_URL,
+    OPENWATERS_VESSELS_URL,
     TRACKING_BBOX,
     VESSELS_MAX_SQ_DEG,
     VESSELS_TTL_S,
@@ -42,6 +43,7 @@ _JSON_ACCEPT = "application/json"
 # windows (see aircraft_snapshot).
 _air_cache: TTLCache[dict] = TTLCache(AIR_SNAPSHOT_TTL_S)
 _vessel_cache: TTLCache[dict] = TTLCache(VESSELS_TTL_S)
+
 
 def _parse_bbox(raw: str | None, max_area: float | None = VESSELS_MAX_SQ_DEG) -> str:
     """Normalise a ``minLat,minLon,maxLat,maxLon`` viewport into a query box.
@@ -71,8 +73,14 @@ def _parse_bbox(raw: str | None, max_area: float | None = VESSELS_MAX_SQ_DEG) ->
         min_lon, max_lon = c_lon - d_lon / 2, c_lon + d_lon / 2
     # Round outward edges inward so a capped box stays within its limit.
     if d_lat >= 0.02 and d_lon >= 0.02:
-        min_lat, max_lat = math.ceil(min_lat * 100) / 100, math.floor(max_lat * 100) / 100
-        min_lon, max_lon = math.ceil(min_lon * 100) / 100, math.floor(max_lon * 100) / 100
+        min_lat, max_lat = (
+            math.ceil(min_lat * 100) / 100,
+            math.floor(max_lat * 100) / 100,
+        )
+        min_lon, max_lon = (
+            math.ceil(min_lon * 100) / 100,
+            math.floor(max_lon * 100) / 100,
+        )
         if min_lat >= max_lat or min_lon >= max_lon:
             return DEFAULT_VESSELS_BBOX
     return f"{min_lat:.2f},{min_lon:.2f},{max_lat:.2f},{max_lon:.2f}"
@@ -107,7 +115,10 @@ def vessel_snapshot(boxes: str | None = None) -> tuple[int, dict]:
 
         def _fetch_one_box(box: str) -> dict | None:
             try:
-                body = fetch(OPENWATERS_VESSELS_URL.format(bbox=box), "application/geo+json, application/json")
+                body = fetch(
+                    OPENWATERS_VESSELS_URL.format(bbox=box),
+                    "application/geo+json, application/json",
+                )
                 return json.loads(body)
             except Exception:
                 return None
@@ -118,7 +129,9 @@ def vessel_snapshot(boxes: str | None = None) -> tuple[int, dict]:
             if not isinstance(data, dict):
                 continue
             any_success = True
-            merged["attribution"] = data.get("attribution", merged.get("attribution", {}))
+            merged["attribution"] = data.get(
+                "attribution", merged.get("attribution", {})
+            )
             merged["received_at"] = data.get("received_at", merged.get("received_at"))
             for feature in data.get("features", []):
                 mmsi = (feature.get("properties") or {}).get("mmsi")
@@ -134,7 +147,11 @@ def vessel_snapshot(boxes: str | None = None) -> tuple[int, dict]:
         stale = _vessel_cache.get_entry(cache_key)
         if stale and stale.value.get("features"):
             return 200, stale.value
-        return 502, {"error": "Upstream AIS sources unavailable", "features": [], "region": cache_key}
+        return 502, {
+            "error": "Upstream AIS sources unavailable",
+            "features": [],
+            "region": cache_key,
+        }
     except Exception as exc:
         stale = _vessel_cache.get_entry(cache_key)
         if stale and stale.value.get("features"):
@@ -145,7 +162,12 @@ def vessel_snapshot(boxes: str | None = None) -> tuple[int, dict]:
 def vessel_track(mmsi: str) -> tuple[int, dict]:
     """Return the movement history for one vessel MMSI as ``(status, payload)``."""
     try:
-        data = json.loads(fetch(OPENWATERS_TRACK_URL.format(mmsi=mmsi), "application/geo+json, application/json"))
+        data = json.loads(
+            fetch(
+                OPENWATERS_TRACK_URL.format(mmsi=mmsi),
+                "application/geo+json, application/json",
+            )
+        )
         return 200, data
     except Exception as exc:
         return 502, {"error": str(exc)}
@@ -160,7 +182,9 @@ def aircraft_snapshot(bbox_raw: str | None = None) -> tuple[int, dict]:
         return (502 if "error" in cached else 200), cached
     try:
         min_lat, min_lon, max_lat, max_lon = bbox.split(",")
-        query = urlencode({"lamin": min_lat, "lomin": min_lon, "lamax": max_lat, "lomax": max_lon})
+        query = urlencode(
+            {"lamin": min_lat, "lomin": min_lon, "lamax": max_lat, "lomax": max_lon}
+        )
         data = json.loads(fetch(f"{OPENSKY_STATES_URL}?{query}", _JSON_ACCEPT))
         snapshot_time = data.get("time") or int(time.time())
         rows = []
@@ -168,15 +192,31 @@ def aircraft_snapshot(bbox_raw: str | None = None) -> tuple[int, dict]:
             if len(s) < 17 or s[5] is None or s[6] is None:
                 continue
             contact = s[4]
-            rows.append({
-                "id": s[0], "callsign": (s[1] or "").strip(), "reg": "", "type": "",
-                "lat": s[6], "lon": s[5], "altM": s[7], "ground": bool(s[8]),
-                "speedMs": s[9], "course": s[10], "vertRateMs": s[11],
-                "geoAltM": s[13], "squawk": s[14] or "",
-                "ageS": max(0, snapshot_time - contact) if contact else None,
-                "lastContact": contact,
-            })
-        payload = {"source": "OpenSky", "time": snapshot_time, "aircraft": rows, "region": cache_key}
+            rows.append(
+                {
+                    "id": s[0],
+                    "callsign": (s[1] or "").strip(),
+                    "reg": "",
+                    "type": "",
+                    "lat": s[6],
+                    "lon": s[5],
+                    "altM": s[7],
+                    "ground": bool(s[8]),
+                    "speedMs": s[9],
+                    "course": s[10],
+                    "vertRateMs": s[11],
+                    "geoAltM": s[13],
+                    "squawk": s[14] or "",
+                    "ageS": max(0, snapshot_time - contact) if contact else None,
+                    "lastContact": contact,
+                }
+            )
+        payload = {
+            "source": "OpenSky",
+            "time": snapshot_time,
+            "aircraft": rows,
+            "region": cache_key,
+        }
         _air_cache.store(cache_key, payload)
         return 200, payload
     except Exception as exc:
@@ -200,7 +240,13 @@ def aircraft_track(icao24: str) -> tuple[int, dict]:
         return 200, data
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
-            return 200, {"error": "OpenSky has no live track for this aircraft.", "path": []}
-        return exc.code, {"error": f"OpenSky track endpoint returned HTTP {exc.code}.", "path": []}
+            return 200, {
+                "error": "OpenSky has no live track for this aircraft.",
+                "path": [],
+            }
+        return exc.code, {
+            "error": f"OpenSky track endpoint returned HTTP {exc.code}.",
+            "path": [],
+        }
     except Exception as exc:
         return 502, {"error": str(exc), "path": []}

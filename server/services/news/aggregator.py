@@ -4,6 +4,7 @@ Fans a configurable feed list out in parallel, falls back to cached items
 per feed when an upstream fails, optionally narrows by search term via the
 Google News index, then deduplicates and sorts the merged timeline.
 """
+
 from __future__ import annotations
 
 import re
@@ -57,8 +58,11 @@ def _cached_feed(config: dict) -> tuple[list[dict], dict]:
 
     if cached and now - cached.checked_at < NEWS_TTL_S:
         return cached.value, {
-            "id": feed_id, "source": config["source"], "ok": True,
-            "count": len(cached.value), "stale": False,
+            "id": feed_id,
+            "source": config["source"],
+            "ok": True,
+            "count": len(cached.value),
+            "stale": False,
         }
     try:
         rows = rss_items(
@@ -70,19 +74,29 @@ def _cached_feed(config: dict) -> tuple[list[dict], dict]:
         )
         _feed_cache.store(feed_id, rows)
         return rows, {
-            "id": feed_id, "source": config["source"], "ok": True,
-            "count": len(rows), "stale": False,
+            "id": feed_id,
+            "source": config["source"],
+            "ok": True,
+            "count": len(rows),
+            "stale": False,
         }
     except Exception as exc:
         if cached:
             return cached.value, {
-                "id": feed_id, "source": config["source"], "ok": False,
-                "count": len(cached.value), "stale": True,
+                "id": feed_id,
+                "source": config["source"],
+                "ok": False,
+                "count": len(cached.value),
+                "stale": True,
                 "error": str(exc)[:120],
             }
         return [], {
-            "id": feed_id, "source": config["source"], "ok": False,
-            "count": 0, "stale": False, "error": str(exc)[:120],
+            "id": feed_id,
+            "source": config["source"],
+            "ok": False,
+            "count": 0,
+            "stale": False,
+            "error": str(exc)[:120],
         }
 
 
@@ -119,7 +133,8 @@ def aggregate_news(feed: str = "global", query: str = "") -> dict:
     """
     term = clean(query)
     selected = [
-        config for config in NEWS_FEEDS
+        config
+        for config in NEWS_FEEDS
         if feed != "bulgaria" or config["region"] in {"BULGARIA", "BALKANS"}
     ]
 
@@ -134,7 +149,8 @@ def aggregate_news(feed: str = "global", query: str = "") -> dict:
 
     if term:
         results = [
-            row for row in results
+            row
+            for row in results
             if row.get(_DIRECT_QUERY_TAG)
             or term.casefold() in row["title"].casefold()
             or term.casefold() in row["source"].casefold()
@@ -145,7 +161,9 @@ def aggregate_news(feed: str = "global", query: str = "") -> dict:
             statuses.append(search_status)
 
     output = _deduplicate(results)
-    output.sort(key=lambda item: parse_timestamp(item.get("published", "")), reverse=True)
+    output.sort(
+        key=lambda item: parse_timestamp(item.get("published", "")), reverse=True
+    )
     return {
         "items": output[:160],
         "feed": feed,
@@ -158,7 +176,9 @@ def aggregate_news(feed: str = "global", query: str = "") -> dict:
 
 def _google_bulgaria(term: str) -> tuple[list[dict], dict]:
     """Bulgarian-language Google News slice for the BULGARIA feed view."""
-    local_query = term or "site:bta.bg OR site:bnr.bg OR site:bntnews.bg OR site:btvnovinite.bg"
+    local_query = (
+        term or "site:bta.bg OR site:bnr.bg OR site:bntnews.bg OR site:btvnovinite.bg"
+    )
     try:
         rows = google_news(local_query, "bg", "BG", "BG:bg")
         for row in rows:
@@ -166,19 +186,41 @@ def _google_bulgaria(term: str) -> tuple[list[dict], dict]:
                 row["source"] = "BULGARIA · GOOGLE NEWS INDEX"
             if term:
                 row[_DIRECT_QUERY_TAG] = True
-        return rows, {"id": "google-bg", "source": "GOOGLE NEWS INDEX", "ok": True,
-                      "count": len(rows), "stale": False}
+        return rows, {
+            "id": "google-bg",
+            "source": "GOOGLE NEWS INDEX",
+            "ok": True,
+            "count": len(rows),
+            "stale": False,
+        }
     except Exception as exc:
-        return [], {"id": "google-bg", "source": "GOOGLE NEWS INDEX", "ok": False,
-                    "count": 0, "stale": False, "error": str(exc)[:120]}
+        return [], {
+            "id": "google-bg",
+            "source": "GOOGLE NEWS INDEX",
+            "ok": False,
+            "count": 0,
+            "stale": False,
+            "error": str(exc)[:120],
+        }
 
 
 def _google_search(term: str) -> tuple[list[dict], dict]:
     """Global Google News search for the current headline query."""
     try:
         rows = google_news(term, "en", "US", "US:en")
-        return rows, {"id": "google-search", "source": "GOOGLE NEWS SEARCH", "ok": True,
-                      "count": len(rows), "stale": False}
+        return rows, {
+            "id": "google-search",
+            "source": "GOOGLE NEWS SEARCH",
+            "ok": True,
+            "count": len(rows),
+            "stale": False,
+        }
     except Exception as exc:
-        return [], {"id": "google-search", "source": "GOOGLE NEWS SEARCH", "ok": False,
-                    "count": 0, "stale": False, "error": str(exc)[:120]}
+        return [], {
+            "id": "google-search",
+            "source": "GOOGLE NEWS SEARCH",
+            "ok": False,
+            "count": 0,
+            "stale": False,
+            "error": str(exc)[:120],
+        }

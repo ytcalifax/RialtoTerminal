@@ -1,4 +1,5 @@
 """Text and timestamp helpers shared by the parsers."""
+
 from __future__ import annotations
 
 import re
@@ -35,7 +36,9 @@ def parse_timestamp(value: str | None) -> float:
         pass
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        return (parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)).timestamp()
+        return (
+            parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        ).timestamp()
     except (TypeError, ValueError, OverflowError):
         pass
     try:

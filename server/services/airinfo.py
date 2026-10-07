@@ -11,6 +11,7 @@ Registry entries are near-static (24 h cache); routes rotate with schedule
 seasons (30 min cache). Unknown hex/callsigns are a normal outcome, not an
 error: the payload carries ``null`` sections and the UI renders dashes.
 """
+
 from __future__ import annotations
 
 import json

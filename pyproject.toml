@@ -1,21 +1,54 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "rialto-terminal"
 version = "1.0.0"
-description = "Rialto — a real-time terminal for global markets, newswires, vessel and aircraft tracking."
-readme = "README.md"
+description = "A private, real-time dashboard for markets, news, vessel and aircraft tracking."
+readme = { file = "README.md", content-type = "text/markdown" }
+authors = [{ name = "ytcalifax (98w)", email = "hello@98w.eu" }]
 requires-python = ">=3.12"
-# Deliberately empty: the backend runs on the Python standard library alone
-# (http.server, urllib, html.parser, xml, concurrent.futures). That is a
-# feature, not an omission — see requirements.txt.
 dependencies = []
+keywords = [
+    "markets",
+    "news",
+    "dashboard",
+    "terminal",
+    "ais",
+    "ads-b",
+    "aircraft-tracking",
+    "vessel-tracking",
+    "Bulgaria",
+]
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Office/Business :: Financial",
+    "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+    "Topic :: Utilities",
+]
+
+[project.optional-dependencies]
+dev = ["ruff>=0.14"]
 
 [project.scripts]
-# After `pip install -e .` the server starts with the `rialto` command.
 rialto = "server.app:main"
 
 [tool.setuptools.packages.find]
+where = ["."]
 include = ["server*"]
+exclude = ["*__pycache__*"]
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]

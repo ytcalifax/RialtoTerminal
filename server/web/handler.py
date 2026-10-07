@@ -4,12 +4,13 @@
 Python docs warning), so the server binds to loopback only and serves files
 from the project root regardless of the process working directory.
 """
+
 from __future__ import annotations
 
 import json
+from http.server import SimpleHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
-from http.server import SimpleHTTPRequestHandler
 
 from .routes import API_ROUTES
 

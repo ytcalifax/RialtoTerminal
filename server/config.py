@@ -17,9 +17,9 @@ MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 USER_AGENT = "Mozilla/5.0 (compatible; RialtoTerminal/1.0)"
 
 # --- Cache lifetimes (seconds) ---------------------------------------------
-NEWS_TTL_S = 120      # publisher feeds are polled every 3 min by the UI
-MARKET_TTL_S = 60     # per-symbol quotes; UI polls every 60 s for freshness
-SOFIX_TTL_S = 180     # BSE labels the index widget 3 min delayed
+NEWS_TTL_S = 120  # publisher feeds are polled every 3 min by the UI
+MARKET_TTL_S = 60  # per-symbol quotes; UI polls every 60 s for freshness
+SOFIX_TTL_S = 180  # BSE labels the index widget 3 min delayed
 
 # --- Concurrency ------------------------------------------------------------
 # One process-wide pool shared by news and market fan-outs. A single bounded
@@ -45,15 +45,11 @@ VESSELS_TTL_S = 30
 YAHOO_CHART_URL = (
     "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?range=1d&interval=1m"
 )
-YAHOO_SEARCH_URL = (
-    "https://query1.finance.yahoo.com/v1/finance/search?q={query}&quotesCount=8&newsCount=0"
-)
+YAHOO_SEARCH_URL = "https://query1.finance.yahoo.com/v1/finance/search?q={query}&quotesCount=8&newsCount=0"
 SEARCH_TTL_S = 3600
 QUOTES_MAX_SYMBOLS = 12
 BSE_SOFIX_URL = "https://www.bse-sofia.bg/en/indices/sofix"
-OPENWATERS_VESSELS_URL = (
-    "https://ais.openwaters.io/v1/vessels?bbox={bbox}"
-)
+OPENWATERS_VESSELS_URL = "https://ais.openwaters.io/v1/vessels?bbox={bbox}"
 OPENWATERS_TRACK_URL = "https://ais.openwaters.io/v1/vessels/{mmsi}/track"
 OPENSKY_TRACKS_URL = "https://opensky-network.org/api/tracks/all"
 OPENSKY_STATES_URL = "https://opensky-network.org/api/states/all"

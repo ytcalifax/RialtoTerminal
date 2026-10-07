@@ -61,6 +61,15 @@ The server binds to `127.0.0.1` and is intended for local use. It uses Python's 
 - Browser-native HTML, CSS, and JavaScript modules
 - Public data feeds and APIs
 
+## 🧹 Development
+
+Install the optional Ruff linter and import sorter, then run it with:
+
+```bash
+pip install -e ".[dev]"
+ruff check .
+```
+
 ## 🤝 Contributing
 
 Issues and pull requests are welcome. Include the workspace, steps to reproduce, and relevant feed or browser-console errors when reporting a problem.

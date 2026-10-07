@@ -4,6 +4,7 @@ News and market fan-outs used to build a throwaway ``ThreadPoolExecutor`` per
 request. A single process-wide pool with a fixed worker count gives the same
 parallelism while keeping total thread usage predictable under load.
 """
+
 from __future__ import annotations
 
 import threading

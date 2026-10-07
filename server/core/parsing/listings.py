@@ -5,6 +5,7 @@ links and splits the visible text into title / location / posted / price
 fields. Bulgarian date words ("днес", "вчера", month names) are part of the
 grammar — keep them intact.
 """
+
 from __future__ import annotations
 
 import re

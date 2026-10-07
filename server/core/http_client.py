@@ -5,6 +5,7 @@ applies the defensive guards that raw ``urllib`` calls would miss:
 scheme whitelisting, response-size capping, uniform timeouts and a single
 exception type for callers to handle.
 """
+
 from __future__ import annotations
 
 import urllib.error

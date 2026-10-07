@@ -8,14 +8,19 @@ services assume validated input.
 Adding an endpoint means adding an entry here — the HTTP handler itself
 never changes (Open/Closed Principle).
 """
+
 from __future__ import annotations
 
 import re
 from collections.abc import Callable
 
 from ..services.airinfo import aircraft_info
-from ..services.markets.quotes import market_snapshot, quotes_for_symbols, search_symbols
 from ..services.marketplace import listing_search
+from ..services.markets.quotes import (
+    market_snapshot,
+    quotes_for_symbols,
+    search_symbols,
+)
 from ..services.news.aggregator import aggregate_news
 from ..services.tracking import (
     aircraft_snapshot,
@@ -26,6 +31,7 @@ from ..services.tracking import (
 
 Params = dict[str, list[str]]
 RouteHandler = Callable[[Params], tuple[int, dict]]
+
 
 def _first(params: Params, name: str, default: str = "") -> str:
     vals = params.get(name)

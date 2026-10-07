@@ -3,6 +3,7 @@
 Wires the route table into a threaded HTTP server. Run either as
 ``python3 server.py`` (root shim) or ``python3 -m server``.
 """
+
 from __future__ import annotations
 
 from http.server import ThreadingHTTPServer

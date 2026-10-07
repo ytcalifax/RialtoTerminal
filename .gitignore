@@ -275,3 +275,4 @@ pyrightconfig.json
 
 # IntelliJ "Inspect Code" report exports (never commit the dumps)
 /*.xml
+/uv.lock

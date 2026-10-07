@@ -69,9 +69,7 @@ def _yahoo_quote(symbol: str, name: str | None = None) -> dict | None:
         timestamps = result.get("timestamp") or []
         quote_indicators = result.get("indicators", {}).get("quote") or []
         raw_closes = quote_indicators[0].get("close", []) if quote_indicators else []
-        closes = [
-            v for v in raw_closes if v is not None and isinstance(v, (int, float))
-        ]
+        closes = [float(v) for v in raw_closes if isinstance(v, (int, float))]
 
         # The live last price is whichever is fresher: Yahoo's consolidated
         # regularMarketPrice or the newest 1-minute bar close.

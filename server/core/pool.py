@@ -25,4 +25,5 @@ def shared_pool() -> ThreadPoolExecutor:
                 _POOL = ThreadPoolExecutor(
                     max_workers=MAX_WORKERS, thread_name_prefix="upstream"
                 )
+    assert _POOL is not None
     return _POOL

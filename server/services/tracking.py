@@ -83,7 +83,10 @@ def _parse_bbox(raw: str | None, max_area: float | None = VESSELS_MAX_SQ_DEG) ->
         )
         if min_lat >= max_lat or min_lon >= max_lon:
             return DEFAULT_VESSELS_BBOX
-    return f"{min_lat:.2f},{min_lon:.2f},{max_lat:.2f},{max_lon:.2f}"
+    return (
+        f"{float(min_lat):.2f},{float(min_lon):.2f},"
+        f"{float(max_lat):.2f},{float(max_lon):.2f}"
+    )
 
 
 def _parse_boxes(raw: str | None) -> list[str]:

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from http.server import SimpleHTTPRequestHandler
 from pathlib import Path
+from typing import cast
 from urllib.parse import parse_qs, urlparse
 
 from .routes import API_ROUTES
@@ -51,7 +52,8 @@ class TerminalRequestHandler(SimpleHTTPRequestHandler):
             super().do_GET()  # not an API path: serve a static asset
             return
         try:
-            status, payload = route(parse_qs(parsed.query))
+            params = cast(dict[str, list[str]], parse_qs(parsed.query))
+            status, payload = route(params)
         except Exception as exc:
             # Last-ditch guard: a bug in one route must never kill the worker
             # thread silently; the client gets a structured 500 instead.

@@ -344,7 +344,7 @@ function renderDashboardShips() {
 
   const credits = Object.values(state.vesselAttribution);
   const foot = $('.ship-peek .panel-foot');
-  if (foot && credits.length) foot.firstChild.textContent = `AIS source credit: ${credits.join(' · ').slice(0, 170)} `;
+  if (foot && credits.length) foot.firstChild.textContent = 'AIS source credit: Open Waters AIS · AISHub · aisstream.io ';
 
   $$('[data-ship-index]').forEach((el) => {
     el.onclick = () => {
@@ -385,7 +385,7 @@ function renderTrackTable(items, air) {
  */
 async function selectTrack(x, air = false, centerMap = false) {
   state.selectedTrack = x;
-  const map = state.page === 'top' ? $('#miniMap') : $('.module-map');
+  const map = $(state.page === 'top' ? '#miniMap' : '.module-map');
   if (centerMap && map) {
     const kind = map.id === 'miniMap' ? 'home' : map.dataset.mapKind || (air ? 'air' : 'ship');
     state.mapViews[kind].lat = x.lat;

@@ -5,9 +5,11 @@ one place. Nothing in this module may import other project modules: it is the
 bottom of the dependency graph.
 """
 
+import os
+
 # --- HTTP server -----------------------------------------------------------
-PORT = 8765
-BIND_HOST = "127.0.0.1"  # loopback only: the stdlib server has no TLS/auth
+PORT = int(os.environ.get("RIALTO_PORT", "8765"))
+BIND_HOST = os.environ.get("RIALTO_BIND_HOST", "127.0.0.1")  # containers set 0.0.0.0
 
 # --- Outbound fetch behaviour ----------------------------------------------
 UPSTREAM_TIMEOUT_S = 12

@@ -34,6 +34,38 @@ rialto
 
 (`rialto` can also be run directly with `python3 -m server`.)
 
+## 🐳 Docker
+
+Build and start the hardened container with Docker Compose:
+
+```bash
+docker compose up --build -d
+```
+
+Sample `compose.yaml`:
+
+```yaml
+services:
+  rialto:
+    build: .
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:8765:8765"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+```
+
+Open [http://localhost:8765](http://localhost:8765). The image runs as a
+non-root user, includes a health check, and needs no runtime package install.
+The sample publishes only on the host loopback interface; put a secured
+reverse proxy in front if you need access from other devices.
+
 ## 🧭 Workspaces
 
 | Command | Workspace | What you can do |
@@ -53,7 +85,11 @@ Rialto reads public data from Yahoo Finance, the Bulgarian Stock Exchange, publi
 
 ## 🛡️ Local-Only by Default
 
-The server binds to `127.0.0.1` and is intended for local use. It uses Python's built-in HTTP server, which is not a production web server and does not provide TLS or authentication. Do not expose it directly to a network; use an appropriately secured reverse proxy or production server if you intentionally deploy it elsewhere.
+The native server binds to `127.0.0.1`. Inside Docker it binds to the container
+interface so port forwarding works; the sample Compose file still publishes it
+only on host loopback. Rialto uses Python's built-in HTTP server, which does
+not provide TLS or authentication. Keep it behind a secured reverse proxy for
+remote access; do not expose the app directly to an untrusted network.
 
 ## 🧱 Built With
 

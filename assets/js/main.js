@@ -46,7 +46,7 @@ on('page:changed', (page) => {
   else renderDashboardShips();
   if (page === 'markets') loadMarket(state.marketGroup);
   if (page === 'ships' && ['idle', 'error'].includes(state.health.vessels)) loadShips();
-  if (page === 'air' && (['idle', 'error'].includes(state.health.air) || Date.now() - (state.timestamps.air || 0) > 60000)) loadAir();
+  if (page === 'air' && (['idle', 'error'].includes(state.health.air) || Date.now() - (state.timestamps.air || 0) > 900000)) loadAir();
 });
 
 // Feature flows that rebuild the module shell after changing selection state.
@@ -68,7 +68,7 @@ setInterval(() => loadNews(state.feed, state.newsQuery), 180000);
 setInterval(loadShips, 60000);
 setInterval(() => {
   if (state.page === 'air') loadAir();
-}, 60000);
+}, 900000);
 // Markets poll: fresh quotes every minute. The 150-symbol STOCKS group is
 // throttled to every 4 min — Yahoo rate-limits per-request bursts, and one
 // snapshot of that group is 150 requests.

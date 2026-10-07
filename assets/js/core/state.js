@@ -41,7 +41,7 @@ const state = {
   ships: [],              // normalised AIS positions (current region)
   aircraft: [],           // normalised ADS-B positions (current region)
   shipsRegion: null,      // last fetched vessel region: 'minLat,minLon,maxLat,maxLon'
-  airRegion: null,        // last fetched aircraft region: { lat, lon, radiusNm }
+  airRegion: null,        // last fetched aircraft region: 'minLat,minLon,maxLat,maxLon'
   vesselAttribution: {},  // AIS source credits from the snapshot payload
   trackQuery: '',         // active tracking search text
   trackQueries: { ships: '', air: '' }, // remembered search text per page

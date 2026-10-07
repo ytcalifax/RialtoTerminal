@@ -37,6 +37,7 @@
 
 .wordmark {
   /* Bloomberg-style wordmark: very heavy, tightly kerned, white. */
+  margin: 0;
   font-family: Roboto, Arial, sans-serif;
   font-size: 18px;
   font-weight: 900;

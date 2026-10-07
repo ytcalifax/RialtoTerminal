@@ -56,7 +56,7 @@ OPENWATERS_VESSELS_URL = (
 )
 OPENWATERS_TRACK_URL = "https://ais.openwaters.io/v1/vessels/{mmsi}/track"
 OPENSKY_TRACKS_URL = "https://opensky-network.org/api/tracks/all"
-ADSB_POINT_URL = "https://api.adsb.lol/v2/point/{lat:.2f}/{lon:.2f}/{radius}"
+OPENSKY_STATES_URL = "https://opensky-network.org/api/states/all"
 ADSBDB_URL = "https://api.adsbdb.com/v0"
 BAZAR_LISTINGS_URL = "https://bazar.bg/obiavi"
 GOOGLE_NEWS_SEARCH_URL = "https://news.google.com/rss/search"
@@ -65,6 +65,5 @@ GOOGLE_NEWS_SEARCH_URL = "https://news.google.com/rss/search"
 # static; routes change with schedule seasons.
 AIRDB_AIRCRAFT_TTL_S = 86400
 AIRDB_ROUTE_TTL_S = 1800
-# ADS-B snapshot cache: also serves as a 429 back-off window, since adsb.lol
-# asks for at most ~1 request/second per client.
+# ADS-B snapshot cache: coalesces identical concurrent viewport requests.
 AIR_SNAPSHOT_TTL_S = 45

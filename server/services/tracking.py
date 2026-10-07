@@ -1,10 +1,7 @@
 """Vessel (AIS) and aircraft (ADS-B) position services.
 
-Vessels proxy the public AIS snapshot API; aircraft come from the adsb.lol
-community ADS-B feed, which is genuinely real-time (seconds behind the
-receiver) and keyless, unlike the credit-limited OpenSky anonymous tier —
-OpenSky is kept only for on-demand flight-track history, where a handful of
-requests per day fits its free quota.
+Vessels proxy the public AIS snapshot API; aircraft use OpenSky live state
+vectors and tracks.
 
 Aircraft rows are normalised to the conventions the UI already expects
 (altitudes in metres, speeds in m/s, matching OpenSky's units) so both
@@ -20,11 +17,11 @@ import urllib.error
 from urllib.parse import urlencode
 
 from ..config import (
-    ADSB_POINT_URL,
     AIR_SNAPSHOT_TTL_S,
     DEFAULT_VESSELS_BBOX,
     OPENWATERS_TRACK_URL,
     OPENWATERS_VESSELS_URL,
+    OPENSKY_STATES_URL,
     OPENSKY_TRACKS_URL,
     TRACKING_BBOX,
     VESSELS_MAX_SQ_DEG,
@@ -34,34 +31,19 @@ from ..core.cache import TTLCache
 from ..core.http_client import fetch
 from ..core.pool import shared_pool
 
-# Default home region for the vessels endpoint: lat_min,lon_min,lat_max,lon_max.
+# Default home region: lat_min,lon_min,lat_max,lon_max.
 _BBOX_PARAM = ",".join(
     str(TRACKING_BBOX[key]) for key in ("lamin", "lomin", "lamax", "lomax")
 )
 
-# adsb.lol caps a point query at 250 nm; three circles tile the Black Sea box
-# (40-46N / 25-41E) with margin — worst-case corner is ~220 nm from a centre.
-_ADSB_COVER_POINTS = ((43.0, 27.5), (43.0, 33.0), (43.0, 38.5))
-_ADSB_RADIUS_NM = 250
-
 _JSON_ACCEPT = "application/json"
-
-_FT_PER_M = 3.28084
-_MS_PER_KT = 1 / 1.94384
-_MS_PER_FTPMIN = 1 / 196.85
 
 # Brief snapshot caches: smooth multi-tab polling and serve as 429 back-off
 # windows (see aircraft_snapshot).
 _air_cache: TTLCache[dict] = TTLCache(AIR_SNAPSHOT_TTL_S)
 _vessel_cache: TTLCache[dict] = TTLCache(VESSELS_TTL_S)
 
-# When the ADS-B feed answers 429, stop polling it for a while — retrying
-# sooner only extends the throttle.
-_adsb_banned_until = 0.0
-ADSB_429_BACKOFF_S = 120
-
-
-def _parse_bbox(raw: str | None) -> str:
+def _parse_bbox(raw: str | None, max_area: float | None = VESSELS_MAX_SQ_DEG) -> str:
     """Normalise a ``minLat,minLon,maxLat,maxLon`` viewport into a query box.
 
     Values are clamped to sane ranges and the box shrinks around its centre
@@ -81,14 +63,13 @@ def _parse_bbox(raw: str | None) -> str:
     if min_lat >= max_lat or min_lon >= max_lon:
         return DEFAULT_VESSELS_BBOX
     d_lat, d_lon = max_lat - min_lat, max_lon - min_lon
-    if d_lat * d_lon > VESSELS_MAX_SQ_DEG:
-        scale = (VESSELS_MAX_SQ_DEG / (d_lat * d_lon)) ** 0.5
+    if max_area is not None and d_lat * d_lon > max_area:
+        scale = (max_area / (d_lat * d_lon)) ** 0.5
         c_lat, c_lon = (min_lat + max_lat) / 2, (min_lon + max_lon) / 2
         d_lat, d_lon = d_lat * scale, d_lon * scale
         min_lat, max_lat = c_lat - d_lat / 2, c_lat + d_lat / 2
         min_lon, max_lon = c_lon - d_lon / 2, c_lon + d_lon / 2
-    # Round the outward edges inward so the 2-dp output can never exceed the
-    # cap; boxes too small for inward rounding pass through unrounded.
+    # Round outward edges inward so a capped box stays within its limit.
     if d_lat >= 0.02 and d_lon >= 0.02:
         min_lat, max_lat = math.ceil(min_lat * 100) / 100, math.floor(max_lat * 100) / 100
         min_lon, max_lon = math.ceil(min_lon * 100) / 100, math.floor(max_lon * 100) / 100
@@ -103,34 +84,6 @@ def _parse_boxes(raw: str | None) -> list[str]:
         return [DEFAULT_VESSELS_BBOX]
     boxes = [_parse_bbox(part) for part in raw.split(";") if part.strip()]
     return boxes[:9] or [DEFAULT_VESSELS_BBOX]
-
-
-def _parse_circles(raw: str | None) -> list[tuple[float, float, int]]:
-    """Parse a ``;``-separated circle list (``lat,lon,radiusNm``) for adsb.lol.
-
-    Up to nine circles; each is clamped to sane ranges with a 25-250 nm
-    radius. Garbage parts are dropped; an unusable list yields the default
-    three-circle home coverage.
-    """
-    circles: list[tuple[float, float, int]] = []
-    if raw:
-        for part in raw.split(";"):
-            try:
-                lat, lon, radius = (float(x) for x in part.split(","))
-            except ValueError:
-                continue
-            if not (-85.0 <= lat <= 85.0 and -180.0 <= lon <= 180.0):
-                continue
-            circles.append((
-                round(max(-85.0, min(85.0, lat)), 1),
-                round(max(-180.0, min(180.0, lon)), 1),
-                int(max(25.0, min(250.0, radius))),
-            ))
-            if len(circles) >= 9:
-                break
-    if not circles:
-        circles = [(lat, lon, _ADSB_RADIUS_NM) for lat, lon in _ADSB_COVER_POINTS]
-    return circles
 
 
 def vessel_snapshot(boxes: str | None = None) -> tuple[int, dict]:
@@ -198,68 +151,32 @@ def vessel_track(mmsi: str) -> tuple[int, dict]:
         return 502, {"error": str(exc)}
 
 
-def aircraft_snapshot(circles_raw: str | None = None) -> tuple[int, dict]:
-    """Return the live ADS-B snapshot for up to nine circles of coverage.
-
-    ``circles_raw`` is ``;``-separated ``lat,lon,radiusNm`` circles — one per
-    coverage cell the UI computed for its zoom level: at low zoom several
-    sampled clusters appear across the view, and zooming in swaps them for
-    full-density coverage of the smaller area. Without parameters the
-    three-circle Black Sea home region is served. Rows are deduplicated by
-    ICAO24 and normalised to the UI's unit conventions. Circles are fetched
-    sequentially ~1.1 s apart because the feed asks for at most ~1
-    request/second; the snapshot is cached briefly and rate-limit responses
-    are cached for the same window so a pile-up of UI tabs backs off instead
-    of deepening the throttle.
-    """
-    circles = _parse_circles(circles_raw)
-    global _adsb_banned_until
-    cache_key = ";".join(f"{lat},{lon},{radius}" for lat, lon, radius in circles)
+def aircraft_snapshot(bbox_raw: str | None = None) -> tuple[int, dict]:
+    """Return a live OpenSky state-vector snapshot for the current map box."""
+    bbox = _parse_bbox(bbox_raw, max_area=None)
+    cache_key = bbox
     cached = _air_cache.get(cache_key)
     if cached is not None:
         return (502 if "error" in cached else 200), cached
-    if time.time() < _adsb_banned_until:
-        stale = _air_cache.get_entry(cache_key)
-        if stale and stale.value.get("aircraft"):
-            return 200, stale.value
-        return 502, {"error": "ADSB.LOL rate limit cooling down", "aircraft": [], "region": cache_key}
     try:
-        seen: dict[str, dict] = {}
-        for position, (lat, lon, radius) in enumerate(circles):
-            url = ADSB_POINT_URL.format(lat=lat, lon=lon, radius=radius)
-            data = json.loads(fetch(url, _JSON_ACCEPT))
-            now_s = (data.get("now") or time.time() * 1000) / 1000  # feed reports ms
-            for ac in data.get("ac", []):
-                lat_a, lon_a = ac.get("lat"), ac.get("lon")
-                if lat_a is None or lon_a is None:
-                    continue
-                alt_baro = ac.get("alt_baro")
-                ground = alt_baro == "ground"
-                gs = ac.get("gs")
-                baro_rate = ac.get("baro_rate")
-                alt_geom = ac.get("alt_geom")
-                seen_pos = ac.get("seen_pos")
-                key = ac.get("hex") or f"{lat_a},{lon_a}"
-                seen[key] = {
-                    "id": key,
-                    "callsign": (ac.get("flight") or "").strip(),
-                    "reg": ac.get("r") or "",
-                    "type": ac.get("t") or "",
-                    "lat": float(lat_a),
-                    "lon": float(lon_a),
-                    "altM": round(alt_baro / _FT_PER_M, 1) if isinstance(alt_baro, (int, float)) else None,
-                    "ground": ground,
-                    "speedMs": round(gs * _MS_PER_KT, 2) if isinstance(gs, (int, float)) else None,
-                    "course": ac.get("track"),
-                    "vertRateMs": round(baro_rate * _MS_PER_FTPMIN, 3) if isinstance(baro_rate, (int, float)) else None,
-                    "geoAltM": round(alt_geom / _FT_PER_M, 1) if isinstance(alt_geom, (int, float)) else None,
-                    "squawk": str(ac.get("squawk") or ""),
-                    "ageS": seen_pos,
-                    "lastContact": round(now_s - seen_pos) if isinstance(seen_pos, (int, float)) else None,
-                }
-            if position < len(circles) - 1:
-                time.sleep(1.3)  # stay within the feed's 1 req/s courtesy limit
-        payload = {"source": "ADSB.LOL", "time": time.time(), "aircraft": list(seen.values()), "region": cache_key}
+        min_lat, min_lon, max_lat, max_lon = bbox.split(",")
+        query = urlencode({"lamin": min_lat, "lomin": min_lon, "lamax": max_lat, "lomax": max_lon})
+        data = json.loads(fetch(f"{OPENSKY_STATES_URL}?{query}", _JSON_ACCEPT))
+        snapshot_time = data.get("time") or int(time.time())
+        rows = []
+        for s in data.get("states") or []:
+            if len(s) < 17 or s[5] is None or s[6] is None:
+                continue
+            contact = s[4]
+            rows.append({
+                "id": s[0], "callsign": (s[1] or "").strip(), "reg": "", "type": "",
+                "lat": s[6], "lon": s[5], "altM": s[7], "ground": bool(s[8]),
+                "speedMs": s[9], "course": s[10], "vertRateMs": s[11],
+                "geoAltM": s[13], "squawk": s[14] or "",
+                "ageS": max(0, snapshot_time - contact) if contact else None,
+                "lastContact": contact,
+            })
+        payload = {"source": "OpenSky", "time": snapshot_time, "aircraft": rows, "region": cache_key}
         _air_cache.store(cache_key, payload)
         return 200, payload
     except Exception as exc:
@@ -267,19 +184,13 @@ def aircraft_snapshot(circles_raw: str | None = None) -> tuple[int, dict]:
         if stale and stale.value.get("aircraft"):
             return 200, stale.value
         payload = {"error": str(exc), "aircraft": [], "region": cache_key}
-        if "429" in str(exc):
-            # One window of back-off, then a longer cooldown before the next
-            # attempt — retrying inside a throttle only extends it.
-            _adsb_banned_until = time.time() + ADSB_429_BACKOFF_S
-            _air_cache.store(cache_key, payload)
         return 502, payload
 
 
 def aircraft_track(icao24: str) -> tuple[int, dict]:
     """Return the flight track for one aircraft ICAO24 address.
 
-    Track history still comes from OpenSky (adsb.lol serves only current
-    positions). OpenSky answers 404 for aircraft without a live track; that
+    Track history also comes from OpenSky. OpenSky answers 404 for aircraft without a live track; that
     common case is surfaced as a friendly empty result (HTTP 200) rather
     than an error. On-demand use keeps OpenSky's anonymous quota manageable.
     """

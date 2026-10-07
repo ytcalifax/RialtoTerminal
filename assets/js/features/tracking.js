@@ -22,12 +22,11 @@ import { setupMapInteraction } from '../maps/interaction.js';
 
 /** Fallback vessel region (the home Black Sea box) when no view is known. */
 const HOME_VESSEL_BBOX = '40,25,46,41';
-/** Fallback aircraft coverage: three home circles over the Black Sea. */
-const HOME_AIR_CIRCLES = '43,33,250;43,27.5,250;43,38.5,250';
+/** Fallback aircraft region: the home Black Sea bounding box. */
+const HOME_AIR_BBOX = '40,25,46,41';
 
 /**
- * Geographic footprint of a map viewport: the box for vessels and the
- * centre + half-diagonal reach for aircraft.
+ * Geographic footprint of a map viewport: a bounding box and its dimensions.
  */
 function viewportBounds(view, mapEl) {
   const z = clampMapZoom(view.zoom);
@@ -52,7 +51,7 @@ function viewportBounds(view, mapEl) {
  * aircraft, 100 sq° for vessels). At low zoom the cells are sampled
  * clusters spread across the view; zooming in shrinks the viewport until a
  * single cell covers it at full density.
- * @returns {string[]} vessel boxes / air circles, encoded per the backend.
+ * @returns {string[]} viewport coverage boxes, encoded per the backend.
  */
 function coverageCells(view, mapEl, mode) {
   const b = viewportBounds(view, mapEl);
@@ -89,10 +88,13 @@ function currentShipBoxes() {
   return state.shipsRegion || HOME_VESSEL_BBOX;
 }
 
-/** Aircraft coverage circles for the current air map view (or last known). */
-function currentAirCircles() {
-  if (state.page === 'air') return coverageCells(state.mapViews.air, $('.module-map'), 'air').join(';');
-  return state.airRegion || HOME_AIR_CIRCLES;
+/** Aircraft bounding box for the current air map view (or last known). */
+function currentAirBBox() {
+  if (state.page === 'air') {
+    const b = viewportBounds(state.mapViews.air, $('.module-map'));
+    return [b.minLat, b.minLon, b.maxLat, b.maxLon].map((v) => v.toFixed(2)).join(',');
+  }
+  return state.airRegion || HOME_AIR_BBOX;
 }
 
 /**
@@ -138,7 +140,7 @@ function featureRows(collection) {
   }).filter((x) => Number.isFinite(x.lon) && Number.isFinite(x.lat));
 }
 
-/** Normalise the adsb.lol ADS-B rows (already unit-normalised server-side). */
+/** Normalise the OpenSky ADS-B rows (already unit-normalised server-side). */
 function aircraftRows(raw) {
   return (raw.aircraft || []).filter((a) => Number.isFinite(Number(a.lat)) && Number.isFinite(Number(a.lon))).map((a) => ({
     id: a.id,
@@ -158,7 +160,7 @@ function aircraftRows(raw) {
     geoAlt: a.geoAltM,
     squawk: a.squawk || '',
     raw: a,
-    source: 'ADSB.LOL',
+    source: 'OPENSKY',
   }));
 }
 
@@ -211,15 +213,15 @@ async function loadShips() {
   }
 }
 
-/** Poll the ADS-B snapshot for the current coverage circles and repaint the aircraft surfaces. */
+/** Poll the ADS-B snapshot for the current map box and repaint the aircraft surfaces. */
 async function loadAir() {
   if (state.refreshingAir) return;
   state.refreshingAir = true;
   setHealth('air', 'loading');
   try {
-    const circles = currentAirCircles();
-    const r = await req(`/api/air?circles=${encodeURIComponent(circles)}`);
-    state.airRegion = circles;
+    const bbox = currentAirBBox();
+    const r = await req(`/api/air?bbox=${encodeURIComponent(bbox)}`);
+    state.airRegion = bbox;
     state.aircraft = aircraftRows(r);
     state.timestamps.air = r.time ? Number(r.time) * 1000 : Date.now();
     state.errors.air = r.error || '';
@@ -280,7 +282,7 @@ function updateTrackingView() {
 
   const stamp = state.timestamps[air ? 'air' : 'vessels'];
   const status = $('#trackStatus');
-  if (status) status.textContent = `${filtered.length} POSITIONS · ${air ? 'SOURCE AS OF' : 'CHECKED'} ${fmtTime(stamp)} · AUTO 60S${state.errors[air ? 'air' : 'vessels'] ? ' · FEED DELAYED' : ''}`;
+  if (status) status.textContent = `${filtered.length} POSITIONS · ${air ? 'SOURCE AS OF' : 'CHECKED'} ${fmtTime(stamp)} · AUTO ${air ? '15M' : '60S'}${state.errors[air ? 'air' : 'vessels'] ? ' · FEED DELAYED' : ''}`;
 
   if (state.selectedTrack) {
     const updated = all.find((x) => x.id === state.selectedTrack.id);
@@ -364,7 +366,7 @@ function renderTrackTable(items, air) {
   const focusId = document.activeElement?.closest('#trackRows tr[data-track-id]')?.dataset.trackId;
 
   tbody.innerHTML = items.map((x, i) => `<tr tabindex="0" data-index="${i}" data-track-id="${esc(x.id)}" class="${state.selectedTrack?.id === x.id ? 'chosen' : ''}"><td>${esc(x.name)}</td><td>${Number(x.lat).toFixed(3)}</td><td>${Number(x.lon).toFixed(3)}</td><td>${air ? (x.alt == null ? '—' : Math.round(x.alt)) : (x.speed == null ? '—' : Number(x.speed).toFixed(1))}</td><td>${ageLabel(x.age)}</td></tr>`).join('')
-    || `<tr><td colspan="5" class="empty-state">${state.errors[air ? 'air' : 'vessels'] ? `${air ? 'ADSB.LOL' : 'AIS'} FEED ERROR · ${esc(state.errors[air ? 'air' : 'vessels'])}` : `NO POSITIONS IN CURRENT ${air ? 'ADSB.LOL' : 'AIS'} SNAPSHOT · COVERAGE DEPENDS ON RECEIVER NETWORK`}</td></tr>`;
+    || `<tr><td colspan="5" class="empty-state">${state.errors[air ? 'air' : 'vessels'] ? `${air ? 'OPENSKY' : 'AIS'} FEED ERROR · ${esc(state.errors[air ? 'air' : 'vessels'])}` : `NO POSITIONS IN CURRENT ${air ? 'OPENSKY' : 'AIS'} SNAPSHOT · COVERAGE DEPENDS ON RECEIVER NETWORK`}</td></tr>`;
 
   if (list) list.scrollTop = scrollTop;
   if (focusId) {
@@ -481,14 +483,18 @@ function detailHTML(x, air = false, info) {
     const ac = info?.aircraft || null;
     const rt = info?.route || null;
     const pending = (v) => v ?? (info ? '—' : '…'); // '…' while lookup runs, '—' when answered
-    const airport = (a) => a ? `${esc(a.city || a.name || a.code)} ${a.code ? '(' + esc(a.code) + ')' : ''}` : null;
+    const airport = (a) => a?.code ? esc(a.code.toUpperCase()) : null;
     const fromA = airport(rt?.from);
     const toA = airport(rt?.to);
     const airline = rt?.airline || ac?.owner || null;
+    const upper = (v) => {
+      const value = pending(v);
+      return value === '…' || value === '—' ? value : esc(String(value).toUpperCase());
+    };
     const photo = ac?.photo
       ? `<a class="trade-link" href="${esc(ac.photo)}" target="_blank" rel="noopener" title="Photo of ${esc(ac.registration || 'this airframe')}">PHOTO ↗</a>`
       : (info ? '—' : '…');
-    return `<span>CALLSIGN <b>${esc(x.name)}</b></span><span>ICAO24 <b>${esc(x.id)}</b></span><span>REG <b>${esc(x.reg || '—')}</b></span><span>BRAND <b>${pending(ac?.brand || null)}</b></span><span>MODEL <b>${pending(ac?.model || null)}</b></span><span>AIRLINE <b>${pending(airline)}</b></span><span>FROM <b>${fromA || (info ? '—' : '…')}</b></span><span>TO <b>${toA || (info ? '—' : '…')}</b></span><span>POSITION <b>${Number(x.lat).toFixed(4)}° / ${Number(x.lon).toFixed(4)}°</b></span><span>BARO ALT <b>${x.alt != null ? Math.round(x.alt) + ' m' : x.ground ? 'GND' : '—'}</b></span><span>GEO ALT <b>${x.geoAlt != null ? Math.round(x.geoAlt) + ' m' : '—'}</b></span><span>SPEED <b>${x.speed != null ? Math.round(x.speed * 1.94384) + ' kt' : '—'}</b></span><span>TRACK <b>${x.course != null ? Math.round(x.course) + '°' : '—'}</b></span><span>VERT RATE <b>${x.vertical != null ? Math.round(x.vertical * 196.85) + ' ft/min' : '—'}</b></span><span>SQUAWK <b>${esc(x.squawk || '—')}</b></span><span>LAST CONTACT <b>${x.lastContact ? fmtTime(x.lastContact * 1000) : '—'}</b></span><span class="detail-photo">${photo}</span>`;
+    return `<span>CALLSIGN <b>${esc(x.name)}</b></span><span>ICAO24 <b>${esc(x.id)}</b></span><span>BRAND <b>${upper(ac?.brand || null)}</b></span><span>MODEL <b>${upper(ac?.model || null)}</b></span><span>AIRLINE <b>${upper(airline)}</b></span><span>FROM <b>${fromA || (info ? '—' : '…')}</b></span><span>TO <b>${toA || (info ? '—' : '…')}</b></span><span>POSITION <b>${Number(x.lat).toFixed(4)}° / ${Number(x.lon).toFixed(4)}°</b></span><span>BARO ALT <b>${x.alt != null ? Math.round(x.alt) + ' m' : x.ground ? 'GND' : '—'}</b></span><span>GEO ALT <b>${x.geoAlt != null ? Math.round(x.geoAlt) + ' m' : '—'}</b></span><span>SPEED <b>${x.speed != null ? Math.round(x.speed * 1.94384) + ' kt' : '—'}</b></span><span>TRACK <b>${x.course != null ? Math.round(x.course) + '°' : '—'}</b></span><span>VERT RATE <b>${x.vertical != null ? Math.round(x.vertical * 196.85) + ' ft/min' : '—'}</b></span><span>SQUAWK <b>${esc(x.squawk || '—')}</b></span><span>LAST CONTACT <b>${x.lastContact ? fmtTime(x.lastContact * 1000) : '—'}</b></span><span class="detail-photo">${photo}</span>`;
   }
   const p = x.raw || {};
   // MarineTraffic shells bot traffic to its home page; VesselFinder's name

@@ -22,8 +22,8 @@ function openPage(page) {
   $('#suggestions').classList.remove('open');
 
   // A track selected on one surface is meaningless on the other.
-  if (page === 'air' && state.selectedTrack?.source !== 'ADSB.LOL') state.selectedTrack = null;
-  if (page === 'ships' && state.selectedTrack?.source === 'ADSB.LOL') state.selectedTrack = null;
+  if (page === 'air' && state.selectedTrack?.source !== 'OPENSKY') state.selectedTrack = null;
+  if (page === 'ships' && state.selectedTrack?.source === 'OPENSKY') state.selectedTrack = null;
   if (page === 'ships' || page === 'air') state.trackQuery = state.trackQueries[page] || '';
 
   // First visit to a tracking page: frame the freshest positions.

@@ -3,8 +3,27 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>rialto. - terminal</title>
-  <meta name="description" content="rialto. — a real-time terminal for global markets, newswires, vessel and aircraft tracking.">
+  <title>Rialto Terminal — Markets, News &amp; Live Tracking</title>
+  <meta name="description" content="A private real-time dashboard for global markets, world news, vessel positions, and aircraft tracking. Runs locally with no frontend build step.">
+  <meta name="application-name" content="Rialto Terminal">
+  <meta name="theme-color" content="#111a1e">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Rialto Terminal — Markets, News &amp; Live Tracking">
+  <meta property="og:description" content="A private real-time dashboard for global markets, world news, vessel positions, and aircraft tracking.">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Rialto Terminal — Markets, News &amp; Live Tracking">
+  <meta name="twitter:description" content="A private real-time dashboard for global markets, world news, vessel positions, and aircraft tracking.">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Rialto Terminal",
+      "description": "A private real-time dashboard for global markets, world news, vessel positions, and aircraft tracking.",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "Any"
+    }
+  </script>
   <link rel="stylesheet" href="assets/css/base.css">
   <link rel="stylesheet" href="assets/css/layout.css">
   <link rel="stylesheet" href="assets/css/components.css">
@@ -15,7 +34,7 @@
 <body>
   <div class="terminal">
     <header class="topline">
-      <div class="brand"><span class="wordmark">rialto.</span><span class="pro">TERMINAL</span></div>
+      <div class="brand"><h1 class="wordmark">rialto.</h1><span class="pro">TERMINAL</span></div>
       <div class="session">WORKSPACE: <b>GLOBAL MARKETS</b></div>
       <div class="top-right"><span class="connection" id="dataConnection" data-state="loading"><i></i><span id="dataStatus">DATA FEEDS · CONNECTING</span></span><span id="clock">--:--:--</span><button class="icon-btn" id="helpBtn" title="Help (F2)">?</button></div>
     </header>

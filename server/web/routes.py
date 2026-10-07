@@ -64,7 +64,7 @@ def _vessel_track(params: Params) -> tuple[int, dict]:
 
 
 def _air(params: Params) -> tuple[int, dict]:
-    return aircraft_snapshot(_first(params, "circles") or None)
+    return aircraft_snapshot(_first(params, "bbox") or None)
 
 
 def _air_info(params: Params) -> tuple[int, dict]:

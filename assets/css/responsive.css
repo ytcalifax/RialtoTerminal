@@ -42,6 +42,11 @@
 
   .function-nav > button {
     padding: 0 7px;
+    font-size: 0;
+  }
+
+  .function-nav > button .key {
+    font-size: 10px;
   }
 
   .function-nav .tab-small {

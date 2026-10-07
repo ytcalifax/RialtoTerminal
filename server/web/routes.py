@@ -28,6 +28,7 @@ from ..services.tracking import (
     vessel_snapshot,
     vessel_track,
 )
+from ..services.conflict import war_snapshot
 
 Params = dict[str, list[str]]
 RouteHandler = Callable[[Params], tuple[int, dict]]
@@ -90,6 +91,10 @@ def _air_track(params: Params) -> tuple[int, dict]:
     return aircraft_track(icao24)
 
 
+def _war(params: Params) -> tuple[int, dict]:
+    return war_snapshot()
+
+
 API_ROUTES: dict[str, RouteHandler] = {
     "/api/news": _news,
     "/api/market": _market,
@@ -101,4 +106,5 @@ API_ROUTES: dict[str, RouteHandler] = {
     "/api/air": _air,
     "/api/air-info": _air_info,
     "/api/air-track": _air_track,
+    "/api/war": _war,
 }

@@ -119,6 +119,41 @@
   z-index: 6;
 }
 
+.chokepoint-marker {
+  position: absolute;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 2px 2px;
+  border: 1px solid #e2b951;
+  border-radius: 3px;
+  background: #11191ee8;
+  color: #ffe29a;
+  font: 700 8px Roboto Mono, monospace;
+  white-space: nowrap;
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+}
+
+.chokepoint-marker i {
+  width: 7px;
+  height: 7px;
+  border: 1px solid #fff0c2;
+  border-radius: 50%;
+  background: #f0b83f;
+  box-shadow: 0 0 7px #f0b83f;
+}
+
+.chokepoint-marker:hover,
+.chokepoint-marker:focus-visible {
+  z-index: 6;
+  border-color: #fff;
+  color: #fff;
+  outline: 1px solid #fff;
+}
+
 /* --- Overlays, controls, credits ------------------------------------------------------------ */
 
 .map-overlay {
@@ -191,6 +226,25 @@
   stroke-dasharray: 5 4;
   filter: drop-shadow(0 0 3px #f2ad32);
 }
+
+.route-layer .gpsjam-cell {
+  stroke: #182329;
+  stroke-width: .7;
+  fill-opacity: .48;
+  pointer-events: auto;
+  cursor: pointer;
+  filter: none;
+}
+
+.route-layer .gpsjam-cell:hover {
+  fill-opacity: .82;
+  stroke: #f3f5f5;
+  stroke-width: 1.4;
+}
+
+.route-layer .gpsjam-cell.low { fill: #4ec78c; }
+.route-layer .gpsjam-cell.medium { fill: #f0c34d; }
+.route-layer .gpsjam-cell.high { fill: #ef5663; }
 
 .module-map.air-track .route-layer path {
   stroke: #64b9e8;

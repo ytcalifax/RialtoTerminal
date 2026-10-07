@@ -77,35 +77,82 @@ function renderMapView(map) {
     const py = p.y - center.y + h / 2;
     if (px < -8 || px > w + 8 || py < -8 || py > h + 8) return '';
     const index = visible.push(x) - 1;
-    return `<button class="map-point ${map._air ? 'air' : ''} ${state.selectedTrack?.id === x.id ? 'selected' : ''}" style="position:absolute;left:${px}px;top:${py}px" title="${esc(x.name)} · ${esc(x.id)}" aria-label="Select ${esc(x.name)}" data-index="${index}"></button>`;
+    return `<button class="map-point ${map._air ? 'air' : ''} ${state.selectedTrack?.id === x.id || map._selectedPointId === x.id ? 'selected' : ''}" style="position:absolute;left:${px}px;top:${py}px" title="${esc(x.name)} · ${esc(x.id)}" aria-label="Select ${esc(x.name)}" data-index="${index}"></button>`;
   }).join('');
   map._visibleTracks = visible;
   map.dataset.trackIds = visible.map((x) => x.id).join('|');
 
+  const worldWidth = 256 * n;
+  const visibleChokepoints = [];
+  const chokepoints = (map._chokepoints || []).map((point) => {
+    const p = mapProject(point.lon, point.lat, z);
+    let dx = p.x - center.x;
+    if (dx > worldWidth / 2) dx -= worldWidth;
+    if (dx < -worldWidth / 2) dx += worldWidth;
+    const px = dx + w / 2;
+    const py = p.y - center.y + h / 2;
+    if (px < -100 || px > w + 100 || py < -12 || py > h + 12) return '';
+    const index = visibleChokepoints.push(point) - 1;
+    return `<button class="chokepoint-marker" style="left:${px}px;top:${py}px" title="${esc(point.name)}" aria-label="Show ${esc(point.name)} details" data-index="${index}"><i></i><span>${esc(point.name)}</span></button>`;
+  }).join('');
+  layer.insertAdjacentHTML('beforeend', chokepoints);
+  map._visibleChokepoints = visibleChokepoints;
+  $$('.chokepoint-marker', layer).forEach((button) => {
+    button.onclick = () => {
+      if (!map.dataset.dragged) map._onChokepointClick?.(visibleChokepoints[Number(button.dataset.index)]);
+    };
+  });
+
   const overlay = $('.map-overlay', map);
-  if (overlay) overlay.textContent = kind === 'home'
+  if (overlay) overlay.textContent = map._mapLabel || (kind === 'home'
     ? `LATEST AIS REPORTS · ${visible.length} VISIBLE`
-    : `${map._air ? 'ADS-B AIRCRAFT' : 'AIS VESSELS'} · ${visible.length}/${tracks.length} IN VIEW`;
+    : `${map._air ? 'ADS-B AIRCRAFT' : 'AIS VESSELS'} · ${visible.length}/${tracks.length} IN VIEW`);
 
   $$('.map-point', layer).forEach((b) => {
     b.onclick = () => {
       // Suppress the click that ends a map drag. Selection goes through the
       // hooks seam: selectTrack belongs to the tracking feature, and maps
       // must not import features (they import maps).
-      if (!map.dataset.dragged) emit('track:selected', visible[Number(b.dataset.index)], !!map._air);
+      if (map.dataset.dragged) return;
+      const item = visible[Number(b.dataset.index)];
+      if (map._onPointClick) map._onPointClick(item, b);
+      else if (!map._noSelect) emit('track:selected', item, !!map._air);
     };
   });
 
-  if (map._routeCoords) {
-    const projected = map._routeCoords.map((c) => mapProject(c[0], c[1], z));
-    const d = projected.map((p, i) => `${i ? 'L' : 'M'} ${(p.x - center.x + w / 2) / w * 900} ${(p.y - center.y + h / 2) / h * 600}`).join(' ');
-    const path = $('.route-layer path', map);
+  if (map._routeCoords || map._routeSegments) {
+    const segments = map._routeSegments || [map._routeCoords];
+    const d = segments.filter(Boolean).map((coords) => coords.map((c, i) => {
+      const p = mapProject(c[0], c[1], z);
+      return `${i ? 'L' : 'M'} ${(p.x - center.x + w / 2) / w * 900} ${(p.y - center.y + h / 2) / h * 600}`;
+    }).join(' ')).join(' ');
+    const path = $('.route-layer > path', map);
     if (path) path.setAttribute('d', d);
-    const outside = projected.some((p) => p.x < center.x - w / 2 || p.x > center.x + w / 2 || p.y < center.y - h / 2 || p.y > center.y + h / 2);
     const status = $('#trackTrajectoryStatus');
-    if (status && status.textContent.startsWith('PUBLIC TRACK')) {
-      status.textContent = `PUBLIC TRACK · ${map._routeCoords.length} WAYPOINTS${outside ? ' · CONTINUES OFF VIEW · PAN TO FOLLOW' : ''} · ${map._air ? 'OPENSKY' : 'OPEN WATERS AIS'}`;
-    }
+    if (status && map._routeCoords && status.textContent.startsWith('PUBLIC TRACK')) status.textContent = `PUBLIC TRACK · ${map._routeCoords.length} WAYPOINTS · ${map._air ? 'OPENSKY' : 'OPEN WATERS AIS'}`;
+  }
+
+  const coverageLayer = $('.coverage-layer', map);
+  if (coverageLayer) {
+    coverageLayer.innerHTML = (map._coverageCells || []).map((feature, index) => {
+      const ring = feature.geometry?.coordinates?.[0];
+      if (!ring?.length) return '';
+      const d = ring.map(([lon, lat], i) => {
+        const p = mapProject(lon, lat, z);
+        const x = (p.x - center.x + w / 2) / w * 900;
+        const y = (p.y - center.y + h / 2) / h * 600;
+        return `${i ? 'L' : 'M'} ${x.toFixed(1)} ${y.toFixed(1)}`;
+      }).join(' ') + ' Z';
+      const percent = Number(feature.properties?.percent) || 0;
+      const level = percent >= 10 ? 'high' : percent >= 2 ? 'medium' : 'low';
+      return `<path class="gpsjam-cell ${level}" d="${d}" data-index="${index}"><title>${percent}% reported interference · ${feature.properties?.bad || 0} affected / ${feature.properties?.good || 0} unaffected aircraft</title></path>`;
+    }).join('');
+    $$('.gpsjam-cell', coverageLayer).forEach((cell) => {
+      cell.onclick = (event) => {
+        if (map.dataset.dragged) return;
+        map._onCoverageClick?.((map._coverageCells || [])[Number(cell.dataset.index)], event);
+      };
+    });
   }
 
   if (focusTrackId) {

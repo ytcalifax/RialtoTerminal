@@ -154,6 +154,118 @@
   letter-spacing: .04em;
 }
 
+/* Conflict map workspace. */
+.intel-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.intel-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 10px;
+  border-bottom: 1px solid #2b3235;
+  color: #c4cbce;
+  font: 9px Roboto Mono, monospace;
+  text-decoration: none;
+}
+
+.intel-row:hover {
+  background: #263034;
+  color: #ffc34c;
+}
+
+.intel-row.selected {
+  background: #323b3f;
+  box-shadow: inset 2px 0 #f3b33e;
+}
+
+.intel-row span,
+.intel-row small {
+  color: #879398;
+  font-size: 8px;
+}
+
+.war-map .route-layer > path {
+  stroke: #fa4e63;
+  stroke-width: 2.5;
+  stroke-dasharray: none;
+  filter: drop-shadow(0 0 4px #ef334c);
+}
+
+.war-map .route-layer .gpsjam-cell {
+  stroke: #182329;
+  stroke-width: .7;
+  fill-opacity: .48;
+  pointer-events: auto;
+  filter: none;
+}
+
+.war-map .route-layer .gpsjam-cell.low { fill: #4ec78c; }
+.war-map .route-layer .gpsjam-cell.medium { fill: #f0c34d; }
+.war-map .route-layer .gpsjam-cell.high { fill: #ef5663; }
+
+.war-map .map-point {
+  background: #ed6b49;
+  box-shadow: 0 0 7px #ed6b49;
+}
+
+.map-point-popup {
+  position: absolute;
+  z-index: 5;
+  top: 40px;
+  right: 10px;
+  width: min(320px, calc(100% - 20px));
+  padding: 11px 30px 12px 12px;
+  border: 1px solid #78858a;
+  background: #11191ded;
+  box-shadow: 0 5px 20px #0009;
+  color: #d6dfe2;
+  font: 9px Roboto Mono, monospace;
+}
+
+.map-point-popup[hidden] {
+  display: none;
+}
+
+.map-point-popup b,
+.map-point-popup span {
+  display: block;
+}
+
+.map-point-popup b {
+  color: #ffc34c;
+  font-size: 11px;
+}
+
+.map-point-popup span,
+.map-point-popup p {
+  color: #aab5ba;
+}
+
+.map-point-popup p {
+  margin: 8px 0 0;
+  line-height: 1.5;
+}
+
+.map-point-popup a {
+  display: inline-block;
+  margin-top: 10px;
+  color: #f2bd53;
+}
+
+.map-point-popup-close {
+  position: absolute;
+  top: 5px;
+  right: 6px;
+  border: 0;
+  background: transparent;
+  color: #bdc6ca;
+  font-size: 17px;
+  cursor: pointer;
+}
+
 /* Later refinements of the module body/list sizing. */
 .module-body,
 .module-list {

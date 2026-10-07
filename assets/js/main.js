@@ -6,9 +6,9 @@
  * the initial loads and arms the polling intervals.
  *
  * Poll schedule (matches the source data rhythms):
- *   news 3 min · vessels 60 s · aircraft 60 s while visible ·
+ *   news 3 min · vessels 60 s · aircraft 15 min while visible ·
  *   markets 60 s (STOCKS group 4 min: 150-symbol Yahoo bursts) ·
- *   marketplace 15 min while visible
+ *   marketplace 15 min while visible · conflict 10 min
  */
 import { $ } from './core/dom.js';
 import { on } from './core/hooks.js';
@@ -25,6 +25,7 @@ import { loadMarket, initMarketsChrome } from './features/markets.js';
 import { CUSTOM_GROUP } from './core/constants.js';
 import { loadShips, loadAir, renderDashboardShips, selectTrack, trackingViewChanged } from './features/tracking.js';
 import { loadMarketplace } from './features/marketplace.js';
+import { loadWar } from './features/conflict.js';
 
 // --- Hook wiring (the seams described in core/hooks.js) ---------------------
 
@@ -47,10 +48,12 @@ on('page:changed', (page) => {
   if (page === 'markets') loadMarket(state.marketGroup);
   if (page === 'ships' && ['idle', 'error'].includes(state.health.vessels)) loadShips();
   if (page === 'air' && (['idle', 'error'].includes(state.health.air) || Date.now() - (state.timestamps.air || 0) > 900000)) loadAir();
+  if (page === 'war') loadWar();
 });
 
 // Feature flows that rebuild the module shell after changing selection state.
 on('module:rerender', () => renderModule());
+on('geospatial:updated', () => renderModule());
 
 // --- Boot -------------------------------------------------------------------
 
@@ -69,6 +72,9 @@ setInterval(loadShips, 60000);
 setInterval(() => {
   if (state.page === 'air') loadAir();
 }, 900000);
+setInterval(() => {
+  if (state.page === 'war') loadWar();
+}, 600000);
 // Markets poll: fresh quotes every minute. The 150-symbol STOCKS group is
 // throttled to every 4 min — Yahoo rate-limits per-request bursts, and one
 // snapshot of that group is 150 requests.

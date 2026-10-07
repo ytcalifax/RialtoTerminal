@@ -5,11 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "rialto-terminal"
 version = "1.0.0"
-description = "A private, real-time dashboard for markets, news, vessel and aircraft tracking."
+description = "A private dashboard for markets, news, vessel, aircraft, and conflict monitoring."
 readme = { file = "README.md", content-type = "text/markdown" }
 authors = [{ name = "ytcalifax (98w)", email = "hello@98w.eu" }]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "h3>=4.2",
+]
 keywords = [
     "markets",
     "news",
@@ -19,6 +21,7 @@ keywords = [
     "ads-b",
     "aircraft-tracking",
     "vessel-tracking",
+    "conflict-monitoring",
     "Bulgaria",
 ]
 

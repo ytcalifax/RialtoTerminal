@@ -65,7 +65,7 @@ function setupMapInteraction(selector = '.module-map') {
   renderMapView(map);
 
   map.onpointerdown = (e) => {
-    if (e.target.closest('.map-controls') || e.target.closest('.map-grid-label a')) return;
+    if (e.target.closest('.map-controls') || e.target.closest('.map-grid-label a') || e.target.closest('.map-point-popup')) return;
     mapDrag = { map, stage, view, x: e.clientX, y: e.clientY, dx: 0, dy: 0, moved: false };
     stage.classList.add('dragging');
   };
@@ -104,7 +104,8 @@ function setupMapInteraction(selector = '.module-map') {
     button.onclick = () => {
       if (button.dataset.action === 'reset') {
         if (kind === 'home') Object.assign(view, state.mapViews.homeReset);
-        else focusPositionView(kind, kind === 'air' ? state.aircraft : state.ships);
+        else if (kind === 'air' || kind === 'ship') focusPositionView(kind, kind === 'air' ? state.aircraft : state.ships);
+        else Object.assign(view, { lat: 48, lon: 32, zoom: 5 });
         view.userMoved = false;
         renderMapView(map);
         emit('map:view-changed', kind);

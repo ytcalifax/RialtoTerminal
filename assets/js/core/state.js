@@ -40,6 +40,10 @@ const state = {
   // Tracking
   ships: [],              // normalised AIS positions (current region)
   aircraft: [],           // normalised ADS-B positions (current region)
+  warReports: [],
+  warFrontline: [],
+  warGpsJam: { date: '', features: [] },
+  warSelectedId: null,
   shipsRegion: null,      // last fetched vessel region: 'minLat,minLon,maxLat,maxLon'
   airRegion: null,        // last fetched aircraft region: 'minLat,minLon,maxLat,maxLon'
   vesselAttribution: {},  // AIS source credits from the snapshot payload
@@ -65,6 +69,7 @@ const state = {
     homeReset: { lat: 43, lon: 33, zoom: 6 },
     ship:      { lat: 43, lon: 33, zoom: 6 },
     air:       { lat: 43, lon: 33, zoom: 6 },
+    war:       { lat: 48, lon: 32, zoom: 5 },
   },
 };
 

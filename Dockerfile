@@ -7,6 +7,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+RUN pip install --no-cache-dir "h3>=4.2"
+
 COPY --chown=10001:10001 index.html ./index.html
 COPY --chown=10001:10001 assets/ ./assets/
 COPY --chown=10001:10001 server/ ./server/

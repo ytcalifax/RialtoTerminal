@@ -5,6 +5,7 @@ the fixed endpoints listed in :mod:`server.services.news_feeds`.
 """
 from __future__ import annotations
 
+# noinspection PyPep8Naming — `ET` is the universal stdlib idiom
 import xml.etree.ElementTree as ET
 
 from ..http_client import fetch

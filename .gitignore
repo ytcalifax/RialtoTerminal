@@ -272,3 +272,6 @@ poetry.toml
 
 # LSP config files
 pyrightconfig.json
+
+# IntelliJ "Inspect Code" report exports (never commit the dumps)
+/*.xml

@@ -2,7 +2,7 @@
 #
 # The server is deliberately standard-library only (http.server, urllib,
 # html.parser, xml.etree, concurrent.futures, email.utils). Everything it
-# needs ships with Python 3.10+; nothing to install, nothing to pin, nothing
+# needs ships with Python 3.12+; nothing to install, nothing to pin, nothing
 # to audit for supply-chain risk on a box that never talks to the internet
 # except to fetch public feeds.
 #

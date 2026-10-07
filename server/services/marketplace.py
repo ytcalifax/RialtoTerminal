@@ -19,7 +19,7 @@ _LIMIT_CAP = 100
 _MARKETPLACE_CACHE: TTLCache[list[dict]] = TTLCache(180)
 
 
-def _clamp_limit(limit) -> int:
+def _clamp_limit(limit: str | int) -> int:
     """Coerce ``limit`` to a sane integer in ``[1, _LIMIT_CAP]``.
 
     Query strings are untrusted, so non-numeric input falls back to the
@@ -32,7 +32,7 @@ def _clamp_limit(limit) -> int:
     return max(1, min(_LIMIT_CAP, value))
 
 
-def listing_search(query: str = "", limit=_DEFAULT_LIMIT) -> dict:
+def listing_search(query: str = "", limit: str | int = _DEFAULT_LIMIT) -> dict:
     """Return public listings, optionally filtered by a keyword.
 
     Never raises: on upstream failure the payload carries ``error`` and an

@@ -4,7 +4,6 @@
  */
 import { $, esc } from '../core/dom.js';
 import { state } from '../core/state.js';
-import { CUSTOM_GROUP } from '../core/constants.js';
 import { loadMarket, bindMarketGroups, renderFullMarketRows, bindMarketRows, marketGroupTabsHTML, queueSymbolSearch } from '../features/markets.js';
 
 /**

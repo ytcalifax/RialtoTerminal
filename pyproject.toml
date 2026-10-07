@@ -7,7 +7,7 @@ name = "rialto-terminal"
 version = "1.0.0"
 description = "Rialto — a real-time terminal for global markets, newswires, vessel and aircraft tracking."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 # Deliberately empty: the backend runs on the Python standard library alone
 # (http.server, urllib, html.parser, xml, concurrent.futures). That is a
 # feature, not an omission — see requirements.txt.

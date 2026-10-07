@@ -205,7 +205,7 @@ async function loadShips() {
   } catch (e) {
     state.errors.vessels = e.message;
     setHealth('vessels', 'error', e.message);
-    renderShips(e.message);
+    renderShips();
   } finally {
     state.refreshingShips = false;
   }
@@ -240,7 +240,7 @@ function renderAir() {
 }
 
 /** Repaint the vessels surfaces for the current page. */
-function renderShips(error = '') {
+function renderShips() {
   if (state.page === 'top') renderDashboardShips();
   else if (state.page === 'ships') updateTrackingView();
 }
@@ -428,13 +428,10 @@ async function selectTrack(x, air = false, centerMap = false) {
       : `/api/vessel-track?mmsi=${encodeURIComponent(x.id)}`;
     const r = await req(endpoint);
     if (reqId !== state.request.track || state.selectedTrack?.id !== x.id) return;
-    let coords = [];
-    if (air) {
-      coords = (r.path || []).filter((p) => p[1] != null && p[2] != null).map((p) => [p[2], p[1]]);
-    } else {
-      const g = r.geometry || r.features?.[0]?.geometry;
-      coords = g?.type === 'LineString' ? g.coordinates : [];
-    }
+    const geo = air ? null : (r.geometry || r.features?.[0]?.geometry);
+    const coords = air
+      ? (r.path || []).filter((p) => p[1] != null && p[2] != null).map((p) => [p[2], p[1]])
+      : geo?.type === 'LineString' ? geo.coordinates : [];
     if (coords.length < 2) {
       setTrajectoryState('NO PUBLIC TRACK HISTORY FOR THIS POSITION');
       return;

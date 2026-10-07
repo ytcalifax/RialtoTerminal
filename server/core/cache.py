@@ -9,20 +9,17 @@ from __future__ import annotations
 import threading
 import time
 from dataclasses import dataclass
-from typing import Generic, TypeVar
-
-V = TypeVar("V")
 
 
 @dataclass
-class Entry(Generic[V]):
+class Entry[V]:
     """A cached value plus the moment it was stored."""
 
     value: V
     checked_at: float
 
 
-class TTLCache(Generic[V]):
+class TTLCache[V]:
     """Dictionary-style cache whose entries expire after ``ttl_s`` seconds.
 
     Bounded by ``max_entries``: when the limit is reached the oldest entry is
@@ -51,7 +48,8 @@ class TTLCache(Generic[V]):
         known good value (flagged as stale) over surfacing a hard failure.
         """
         with self._lock:
-            return self._data.get(key)
+            entry = self._data.get(key)
+        return entry
 
     def store(self, key: str, value: V) -> None:
         """Insert or replace the entry for ``key``, evicting if over budget."""

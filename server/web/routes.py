@@ -49,7 +49,7 @@ def _quotes(params: Params) -> tuple[int, dict]:
 
 
 def _marketplace(params: Params) -> tuple[int, dict]:
-    return 200, listing_search(_first(params, "q"), _first(params, "limit", 80))
+    return 200, listing_search(_first(params, "q"), _first(params, "limit", "80"))
 
 
 def _vessels(params: Params) -> tuple[int, dict]:

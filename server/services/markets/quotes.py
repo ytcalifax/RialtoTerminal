@@ -122,12 +122,12 @@ def _bse_sofix_row() -> dict:
     if cached is not None:
         return dict(cached)
 
-    page, headers = fetch_response(
+    body, headers = fetch_response(
         BSE_SOFIX_URL,
         accept="text/html",
         timeout=SOFIX_TIMEOUT_S,
     )
-    page = page.decode("utf-8", "replace")
+    page = body.decode("utf-8", "replace")
     try:
         source_time = parsedate_to_datetime(headers.get("Date", "")).timestamp()
     except (TypeError, ValueError, OverflowError):

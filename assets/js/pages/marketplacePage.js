@@ -1,7 +1,7 @@
 /**
  * Marketplace module page: filter box and listing table shell.
  */
-import { $, esc } from '../core/dom.js';
+import { $ } from '../core/dom.js';
 import { loadMarketplace } from '../features/marketplace.js';
 
 /**

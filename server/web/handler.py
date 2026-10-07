@@ -42,6 +42,7 @@ class TerminalRequestHandler(SimpleHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass
 
+    # noinspection PyPep8Naming — do_GET/do_POST are the stdlib dispatch names
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         route = API_ROUTES.get(parsed.path)

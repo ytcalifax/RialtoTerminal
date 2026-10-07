@@ -234,7 +234,7 @@ function renderMarkets() {
   const focusRoot = active?.closest('#tickerQuotes') ? '#tickerQuotes' : '#marketTable';
   const marketRows = state.market.filter((x) => x.group === state.marketGroup);
 
-  const body = marketRows.map((x, i) => `<tr tabindex="0" data-market-symbol="${esc(x.symbol)}" class="${state.selectedInstrument === x.symbol ? 'chosen' : ''}"><td>${esc(x.name)} <span class="source-badge">${esc(x.symbol)}${x.source ? ' · BSE' : ''}${x.stale ? ' · RETAINED' : ''}</span></td><td>${Number(x.last).toLocaleString('en-US', { maximumFractionDigits: 3 })}</td><td class="${x.change >= 0 ? 'positive' : 'negative'}">${x.change >= 0 ? '+' : ''}${Number(x.change).toFixed(2)}</td><td class="${x.pct >= 0 ? 'positive' : 'negative'}">${x.pct >= 0 ? '+' : ''}${Number(x.pct).toFixed(2)}%</td><td>${x.low != null ? Number(x.low).toFixed(2) + '–' + Number(x.high).toFixed(2) : '—'}</td><td>${sparkline(x.series)}</td></tr>`).join('');
+  const body = marketRows.map((x) => `<tr tabindex="0" data-market-symbol="${esc(x.symbol)}" class="${state.selectedInstrument === x.symbol ? 'chosen' : ''}"><td>${esc(x.name)} <span class="source-badge">${esc(x.symbol)}${x.source ? ' · BSE' : ''}${x.stale ? ' · RETAINED' : ''}</span></td><td>${Number(x.last).toLocaleString('en-US', { maximumFractionDigits: 3 })}</td><td class="${x.change >= 0 ? 'positive' : 'negative'}">${x.change >= 0 ? '+' : ''}${Number(x.change).toFixed(2)}</td><td class="${x.pct >= 0 ? 'positive' : 'negative'}">${x.pct >= 0 ? '+' : ''}${Number(x.pct).toFixed(2)}%</td><td>${x.low != null ? Number(x.low).toFixed(2) + '–' + Number(x.high).toFixed(2) : '—'}</td><td>${sparkline(x.series)}</td></tr>`).join('');
 
   if ($('#marketTable tbody')) {
     $('#marketTable tbody').innerHTML = body

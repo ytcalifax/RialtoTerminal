@@ -5,10 +5,18 @@
  * escaping policy stay consistent application-wide.
  */
 
-/** `querySelector` with an optional scope root. */
+/**
+ * `querySelector` with an optional scope root.
+ * @param {string} selector
+ * @param {ParentNode} [root=document] - element or document to scope the query
+ */
 const $ = (selector, root = document) => root.querySelector(selector);
 
-/** `querySelectorAll` returning a real array. */
+/**
+ * `querySelectorAll` returning a real array.
+ * @param {string} selector
+ * @param {ParentNode} [root=document] - element or document to scope the query
+ */
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 
 /**

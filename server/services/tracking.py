@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import math
+import threading
 import time
 import urllib.error
 from urllib.parse import urlencode
@@ -43,6 +44,19 @@ _JSON_ACCEPT = "application/json"
 # windows (see aircraft_snapshot).
 _air_cache: TTLCache[dict] = TTLCache(AIR_SNAPSHOT_TTL_S)
 _vessel_cache: TTLCache[dict] = TTLCache(VESSELS_TTL_S)
+_air_request_lock = threading.Lock()
+_last_air_request = 0.0
+
+
+def _fetch_air_source(url: str) -> bytes:
+    """Serialize OpenSky calls and keep them at or below one request/second."""
+    global _last_air_request
+    with _air_request_lock:
+        wait = 1.0 - (time.monotonic() - _last_air_request)
+        if wait > 0:
+            time.sleep(wait)
+        _last_air_request = time.monotonic()
+        return fetch(url, _JSON_ACCEPT)
 
 
 def _parse_bbox(raw: str | None, max_area: float | None = VESSELS_MAX_SQ_DEG) -> str:
@@ -188,7 +202,7 @@ def aircraft_snapshot(bbox_raw: str | None = None) -> tuple[int, dict]:
         query = urlencode(
             {"lamin": min_lat, "lomin": min_lon, "lamax": max_lat, "lomax": max_lon}
         )
-        data = json.loads(fetch(f"{OPENSKY_STATES_URL}?{query}", _JSON_ACCEPT))
+        data = json.loads(_fetch_air_source(f"{OPENSKY_STATES_URL}?{query}"))
         snapshot_time = data.get("time") or int(time.time())
         rows = []
         for s in data.get("states") or []:
@@ -239,7 +253,7 @@ def aircraft_track(icao24: str) -> tuple[int, dict]:
     """
     try:
         url = OPENSKY_TRACKS_URL + "?" + urlencode({"icao24": icao24, "time": 0})
-        data = json.loads(fetch(url, _JSON_ACCEPT))
+        data = json.loads(_fetch_air_source(url))
         return 200, data
     except urllib.error.HTTPError as exc:
         if exc.code == 404:

@@ -119,35 +119,39 @@
   z-index: 6;
 }
 
-.chokepoint-marker {
+.traffic-hotspot {
   position: absolute;
   z-index: 4;
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 4px 2px 2px;
+  gap: 5px;
+  padding: 3px 6px;
   border: 1px solid #e2b951;
-  border-radius: 3px;
-  background: #11191ee8;
+  border-radius: 999px;
+  background: #11191ef2;
   color: #ffe29a;
   font: 700 8px Roboto Mono, monospace;
   white-space: nowrap;
   cursor: pointer;
   transform: translate(-50%, -50%);
   pointer-events: auto;
+  box-shadow: 0 0 0 3px #f0b83f24, 0 0 12px #f0b83f55;
 }
 
-.chokepoint-marker i {
-  width: 7px;
-  height: 7px;
-  border: 1px solid #fff0c2;
-  border-radius: 50%;
-  background: #f0b83f;
-  box-shadow: 0 0 7px #f0b83f;
+.traffic-hotspot b {
+  font-size: 12px;
+  line-height: 1;
+  min-width: 14px;
+  text-align: center;
 }
 
-.chokepoint-marker:hover,
-.chokepoint-marker:focus-visible {
+.traffic-hotspot span {
+  font-size: 7px;
+  letter-spacing: .02em;
+}
+
+.traffic-hotspot:hover,
+.traffic-hotspot:focus-visible {
   z-index: 6;
   border-color: #fff;
   color: #fff;

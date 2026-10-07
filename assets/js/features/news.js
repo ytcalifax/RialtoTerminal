@@ -41,7 +41,7 @@ async function loadNews(feed = state.feed, query = state.newsQuery || '') {
     const ns = $('#newsStatus');
     if (ns) ns.textContent = status;
     const lsh = $('#leadSubhead');
-    if (lsh) lsh.textContent = `${feed === 'bulgaria' ? 'БЪЛГАРИЯ' : 'GLOBAL'} HEADLINES · ${query ? 'SEARCH: ' + query.toUpperCase() : 'PUBLIC FEEDS'}`;
+    if (lsh) lsh.textContent = `${feed === 'bulgaria' ? 'BULGARIA' : 'GLOBAL'} HEADLINES · ${query ? 'SEARCH: ' + query.toUpperCase() : 'PUBLIC FEEDS'}`;
   } catch (e) {
     if (id !== state.request.news) return;
     state.errors.news = e.message;

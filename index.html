@@ -40,7 +40,7 @@
     </header>
     <div class="command-row">
       <button class="menu-btn" id="menuBtn">≡ MENU</button>
-      <div class="command-wrap"><span class="cmd-label">COMMAND</span><input id="command" autocomplete="off" spellcheck="false" placeholder="Enter function (TOP, NEWS, MKT, SHIP, AIR, WAR, MPL)" aria-label="Command line"><button id="goBtn" class="go-btn">GO ↵</button><div id="suggestions" class="suggestions"></div></div>
+      <div class="command-wrap"><span class="cmd-label">COMMAND</span><input id="command" autocomplete="off" spellcheck="false" placeholder="Enter function (TOP, NEWS, MKT, SHIP, AIR, CON, MPL)" aria-label="Command line"><button id="goBtn" class="go-btn">GO ↵</button><div id="suggestions" class="suggestions"></div></div>
       <div class="cmd-hint">F2 HELP &nbsp; <kbd>↑</kbd> HISTORY &nbsp; <kbd>ESC</kbd> CANCEL</div>
     </div>
     <nav class="function-nav" aria-label="Terminal functions">
@@ -49,7 +49,7 @@
       <button data-page="markets"><span class="key yellow">MKT</span> MARKETS</button>
       <button data-page="ships"><span class="key yellow">SHIP</span> VESSELS</button>
       <button data-page="air"><span class="key yellow">AIR</span> AIRCRAFT</button>
-      <button data-page="war"><span class="key yellow">WAR</span> CONFLICT</button>
+      <button data-page="war"><span class="key yellow">CON</span> CONFLICT</button>
       <button data-page="marketplace"><span class="key yellow">MPL</span> MARKETPLACE</button>
       <div class="nav-spacer"></div><button class="tab-small selected" data-screen="1" title="Screen 1 · Home">1</button><button class="tab-small" data-screen="2" title="Screen 2 · News">2</button><button class="tab-small" data-screen="3" title="Screen 3 · Markets">3</button><button class="tab-small" data-screen="4" title="Screen 4 · Vessels">4</button>
     </nav>
@@ -67,7 +67,7 @@
       </section>
       <section class="panel" id="worldPanel">
         <div class="panel-head"><span><i class="dot blue"></i> WORLD NEWS <small>ALL STORIES</small></span><button class="text-action" data-page="news">SEARCH NEWS »</button></div>
-        <div class="news-toolbar"><button class="filter-chip active" data-filter="all" aria-pressed="true">All</button><button class="filter-chip" data-filter="business" aria-pressed="false">Business</button><button class="filter-chip" data-filter="politics" aria-pressed="false">Politics</button><button class="filter-chip" data-filter="technology" aria-pressed="false">Tech</button><button class="filter-chip" data-filter="europe" aria-pressed="false">Europe</button><button class="filter-chip" data-filter="balkans" aria-pressed="false">Balkans</button><button class="filter-chip" data-filter="bulgaria" aria-pressed="false">България</button><span class="feed-meta" id="newsStatus">AWAITING FEED</span></div>
+        <div class="news-toolbar"><button class="filter-chip active" data-filter="all" aria-pressed="true">All</button><button class="filter-chip" data-filter="business" aria-pressed="false">Business</button><button class="filter-chip" data-filter="politics" aria-pressed="false">Politics</button><button class="filter-chip" data-filter="technology" aria-pressed="false">Tech</button><button class="filter-chip" data-filter="europe" aria-pressed="false">Europe</button><button class="filter-chip" data-filter="balkans" aria-pressed="false">Balkans</button><button class="filter-chip" data-filter="bulgaria" aria-pressed="false">Bulgaria</button><span class="feed-meta" id="newsStatus">AWAITING FEED</span></div>
         <div class="compact-news" id="compactNews"></div>
       </section>
       <section class="panel" id="trackingPanel">

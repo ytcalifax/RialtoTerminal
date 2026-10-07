@@ -268,6 +268,7 @@ function updateTrackingView() {
 
   renderTrackTable(filtered, air);
   const map = $('.module-map');
+  map._hotspotSource = air ? [] : all;
   plotPoints(filtered, air, $('.map-point-layer', map));
 
   $$('#trackRows tr[data-track-id]').forEach((tr) => {

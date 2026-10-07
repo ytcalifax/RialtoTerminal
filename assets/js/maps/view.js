@@ -83,21 +83,32 @@ function renderMapView(map) {
   map.dataset.trackIds = visible.map((x) => x.id).join('|');
 
   const worldWidth = 256 * n;
+  const distanceNm = (a, b) => {
+    const rad = Math.PI / 180;
+    const dLat = (b.lat - a.lat) * rad;
+    const dLon = (b.lon - a.lon) * rad;
+    const lat1 = a.lat * rad;
+    const lat2 = b.lat * rad;
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+    return 3440.065 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+  };
   const visibleChokepoints = [];
-  const chokepoints = (map._chokepoints || []).map((point) => {
+  const chokepointMarkers = (map._chokepoints || []).map((point) => {
     const p = mapProject(point.lon, point.lat, z);
     let dx = p.x - center.x;
     if (dx > worldWidth / 2) dx -= worldWidth;
     if (dx < -worldWidth / 2) dx += worldWidth;
     const px = dx + w / 2;
     const py = p.y - center.y + h / 2;
-    if (px < -100 || px > w + 100 || py < -12 || py > h + 12) return '';
-    const index = visibleChokepoints.push(point) - 1;
-    return `<button class="chokepoint-marker" style="left:${px}px;top:${py}px" title="${esc(point.name)}" aria-label="Show ${esc(point.name)} details" data-index="${index}"><i></i><span>${esc(point.name)}</span></button>`;
+    if (px < -100 || px > w + 100 || py < -20 || py > h + 20) return '';
+    const count = (map._hotspotSource || []).filter((vessel) => distanceNm(point, vessel) <= 25).length;
+    const currentPoint = { ...point, count };
+    const index = visibleChokepoints.push(currentPoint) - 1;
+    return `<button class="traffic-hotspot" style="left:${px}px;top:${py}px" title="${esc(point.name)} · ${count} AIS vessels within 25 nautical miles" aria-label="${esc(point.name)}: ${count} AIS vessels within 25 nautical miles" data-index="${index}"><b>${count}</b><span>${esc(point.name)}</span></button>`;
   }).join('');
-  layer.insertAdjacentHTML('beforeend', chokepoints);
+  layer.insertAdjacentHTML('beforeend', chokepointMarkers);
   map._visibleChokepoints = visibleChokepoints;
-  $$('.chokepoint-marker', layer).forEach((button) => {
+  $$('.traffic-hotspot', layer).forEach((button) => {
     button.onclick = () => {
       if (!map.dataset.dragged) map._onChokepointClick?.(visibleChokepoints[Number(button.dataset.index)]);
     };

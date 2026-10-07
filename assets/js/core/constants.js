@@ -59,7 +59,7 @@ const COMMAND_PAGES = {
   AIR: 'air', FLIGHT: 'air',
   MKT: 'markets', MARKET: 'markets', MON: 'markets',
   MPL: 'marketplace', MARKETPLACE: 'marketplace',
-  WAR: 'war', CONFLICT: 'war',
+  CON: 'war', CONFLICT: 'war',
 };
 
 /** Command word → description, used for autocomplete suggestions. */
@@ -70,7 +70,7 @@ const COMMAND_NAMES = {
   AIR: 'Aircraft Tracking',
   MKT: 'Market Monitor',
   MPL: 'Marketplace',
-  WAR: 'Conflict Monitor',
+  CON: 'Conflict Monitor',
 };
 
 /** Function menu entries, in their own display order: [command, description]. */
@@ -81,7 +81,7 @@ const MENU_ITEMS = [
   ['SHIP', 'Vessel Tracking'],
   ['AIR', 'Aircraft Tracking'],
   ['MPL', 'Marketplace'],
-  ['WAR', 'Conflict Monitor'],
+  ['CON', 'Conflict Monitor'],
 ];
 
 /** Help-panel function directory, in its own display order. */
@@ -92,7 +92,7 @@ const HELP_ITEMS = [
   ['AIR', 'Aircraft Tracking'],
   ['MKT', 'Market Monitor'],
   ['MPL', 'Marketplace'],
-  ['WAR', 'Conflict Monitor'],
+  ['CON', 'Conflict Monitor'],
 ];
 
 // --- News --------------------------------------------------------------------------

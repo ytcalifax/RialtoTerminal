@@ -135,7 +135,14 @@ def aggregate_news(feed: str = "global", query: str = "") -> dict:
     selected = [
         config
         for config in NEWS_FEEDS
-        if feed != "bulgaria" or config["region"] in {"BULGARIA", "BALKANS"}
+        if config.get("language") != "bg"
+        and (
+            feed != "bulgaria"
+            or (
+                config["region"] in {"BULGARIA", "BALKANS"}
+                and config.get("language") == "en"
+            )
+        )
     ]
 
     batches = list(shared_pool().map(_cached_feed, selected))
@@ -175,12 +182,12 @@ def aggregate_news(feed: str = "global", query: str = "") -> dict:
 
 
 def _google_bulgaria(term: str) -> tuple[list[dict], dict]:
-    """Bulgarian-language Google News slice for the BULGARIA feed view."""
+    """English-language Google News slice for Bulgarian news."""
     local_query = (
-        term or "site:bta.bg OR site:bnr.bg OR site:bntnews.bg OR site:btvnovinite.bg"
+        term or "site:novinite.com OR site:sofiaglobe.com OR site:balkaninsight.com"
     )
     try:
-        rows = google_news(local_query, "bg", "BG", "BG:bg")
+        rows = google_news(local_query, "en", "BG", "BG:en")
         for row in rows:
             if row["source"] == "GOOGLE NEWS":
                 row["source"] = "BULGARIA · GOOGLE NEWS INDEX"

@@ -44,6 +44,8 @@ const state = {
   warFrontline: [],
   warGpsJam: { date: '', features: [] },
   warSelectedId: null,
+  conflictQuery: '',
+  conflictType: 'ALL',
   shipsRegion: null,      // last fetched vessel region: 'minLat,minLon,maxLat,maxLon'
   airRegion: null,        // last fetched aircraft region: 'minLat,minLon,maxLat,maxLon'
   vesselAttribution: {},  // AIS source credits from the snapshot payload

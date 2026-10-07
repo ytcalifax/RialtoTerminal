@@ -47,7 +47,8 @@ function openPage(page) {
   // Module rendering + page-specific (re)loads are wired in main.js.
   emit('page:changed', page);
 
-  setStatus(`${page.toUpperCase()} <GO> · ${state.errors[page === 'ships' ? 'vessels' : page === 'air' ? 'air' : page] || 'public data'}`);
+  const command = page === 'war' ? 'CON' : page.toUpperCase();
+  setStatus(`${command} <GO> · ${state.errors[page === 'ships' ? 'vessels' : page === 'air' ? 'air' : page] || 'public data'}`);
 }
 
 export { openPage };

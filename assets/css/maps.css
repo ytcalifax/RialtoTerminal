@@ -1,0 +1,269 @@
+/* maps.css — hand-rolled OpenStreetMap surfaces: tile stage, position
+   markers, route overlay, zoom controls, credits.
+   Order matters: later blocks intentionally override earlier ones.
+   (Rules for the retired SVG background map have been removed.) */
+
+/* --- Containers --------------------------------------------------------------- */
+
+.mini-map {
+  position: relative;
+  overflow: hidden;
+  background: #101a20;
+  border-right: 1px solid #333b3f;
+}
+
+.module-map {
+  position: relative;
+  overflow: hidden;
+  background: #0e1b21;
+}
+
+.module-map svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.map-stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  transform-origin: top left;
+  cursor: grab;
+  touch-action: none;
+}
+
+.map-stage.dragging {
+  cursor: grabbing;
+}
+
+/* --- Tile layers ------------------------------------------------------------------ */
+
+.map-tiles {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #0d1a20;
+}
+
+.map-tiles.loading {
+  background: transparent;
+}
+
+/* Frozen snapshot of the previous tile set, shown while new tiles load. */
+.map-tiles-fallback {
+  z-index: 0;
+  pointer-events: none;
+}
+
+.map-tiles img {
+  position: absolute;
+  max-width: none;
+  filter: invert(.82) grayscale(1) brightness(.68) contrast(.9);
+  opacity: .91;
+}
+
+/* --- Position markers ------------------------------------------------------------------ */
+
+.map-point-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.map-point-layer .map-point {
+  pointer-events: auto;
+}
+
+/* Keep markers above the route overlay inside the module map stage. */
+.map-stage .map-point-layer {
+  z-index: 2;
+}
+
+/* Early rule kept minimal: markers are <button>s styled below. */
+.map-point {
+  cursor: pointer;
+}
+
+.map-point {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border-radius: 50%;
+  background: #f6b138;
+  border: 1px solid #161b1d;
+  box-shadow: 0 0 4px #f6b138;
+  transform: translate(-50%, -50%);
+}
+
+.map-point.air {
+  background: #6db8e7;
+  box-shadow: 0 0 4px #6db8e7;
+}
+
+.map-point.selected {
+  width: 12px;
+  height: 12px;
+  background: #fff0a3;
+  box-shadow: 0 0 10px #ffba31;
+  border: 2px solid #f5a623;
+  z-index: 5;
+}
+
+.map-point:hover,
+.map-point:focus-visible {
+  width: 12px;
+  height: 12px;
+  outline: 1px solid #fff;
+  z-index: 6;
+}
+
+/* --- Overlays, controls, credits ------------------------------------------------------------ */
+
+.map-overlay {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  background: #0e1519dc;
+  border: 1px solid #3d4b50;
+  padding: 6px 8px;
+  color: #aab5b8;
+  font: 9px Roboto Mono, monospace;
+}
+
+.map-grid-label {
+  position: absolute;
+  bottom: 8px;
+  left: 9px;
+  color: #819398;
+  font: 9px Roboto Mono, monospace;
+  background: #0c1418bf;
+  padding: 5px;
+}
+
+.map-grid-label a {
+  color: #9caeb2;
+  text-decoration: underline;
+}
+
+.map-controls {
+  position: absolute;
+  z-index: 4;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  background: #101619e8;
+  border: 1px solid #59656a;
+}
+
+.map-controls button {
+  min-width: 27px;
+  height: 24px;
+  border: 0;
+  border-right: 1px solid #465156;
+  background: transparent;
+  color: #d9e0e2;
+  font: 11px Roboto Mono, monospace;
+}
+
+.map-controls button:last-child {
+  border: 0;
+  font-size: 8px;
+}
+
+.map-controls button:hover {
+  background: #39464c;
+  color: #ffc14a;
+}
+
+/* --- Route (track history) overlay -------------------------------------------------------------- */
+
+.route-layer {
+  z-index: 1;
+  pointer-events: none;
+}
+
+.route-layer path {
+  fill: none;
+  stroke: #f2ad32;
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+  filter: drop-shadow(0 0 3px #f2ad32);
+}
+
+.module-map.air-track .route-layer path {
+  stroke: #64b9e8;
+  filter: drop-shadow(0 0 3px #64b9e8);
+}
+
+/* --- Module-map sizing refinements (later overrides) ----------------------------------------------- */
+
+.module-map {
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  touch-action: none;
+}
+
+.module-map .map-grid-label {
+  z-index: 2;
+}
+
+.module-map .map-overlay {
+  z-index: 3;
+}
+
+.module-map .map-point {
+  width: 9px;
+  height: 9px;
+  box-shadow: 0 0 6px #f6b138;
+}
+
+.module-map .map-point.air {
+  box-shadow: 0 0 6px #6db8e7;
+}
+
+/* --- Mini-map (dashboard) refinements ----------------------------------------------------------------- */
+
+.mini-map .map-stage {
+  inset: 0;
+}
+
+.mini-map .map-point-layer {
+  z-index: 2;
+}
+
+.mini-map .map-grid-label,
+.mini-map .map-overlay {
+  z-index: 3;
+}
+
+.mini-map .map-grid-label {
+  font-size: 7px;
+  padding: 3px 4px;
+}
+
+.mini-map .map-overlay {
+  font-size: 8px;
+  padding: 3px 5px;
+}
+
+.mini-map .map-point {
+  width: 5px;
+  height: 5px;
+  box-shadow: 0 0 3px #f6b138;
+}
+
+.mini-map .map-point.selected,
+.mini-map .map-point:hover {
+  width: 9px;
+  height: 9px;
+}
+
+/* Drag performance hints (no effect on layout). */
+.map-stage {
+  will-change: transform;
+  user-select: none;
+  -webkit-user-select: none;
+}

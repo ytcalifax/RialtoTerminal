@@ -1,0 +1,345 @@
+/* layout.css — the terminal frame: header bars, command row, navigation,
+   ticker, workspace grid, panels, module shell and status bar. */
+
+.terminal {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  max-width: 1920px;
+  margin: auto;
+  background: var(--bg);
+  border-left: 1px solid #272a2d;
+  border-right: 1px solid #272a2d;
+}
+
+/* --- Top line: brand, workspace label, connection + clock ------------------ */
+
+.topline {
+  height: 31px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 0 12px;
+  background: #0d0f11;
+  border-bottom: 1px solid #363a3d;
+  color: #aeb5b9;
+  font-family: Roboto Mono, monospace;
+  font-size: 10px;
+  letter-spacing: .06em;
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.wordmark {
+  /* Bloomberg-style wordmark: very heavy, tightly kerned, white. */
+  font-family: Roboto, Arial, sans-serif;
+  font-size: 18px;
+  font-weight: 900;
+  color: #f4f5f5;
+  letter-spacing: -.8px;
+}
+
+.pro {
+  font-size: 9px;
+  color: #9ea5a8;
+  letter-spacing: .13em;
+}
+
+.session {
+  color: #858e93;
+}
+
+.session span {
+  display: inline-block;
+  background: #26343e;
+  color: #78b6da;
+  padding: 2px 7px;
+  margin: 0 5px;
+}
+
+.session b {
+  color: #c2c9cc;
+  font-weight: 500;
+}
+
+.top-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+/* --- Command row ----------------------------------------------------------- */
+
+.command-row {
+  height: 39px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  gap: 9px;
+  background: #111518;
+  border-bottom: 1px solid #3e4447;
+}
+
+.menu-btn {
+  height: 26px;
+  border: 1px solid #4a5256;
+  background: #262c2f;
+  padding: 0 10px;
+  color: #e1e6e8;
+  font: bold 10px Roboto Mono, monospace;
+}
+
+.command-wrap {
+  height: 28px;
+  flex: 1;
+  max-width: 780px;
+  display: flex;
+  align-items: center;
+  position: relative;
+  background: #1b2328;
+  border: 1px solid #50636d;
+}
+
+.cmd-label {
+  background: #313a3f;
+  color: #99a4aa;
+  padding: 0 8px;
+  font: 9px Roboto Mono, monospace;
+  height: 100%;
+  display: grid;
+  place-items: center;
+}
+
+.command-wrap input {
+  height: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #e6edf0;
+  padding: 0 9px;
+  flex: 1;
+  font: 12px Roboto Mono, monospace;
+}
+
+.command-wrap input::placeholder {
+  color: #849096;
+}
+
+.go-btn {
+  height: 100%;
+  border: 0;
+  border-left: 1px solid #58666b;
+  background: #315941;
+  color: #e2f0dd;
+  padding: 0 12px;
+  font: 700 10px Roboto Mono, monospace;
+}
+
+.cmd-hint {
+  margin-left: auto;
+  color: #738087;
+  font: 9px Roboto Mono, monospace;
+}
+
+.cmd-hint kbd {
+  color: #c0c7ca;
+  border: 1px solid #495055;
+  padding: 1px 3px;
+}
+
+/* --- Function navigation ---------------------------------------------------- */
+
+.function-nav {
+  height: 32px;
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  background: #171b1e;
+  border-bottom: 1px solid #3e4447;
+  padding: 0 6px;
+}
+
+.function-nav > button {
+  border: 0;
+  border-right: 1px solid #343b3e;
+  background: transparent;
+  padding: 0 12px;
+  color: #bac1c4;
+  font-size: 11px;
+}
+
+.function-nav > button:hover,
+.function-nav > button.selected {
+  background: #2c3032;
+  color: #fff;
+}
+
+.function-nav > button.selected {
+  box-shadow: inset 0 -2px var(--amber);
+}
+
+.nav-spacer {
+  flex: 1;
+}
+
+.function-nav .tab-small {
+  padding: 0 9px;
+  background: #202528;
+  color: #939da1;
+  font: 10px Roboto Mono, monospace;
+  border: 1px solid #454c4f;
+  margin: 5px 3px;
+  height: 20px;
+}
+
+/* --- Ticker strip ------------------------------------------------------------ */
+
+.ticker {
+  height: 25px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 21px;
+  padding: 0 10px;
+  background: #0c1012;
+  border-bottom: 1px solid #383d40;
+  white-space: nowrap;
+  overflow: hidden;
+  font: 10px Roboto Mono, monospace;
+  color: #d3d8da;
+}
+
+.ticker-label {
+  font-weight: 700;
+  color: #91a0a4;
+}
+
+.ticker-source {
+  margin-left: auto;
+  color: #667176;
+  font-size: 9px;
+}
+
+/* --- Workspace grid + panels -------------------------------------------------- */
+
+.workspace {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.13fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1.06fr) minmax(0, .94fr);
+  gap: 4px;
+  padding: 4px;
+  background: #07090a;
+}
+
+.workspace.hidden {
+  display: none;
+}
+
+.panel {
+  min-width: 0;
+  min-height: 0;
+  background: var(--panel);
+  border: 1px solid #3a4043;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panel-head {
+  height: 27px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  background: #202629;
+  border-bottom: 1px solid #495054;
+  color: #ebeff1;
+  font: 600 10px Roboto Mono, monospace;
+  letter-spacing: .025em;
+}
+
+.panel-head small {
+  font-weight: 400;
+  color: #939da2;
+  font-size: 9px;
+  margin-left: 8px;
+}
+
+/* Dashboard top-news split: story column + spotlight rail. */
+.lead-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 205px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Dashboard tracking preview: mini map + vessel peek. */
+.tracking-preview {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  flex: 1;
+  min-height: 0;
+}
+
+/* --- Module (full-page workspace) shell --------------------------------------- */
+
+.module {
+  flex: 1;
+  min-height: 0;
+  background: #0c1012;
+  margin: 4px;
+  border: 1px solid #41494d;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.module.hidden {
+  display: none;
+}
+
+/* --- Status bar ----------------------------------------------------------------- */
+
+.statusbar {
+  height: 22px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  background: #1c2225;
+  border-top: 1px solid #50575a;
+  padding: 0 9px;
+  color: #9ca7ab;
+  font: 9px Roboto Mono, monospace;
+}
+
+.status-left {
+  color: #899399;
+}
+
+.status-left b {
+  color: #edab35;
+}
+
+.statusbar #statusText {
+  margin: auto;
+  color: #7d898e;
+}
+
+.status-right {
+  color: #8b969a;
+}
+
+.status-right b {
+  color: #e2ad46;
+}

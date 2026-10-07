@@ -1,0 +1,43 @@
+/* base.css — font loading, design tokens, element resets.
+   Loaded first; every other stylesheet builds on these tokens. */
+
+@import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;600;700&family=Roboto:wght@400;500;700;900&display=swap');
+
+:root {
+  --bg: #080a0c;
+  --panel: #101316;
+  --panel2: #14181b;
+  --line: #353b3f;
+  --dim: #7e888e;
+  --text: #c7cdd0;
+  --amber: #f5a623;
+  --amber2: #ffbf45;
+  --red: #ed3028;
+  --green: #72bd44;
+  --blue: #44a5d7;
+  --cyan: #4abec3;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #030405;
+  color: var(--text);
+  font-family: Roboto, Arial, sans-serif;
+  font-size: 12px;
+}
+
+button, input {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+  cursor: pointer;
+}

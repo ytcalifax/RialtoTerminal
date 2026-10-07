@@ -1,0 +1,65 @@
+/* responsive.css — narrow-viewport adjustments.
+   Loaded last: these rules intentionally win under 900 px. */
+
+@media (max-width: 900px) {
+  html, body {
+    overflow: auto;
+  }
+
+  .terminal {
+    min-height: 100dvh;
+    height: auto;
+  }
+
+  .workspace {
+    grid-template-columns: 1fr;
+    grid-template-rows: repeat(4, minmax(220px, auto));
+  }
+
+  .panel {
+    min-height: 220px;
+  }
+
+  .cmd-hint {
+    display: none;
+  }
+
+  .session {
+    display: none;
+  }
+
+  .tracking-preview {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .module {
+    min-height: 70vh;
+  }
+
+  .module-body {
+    grid-template-columns: 38% 62%;
+  }
+
+  .function-nav > button {
+    padding: 0 7px;
+  }
+
+  .function-nav .tab-small {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .map-stage {
+    touch-action: none;
+  }
+
+  .module-controls {
+    flex-wrap: wrap;
+  }
+
+  .detail-row {
+    font-size: 8px;
+    gap: 7px;
+  }
+}

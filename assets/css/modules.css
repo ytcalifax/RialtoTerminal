@@ -1,0 +1,423 @@
+/* modules.css — full-page module workspaces (news & research, market
+   monitor, vessel/aircraft tracking, marketplace): title bars, control
+   rows, article/listing grids, detail strips.
+   Order matters: later blocks intentionally override earlier ones. */
+
+/* --- Module title + controls ------------------------------------------------- */
+
+.module-title {
+  height: 31px;
+  flex: none;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #202629;
+  border-bottom: 1px solid #4a5256;
+  color: #e1e6e8;
+  font: 600 11px Roboto Mono, monospace;
+}
+
+.module-title small {
+  margin-left: 10px;
+  color: #929da2;
+  font-weight: 400;
+}
+
+.module-controls {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 8px;
+  border-bottom: 1px solid #3b4346;
+  background: #13181b;
+}
+
+.module-controls input,
+.module-controls select {
+  background: #20282c;
+  border: 1px solid #4b585e;
+  color: #dce2e4;
+  padding: 5px 7px;
+  outline: 0;
+  font: 10px Roboto Mono, monospace;
+}
+
+.module-controls button {
+  background: #29343a;
+  border: 1px solid #657078;
+  color: #e3e9eb;
+  padding: 5px 10px;
+  font: 10px Roboto Mono, monospace;
+}
+
+.module-controls button.primary {
+  background: #59632d;
+  border-color: #aaa957;
+  color: #fff;
+}
+
+.module-controls input:focus,
+.module-controls select:focus,
+.command-wrap:focus-within {
+  border-color: #dda53d;
+  box-shadow: inset 0 0 0 1px #8f6826;
+}
+
+.module-controls button:hover {
+  border-color: #d1a346;
+  color: #fff;
+}
+
+/* --- Tracking module body: list + map split ------------------------------------ */
+
+.module-body {
+  display: grid;
+  grid-template-columns: minmax(300px, 34%) minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+
+.module-list {
+  overflow: auto;
+  border-right: 1px solid #3b4346;
+}
+
+.module-list table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 9px Roboto Mono, monospace;
+}
+
+.module-list th {
+  position: sticky;
+  top: 0;
+  background: #20272a;
+  color: #929da1;
+  text-align: left;
+  padding: 6px 5px;
+  border-bottom: 1px solid #4b5357;
+}
+
+.module-list td {
+  padding: 5px;
+  border-bottom: 1px solid #2b3235;
+  color: #c4cbce;
+  white-space: nowrap;
+}
+
+.module-list tr:hover td,
+.module-list tr.chosen td {
+  background: #323b3f;
+  color: #ffc34c;
+}
+
+/* Detail strip under the module (instrument/vessel/aircraft fields). */
+.detail-row {
+  display: flex;
+  gap: 12px;
+  padding: 6px 9px;
+  border-top: 1px solid #3a4245;
+  background: #171d20;
+  color: #879398;
+  font: 9px Roboto Mono, monospace;
+}
+
+.detail-row b {
+  color: #d3dadc;
+  font-weight: 500;
+}
+
+.detail-row {
+  min-height: 29px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.detail-row span {
+  white-space: nowrap;
+}
+
+.detail-row b {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Track-history status strip. */
+.track-status {
+  height: 20px;
+  flex: none;
+  padding: 4px 9px;
+  border-top: 1px solid #30383b;
+  background: #101518;
+  color: #87959a;
+  font: 8px Roboto Mono, monospace;
+  letter-spacing: .04em;
+}
+
+/* Later refinements of the module body/list sizing. */
+.module-body,
+.module-list {
+  min-height: 0;
+}
+
+.module-body {
+  flex: 1 1 0px;
+  min-height: 0;
+  overflow: hidden;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.module-list {
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* --- News & research: article grid + detail ----------------------------------------- */
+
+.article-grid {
+  overflow: auto;
+  padding: 0 9px;
+}
+
+.article-row {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr) 105px;
+  gap: 8px;
+  padding: 8px 3px 8px 10px;
+  border-bottom: 1px solid #2d3437;
+}
+
+.article-row .src {
+  color: #e4ae48;
+  font: 9px Roboto Mono, monospace;
+}
+
+.article-row a {
+  color: #d6dcde;
+  text-decoration: none;
+  font-size: 12px;
+}
+
+.article-row a:hover {
+  color: #ffc34f;
+}
+
+.article-row small {
+  display: block;
+  color: #829095;
+  margin-top: 4px;
+  font: 9px Roboto Mono, monospace;
+}
+
+.article-row time {
+  text-align: right;
+  color: #829095;
+  font: 9px Roboto Mono, monospace;
+}
+
+.article-row {
+  padding: 5px 3px 5px 10px;
+  grid-template-columns: 62px minmax(0, 1fr) 70px;
+}
+
+.article-row a {
+  font-size: 11px;
+}
+
+.news-detail {
+  min-height: 23px;
+  flex: none;
+  padding: 5px 8px;
+  border-top: 1px solid #394145;
+  background: #151b1e;
+  color: #9ba5a9;
+  font: 8px Roboto Mono, monospace;
+}
+
+.news-detail a {
+  color: #e1ae4d;
+  text-decoration: none;
+}
+
+.news-detail a:hover {
+  text-decoration: underline;
+  color: #ffd16b;
+}
+
+/* --- Marketplace + full market monitor grid -------------------------------------------- */
+
+.marketplace-grid {
+  overflow: auto;
+  flex: 1;
+}
+
+.marketplace-grid table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 10px Roboto Mono, monospace;
+}
+
+.marketplace-grid th {
+  position: sticky;
+  top: 0;
+  text-align: left;
+  color: #89959a;
+  background: #1a2023;
+  padding: 7px;
+  border-bottom: 1px solid #41494d;
+}
+
+.marketplace-grid td {
+  padding: 7px;
+  border-bottom: 1px solid #2a3134;
+  color: #c9d0d2;
+}
+
+.marketplace-grid td a {
+  color: #e1b24e;
+  text-decoration: none;
+}
+
+.marketplace-grid td a:hover {
+  text-decoration: underline;
+  color: #ffcd65;
+}
+
+.marketplace-grid .price {
+  color: #9fca79;
+  text-align: right;
+}
+
+.marketplace-grid td.price {
+  text-align: right;
+  color: #a8d07a;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.marketplace-grid td.posted,
+.marketplace-grid td.location {
+  color: #aab3b6;
+  white-space: nowrap;
+}
+
+.marketplace-grid th {
+  padding: 5px 6px;
+}
+
+.marketplace-grid td {
+  padding: 4px 6px;
+}
+
+.marketplace-grid tr:hover td {
+  background: #20272a;
+}
+
+.marketplace-grid td.price {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.marketplace-grid td.posted {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.marketplace-grid td.location {
+  white-space: nowrap;
+}
+
+/* Market monitor numeric columns right-aligned with tabular figures. */
+.marketplace-grid .market-instruments th:nth-child(n+3):nth-child(-n+8),
+.marketplace-grid .market-instruments td:nth-child(n+3):nth-child(-n+8) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.marketplace-grid .market-instruments td:nth-child(3) {
+  color: #e2e7e8;
+  font-weight: 600;
+}
+
+/* --- Symbol search & pinning (market monitor) ---------------------------- */
+
+.symbol-results {
+  border-bottom: 1px solid #3b4346;
+  background: #10151a;
+  max-height: 190px;
+  overflow: auto;
+}
+
+.symbol-results.hidden {
+  display: none;
+}
+
+.symbol-results .result-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 5px 10px;
+  border-bottom: 1px solid #23292c;
+  font: 10px Roboto Mono, monospace;
+}
+
+.symbol-results .result-row .sym {
+  width: 84px;
+  color: #f1b33f;
+}
+
+.symbol-results .result-row .name {
+  flex: 1;
+  color: #c7cdd0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.symbol-results .result-row .meta {
+  color: #7e888e;
+  font-size: 8px;
+  width: 150px;
+  text-align: right;
+}
+
+.symbol-results .result-row .price {
+  width: 90px;
+  text-align: right;
+  color: #e2e7e8;
+  font-variant-numeric: tabular-nums;
+}
+
+.symbol-results .result-row button {
+  background: #29343a;
+  border: 1px solid #657078;
+  color: #e3e9eb;
+  padding: 2px 8px;
+  font: 9px Roboto Mono, monospace;
+  cursor: pointer;
+}
+
+.symbol-results .result-row button:hover {
+  border-color: #d1a346;
+  color: #fff;
+}
+
+.symbol-results .result-row button.pinned {
+  color: #88c561;
+  border-color: #3f5a33;
+}
+
+/* Unpin control inside custom market rows. */
+.market-instruments .pin-x {
+  color: #f07b65;
+  text-decoration: none;
+  margin-left: 6px;
+  font-size: 9px;
+}
+
+.market-instruments .pin-x:hover {
+  text-decoration: underline;
+}

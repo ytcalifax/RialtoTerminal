@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>rialto. - terminal</title>
+  <meta name="description" content="rialto. — a real-time terminal for global markets, newswires, vessel and aircraft tracking.">
+  <link rel="stylesheet" href="assets/css/base.css">
+  <link rel="stylesheet" href="assets/css/layout.css">
+  <link rel="stylesheet" href="assets/css/components.css">
+  <link rel="stylesheet" href="assets/css/modules.css">
+  <link rel="stylesheet" href="assets/css/maps.css">
+  <link rel="stylesheet" href="assets/css/responsive.css">
+</head>
+<body>
+  <div class="terminal">
+    <header class="topline">
+      <div class="brand"><span class="wordmark">rialto.</span><span class="pro">TERMINAL</span></div>
+      <div class="session">WORKSPACE: <b>GLOBAL MARKETS</b></div>
+      <div class="top-right"><span class="connection" id="dataConnection" data-state="loading"><i></i><span id="dataStatus">DATA FEEDS · CONNECTING</span></span><span id="clock">--:--:--</span><button class="icon-btn" id="helpBtn" title="Help (F2)">?</button></div>
+    </header>
+    <div class="command-row">
+      <button class="menu-btn" id="menuBtn">≡ MENU</button>
+      <div class="command-wrap"><span class="cmd-label">COMMAND</span><input id="command" autocomplete="off" spellcheck="false" placeholder="Enter function (TOP, NEWS, MKT, SHIP, AIR, MPL)" aria-label="Command line"><button id="goBtn" class="go-btn">GO ↵</button><div id="suggestions" class="suggestions"></div></div>
+      <div class="cmd-hint">F2 HELP &nbsp; <kbd>↑</kbd> HISTORY &nbsp; <kbd>ESC</kbd> CANCEL</div>
+    </div>
+    <nav class="function-nav" aria-label="Terminal functions">
+      <button data-page="top" class="selected"><span class="key red">TOP</span> TOP NEWS</button>
+      <button data-page="news"><span class="key red">N</span> NEWS</button>
+      <button data-page="markets"><span class="key yellow">MKT</span> MARKETS</button>
+      <button data-page="ships"><span class="key yellow">SHIP</span> VESSELS</button>
+      <button data-page="air"><span class="key yellow">AIR</span> AIRCRAFT</button>
+      <button data-page="marketplace"><span class="key yellow">MPL</span> MARKETPLACE</button>
+      <div class="nav-spacer"></div><button class="tab-small selected" data-screen="1" title="Screen 1 · Home">1</button><button class="tab-small" data-screen="2" title="Screen 2 · News">2</button><button class="tab-small" data-screen="3" title="Screen 3 · Markets">3</button><button class="tab-small" data-screen="4" title="Screen 4 · Vessels">4</button>
+    </nav>
+    <div class="ticker" id="ticker"><span class="ticker-label">MARKET SNAPSHOT</span><span id="tickerQuotes" class="ticker-quotes">FETCHING PUBLIC QUOTES…</span><span class="ticker-source">YAHOO FINANCE · BSE SOFIX · SOME EXCHANGES REPORT DELAYED</span></div>
+    <main id="workspace" class="workspace">
+      <section class="panel panel-tall" id="leadPanel">
+        <div class="panel-head"><span><i class="dot orange"></i> TOP NEWS <small>GLOBAL / PUBLIC FEEDS</small></span><div class="head-actions"><button data-feed="global" class="feed-tab on">Global</button><button data-feed="bulgaria" class="feed-tab">Bulgaria</button><button class="refresh" data-refresh="news">↻</button></div></div>
+        <div class="lead-layout"><div class="story-column"><div class="subhead" id="leadSubhead">GLOBAL HEADLINES · PUBLIC FEEDS</div><div id="leadStories" class="story-list"><div class="loading">CONNECTING TO PUBLIC NEWS FEEDS…</div></div></div><aside class="spotlight"><div class="spot-head">SPOTLIGHT <button data-page="news">› MORE</button></div><div class="spot-chart"><div class="chart-label">S&amp;P 500 / INTRADAY · PUBLIC</div><svg viewBox="0 0 280 82" preserveAspectRatio="none"><path class="chart-grid" d="M0 20H280M0 41H280M0 62H280"/><path class="chart-line" id="spotLine" d=""/></svg><div class="chart-foot"><span>LOW</span><span>09:00</span><span>12:00</span><span>16:00</span><span>HIGH</span></div></div><div class="spot-item"><b>FIRST WORD</b><span>Breaking developments, in brief</span></div><div class="spot-item"><b>DAYBREAK</b><span>Overnight developments &amp; events</span></div><div class="spot-item"><b>NEWS TRENDS</b><span>Coverage, velocity &amp; sentiment</span></div><div id="sourceNote" class="source-note">Headlines link to original publishers. News metadata via public feeds.</div></aside></div>
+      </section>
+      <section class="panel" id="marketPanel">
+        <div class="panel-head"><span><i class="dot green"></i> MARKET MONITOR <small>GLOBAL INDICATIVE</small></span><span class="panel-code">MON &lt;GO&gt;</span></div>
+        <div class="mini-tabs"><button data-market-group="INDICES" class="active">Indices</button><button data-market-group="FX">FX</button><button data-market-group="RATES">Rates</button><button data-market-group="COMMODITIES">Commodities</button><button data-market-group="CRYPTO">Crypto</button><button data-market-group="ETFS">ETFs</button><button data-market-group="STOCKS">Stocks</button><span class="right">AS OF <b id="marketTime">--:--</b></span></div>
+        <div class="market-table-wrap"><table class="data-table" id="marketTable"><thead><tr><th>INSTRUMENT</th><th>LAST</th><th>NET CHG</th><th>% CHG</th><th>DAY RANGE</th><th>CHART</th></tr></thead><tbody></tbody></table></div>
+        <div class="panel-foot"><span>Source: Yahoo Finance 1-minute bars · BSE Sofia SOFIX 3-minute delayed</span><button data-page="markets">FULL MONITOR »</button></div>
+      </section>
+      <section class="panel" id="worldPanel">
+        <div class="panel-head"><span><i class="dot blue"></i> WORLD NEWS <small>ALL STORIES</small></span><button class="text-action" data-page="news">SEARCH NEWS »</button></div>
+        <div class="news-toolbar"><button class="filter-chip active" data-filter="all" aria-pressed="true">All</button><button class="filter-chip" data-filter="business" aria-pressed="false">Business</button><button class="filter-chip" data-filter="politics" aria-pressed="false">Politics</button><button class="filter-chip" data-filter="technology" aria-pressed="false">Tech</button><button class="filter-chip" data-filter="europe" aria-pressed="false">Europe</button><button class="filter-chip" data-filter="balkans" aria-pressed="false">Balkans</button><button class="filter-chip" data-filter="bulgaria" aria-pressed="false">България</button><span class="feed-meta" id="newsStatus">AWAITING FEED</span></div>
+        <div class="compact-news" id="compactNews"></div>
+      </section>
+      <section class="panel" id="trackingPanel">
+        <div class="panel-head"><span><i class="dot cyan"></i> MARITIME INTELLIGENCE <small>AIS POSITION REPORTS</small></span><button class="text-action" data-page="ships">SHIP TRACKER »</button></div>
+        <div class="tracking-preview"><div class="mini-map" id="miniMap"><div class="loading">CONNECTING TO PUBLIC MAP TILES…</div></div><div class="ship-peek"><div class="table-header">RECENT VESSEL REPORTS <span id="shipCount">—</span></div><div class="ship-lines" id="shipLines"><div class="loading">WAITING FOR AIS COVERAGE…</div></div><div class="panel-foot">Coverage varies by receiver network <button data-page="ships">OPEN MAP »</button></div></div></div>
+      </section>
+    </main>
+    <section id="module" class="module hidden"></section>
+    <footer class="statusbar"><span class="status-left"><b>RIA</b> TERMINAL</span><span id="statusText">Ready. Enter a function or select a workspace.</span><span class="status-right">EUR &nbsp; <b>BG</b> &nbsp; SOF</span></footer>
+  </div>
+  <script type="module" src="assets/js/main.js"></script>
+</body>
+</html>

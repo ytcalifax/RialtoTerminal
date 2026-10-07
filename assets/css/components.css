@@ -1,0 +1,775 @@
+/* components.css — shared interactive widgets and data rows: buttons,
+   badges, tables, story/ship rows, popups, feed-health states.
+   Order matters: later blocks intentionally override earlier ones. */
+
+/* --- Connection / feed-health indicator ------------------------------------ */
+
+.connection {
+  color: #7e8e7d;
+}
+
+.connection i {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #7ab943;
+  margin-right: 5px;
+  box-shadow: 0 0 5px #7ab943;
+}
+
+.icon-btn {
+  width: 19px;
+  height: 19px;
+  border: 1px solid #60666a;
+  background: #181c1f;
+  font-weight: 700;
+  padding: 0;
+}
+
+/* --- Suggestions / menu / help popup ---------------------------------------- */
+
+.suggestions {
+  display: none;
+  position: absolute;
+  left: 55px;
+  right: 0;
+  top: 27px;
+  z-index: 20;
+  background: #151a1d;
+  border: 1px solid #56636a;
+  box-shadow: 0 5px 10px #000;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.suggestions.open {
+  display: block;
+}
+
+.suggestions[data-mode="menu"] {
+  max-height: 300px;
+}
+
+.suggestions[data-mode="help"] {
+  max-height: 360px;
+}
+
+.suggestions div {
+  padding: 5px 8px;
+  font: 11px Roboto Mono, monospace;
+  cursor: pointer;
+}
+
+.suggestions div:hover {
+  background: #303b40;
+  color: white;
+}
+
+.command-option {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 5px 8px;
+  border-bottom: 1px solid #283034;
+  font: 10px Roboto Mono, monospace;
+  cursor: pointer;
+}
+
+.command-option b {
+  width: 90px;
+  color: #f1b33f;
+}
+
+.command-option span {
+  color: #a3adb1;
+}
+
+.command-option:hover,
+.command-option.chosen {
+  background: #353b3d;
+  color: #fff;
+}
+
+.help-head {
+  padding: 5px 8px;
+  color: #8e9a9f;
+  background: #20272a;
+  border-bottom: 1px solid #56636a;
+  font: 9px Roboto Mono, monospace;
+}
+
+/* --- Nav keys + status dots --------------------------------------------------- */
+
+.key {
+  display: inline-block;
+  margin-right: 5px;
+  padding: 2px 4px;
+  font: 700 9px Roboto Mono, monospace;
+  color: #111;
+}
+
+.key.red {
+  background: #f34b3f;
+}
+
+.key.yellow {
+  background: #e5bc31;
+}
+
+.dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 5px;
+}
+
+.dot.orange { background: #f7a82b; }
+.dot.green { background: #7ab64b; }
+.dot.blue { background: #54a9d6; }
+.dot.cyan { background: #39b5bd; }
+
+/* --- Panel header actions ------------------------------------------------------- */
+
+.head-actions {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.feed-tab,
+.refresh,
+.text-action {
+  background: transparent;
+  border: 0;
+  color: #98a2a6;
+  font: 9px Roboto Mono, monospace;
+  padding: 3px 5px;
+}
+
+.feed-tab.on {
+  color: #ffc65b;
+  border-bottom: 1px solid #ffc65b;
+}
+
+.refresh {
+  font-size: 15px;
+  color: #c1c8ca;
+}
+
+.panel-code {
+  color: #d5a243;
+  font: 9px Roboto Mono, monospace;
+}
+
+.source-badge {
+  color: #8c989d;
+  font-size: 8px;
+}
+
+/* --- Top news: stories ----------------------------------------------------------- */
+
+.story-column {
+  overflow: auto;
+  padding: 0 7px 5px;
+}
+
+.subhead {
+  height: 23px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #41474a;
+  color: #a2aaae;
+  font: 9px Roboto Mono, monospace;
+}
+
+.story {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) 60px;
+  gap: 5px;
+  padding: 6px 2px 6px 8px;
+  border-bottom: 1px solid #282e31;
+  line-height: 1.28;
+  min-height: 39px;
+}
+
+.story-num {
+  font: 10px Roboto Mono, monospace;
+  color: #d79d39;
+  padding-top: 1px;
+}
+
+.story a {
+  color: #d7dcde;
+  text-decoration: none;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.story a:hover {
+  color: #ffc34d;
+  text-decoration: underline;
+}
+
+.story-meta {
+  display: block;
+  margin-top: 3px;
+  color: #778186;
+  font: 9px Roboto Mono, monospace;
+}
+
+.story-time {
+  text-align: right;
+  color: #879196;
+  font: 9px Roboto Mono, monospace;
+  padding-top: 2px;
+}
+
+.story.featured a {
+  color: #ffc552;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+/* --- Spotlight rail (S&P chart + briefings) ----------------------------------------- */
+
+.spotlight {
+  border-left: 1px solid #3a4144;
+  background: #12171a;
+  padding: 0 8px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.spot-head {
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #e0e5e7;
+  font: 10px Roboto Mono, monospace;
+  border-bottom: 1px solid #384044;
+}
+
+.spot-head span {
+  font-size: 9px;
+  color: #68a9d2;
+}
+
+.spot-head button {
+  border: 0;
+  background: transparent;
+  color: #75a9cf;
+  padding: 2px 0;
+  font: 9px Roboto Mono, monospace;
+}
+
+.spot-head button:hover {
+  color: #ffc34f;
+  text-decoration: underline;
+}
+
+.spot-chart {
+  height: 105px;
+  margin: 5px 0;
+  border: 1px solid #30383b;
+  background: #0e1316;
+  position: relative;
+  padding: 17px 5px 12px;
+}
+
+.spot-chart svg {
+  width: 100%;
+  height: 67px;
+}
+
+.chart-label {
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  color: #919ba0;
+  font: 8px Roboto Mono, monospace;
+}
+
+.chart-grid {
+  stroke: #283135;
+  stroke-width: 1;
+}
+
+.chart-line {
+  fill: none;
+  stroke: #f1ab31;
+  stroke-width: 2;
+}
+
+.chart-foot {
+  position: absolute;
+  left: 5px;
+  right: 5px;
+  bottom: 2px;
+  display: flex;
+  justify-content: space-between;
+  color: #68747a;
+  font: 7px Roboto Mono, monospace;
+}
+
+.spot-item {
+  padding: 7px 3px;
+  border-bottom: 1px solid #30373a;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.spot-item b {
+  font: 9px Roboto Mono, monospace;
+  color: #e5ae49;
+}
+
+.spot-item span {
+  font-size: 10px;
+  color: #9ea7ab;
+}
+
+.source-note {
+  margin-top: auto;
+  padding: 5px 2px;
+  color: #727e83;
+  font: 8px Roboto Mono, monospace;
+  line-height: 1.4;
+}
+
+/* --- Mini tabs (market groups) --------------------------------------------------------- */
+
+.mini-tabs {
+  height: 24px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 0 8px;
+  border-bottom: 1px solid #32393c;
+  color: #818c91;
+  font: 9px Roboto Mono, monospace;
+}
+
+.mini-tabs .active {
+  color: #f0b344;
+}
+
+.mini-tabs .right {
+  margin-left: auto;
+}
+
+.mini-tabs b {
+  font-weight: 400;
+  color: #d0d6d8;
+}
+
+.mini-tabs button {
+  border: 0;
+  border-bottom: 1px solid transparent;
+  padding: 2px 0;
+  background: transparent;
+  color: #818c91;
+  font: 9px Roboto Mono, monospace;
+}
+
+.mini-tabs button:hover,
+.mini-tabs button.active {
+  color: #f0b344;
+  border-bottom-color: #f0b344;
+}
+
+/* --- Data tables (dashboard market table) ------------------------------------------------ */
+
+.market-table-wrap {
+  overflow: auto;
+  flex: 1;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 10px Roboto Mono, monospace;
+  white-space: nowrap;
+}
+
+.data-table th {
+  text-align: right;
+  background: #151a1d;
+  color: #8d989d;
+  font-weight: 500;
+  padding: 5px 7px;
+  border-bottom: 1px solid #383f42;
+}
+
+.data-table th:first-child,
+.data-table td:first-child {
+  text-align: left;
+}
+
+.data-table td {
+  text-align: right;
+  padding: 4px 7px;
+  border-bottom: 1px solid #282e31;
+  color: #c2c9cb;
+}
+
+.data-table tr:hover td {
+  background: #222a2d;
+}
+
+.data-table td:first-child {
+  color: #e0b258;
+}
+
+.data-table tr {
+  cursor: pointer;
+}
+
+.positive { color: #88c561 !important; }
+.negative { color: #f07b65 !important; }
+
+.spark {
+  width: 54px;
+  height: 14px;
+}
+
+.spark path {
+  fill: none;
+  stroke: #80bc4f;
+  stroke-width: 1.4;
+}
+
+/* --- Panel footer ---------------------------------------------------------------------- */
+
+.panel-foot {
+  min-height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid #30373a;
+  padding: 2px 7px;
+  color: #748086;
+  font: 8px Roboto Mono, monospace;
+}
+
+.panel-foot button {
+  background: transparent;
+  border: 0;
+  color: #78aad0;
+  font: 9px Roboto Mono, monospace;
+}
+
+/* --- World news toolbar + compact rows ---------------------------------------------------- */
+
+.news-toolbar {
+  height: 24px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 0 8px;
+  border-bottom: 1px solid #32393c;
+  color: #8e989d;
+  font: 9px Roboto Mono, monospace;
+}
+
+.filter-chip {
+  cursor: pointer;
+}
+
+.filter-chip.active {
+  color: #e8b653;
+}
+
+.feed-meta {
+  margin-left: auto;
+  color: #718087;
+  font-size: 8px;
+}
+
+.compact-news {
+  overflow: auto;
+  flex: 1;
+  padding: 0 7px;
+}
+
+.compact-row {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr) 66px;
+  gap: 6px;
+  align-items: start;
+  border-bottom: 1px solid #292f32;
+  padding: 5px 0 5px 8px;
+  font-size: 10px;
+}
+
+.compact-row .source {
+  color: #cd9e43;
+  font: 8px Roboto Mono, monospace;
+}
+
+.compact-row a {
+  color: #cdd3d5;
+  text-decoration: none;
+  line-height: 1.25;
+}
+
+.compact-row a:hover {
+  color: #ffc34c;
+}
+
+.compact-row time {
+  text-align: right;
+  color: #7b8589;
+  font: 8px Roboto Mono, monospace;
+}
+
+/* --- Dashboard vessel peek -------------------------------------------------------------------- */
+
+.ship-peek {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.table-header {
+  height: 21px;
+  padding: 5px 7px;
+  border-bottom: 1px solid #333a3d;
+  color: #a7afb2;
+  font: 8px Roboto Mono, monospace;
+}
+
+.table-header span {
+  float: right;
+  color: #deaa47;
+}
+
+.ship-lines {
+  overflow: auto;
+  flex: 1;
+}
+
+.ship-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 54px 42px;
+  gap: 3px;
+  padding: 5px 6px;
+  border-bottom: 1px solid #292f32;
+  font: 9px Roboto Mono, monospace;
+}
+
+.ship-row b {
+  font-weight: 500;
+  color: #d2d8da;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ship-row span {
+  text-align: right;
+  color: #8a969a;
+}
+
+.ship-row {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: inherit;
+  border: 0;
+  cursor: pointer;
+}
+
+.ship-row:hover,
+.ship-row:focus-visible {
+  background: #2b3234;
+  outline: 1px solid #e4aa39;
+}
+
+.loading {
+  padding: 12px 5px;
+  color: #78848a;
+  font: 9px Roboto Mono, monospace;
+}
+
+/* --- Empty / placeholder states ---------------------------------------------------------------- */
+
+.empty-state {
+  padding: 20px;
+  color: #9ba6aa;
+  font: 10px Roboto Mono, monospace;
+  line-height: 1.7;
+}
+
+.empty-state b {
+  color: #f0b54a;
+}
+
+/* Compact variant wins over the base padding above. */
+.empty-state {
+  padding: 9px 8px;
+  color: #96a2a6;
+  background: #111619;
+  border-left: 2px solid #9b7130;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+/* --- Ticker quotes ------------------------------------------------------------------------------- */
+
+.ticker-quotes {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.quote b {
+  color: #a8b1b5;
+  font-weight: 500;
+  margin-right: 5px;
+}
+
+.quote em {
+  font-style: normal;
+  color: #88c461;
+}
+
+.quote em.down {
+  color: #f07a62;
+}
+
+.quote {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #d3d8da;
+  font: 10px Roboto Mono, monospace;
+}
+
+.quote:hover {
+  color: #ffc14a;
+}
+
+.quote:focus-visible {
+  outline: 1px solid #f5a623;
+  outline-offset: 2px;
+}
+
+.trade-link {
+  color: #7caed0;
+  text-decoration: none;
+  font: 9px Roboto Mono, monospace;
+  white-space: nowrap;
+}
+
+.trade-link:hover {
+  color: #ffc14a;
+  text-decoration: underline;
+}
+
+/* --- Selection, focus and interaction states (intentional overrides) ----------------------------- */
+
+.connection i {
+  background: #7ab943;
+  box-shadow: 0 0 4px currentColor;
+}
+
+.connection[data-state="partial"] {
+  color: #d6a846;
+}
+
+.connection[data-state="partial"] i {
+  background: #d6a846;
+}
+
+.connection[data-state="error"] {
+  color: #ef7862;
+}
+
+.connection[data-state="error"] i {
+  background: #ef604b;
+}
+
+.connection[data-state="loading"] {
+  color: #c39a4a;
+}
+
+.connection[data-state="loading"] i {
+  background: #d6a846;
+  animation: feed-pulse 1.2s steps(2, end) infinite;
+}
+
+@keyframes feed-pulse {
+  50% {
+    opacity: .35;
+  }
+}
+
+.data-table tr.chosen td,
+.module-list tr.chosen td,
+.marketplace-grid tr.chosen td {
+  background: #3b3424 !important;
+  color: #ffd16b !important;
+}
+
+.data-table tr:focus-visible,
+.module-list tr:focus-visible {
+  outline: 1px solid #e6a936;
+  outline-offset: -1px;
+}
+
+.story a:focus-visible,
+.compact-row a:focus-visible,
+.article-row a:focus-visible {
+  outline: 1px solid #e5ac38;
+  outline-offset: 2px;
+  color: #ffd16b;
+}
+
+.story.selected,
+.compact-row.selected,
+.article-row.selected {
+  background: #252c2f;
+  box-shadow: inset 2px 0 #e8b044;
+}
+
+.story:focus-visible,
+.compact-row:focus-visible,
+.article-row:focus-visible {
+  outline: 1px solid #d99d32;
+  outline-offset: -1px;
+  background: #242b2e;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 1px solid #e5ad40;
+  outline-offset: 1px;
+}
+
+/* Chips: interactive reset over the base .filter-chip above. */
+.filter-chip {
+  user-select: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+}
+
+.filter-chip:hover {
+  color: #fff;
+  text-decoration: underline;
+}
+
+.filter-chip:focus-visible {
+  outline: 1px solid #d99d32;
+  outline-offset: 2px;
+}

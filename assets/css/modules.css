@@ -598,6 +598,19 @@
   border-bottom: 1px solid #2e383c;
 }
 .impact-observation-label, .impact-observed li > span { color: #aab5b9; }
+.impact-observation-details {
+  margin: 4px 0 8px;
+  border-bottom: 1px solid #30383b;
+}
+.impact-observation-details > summary {
+  padding: 5px 0;
+  color: #d39a38;
+  cursor: pointer;
+  font: 9px Roboto Mono, monospace;
+}
+.impact-observed li a { color: #9fc4d4; text-decoration: none; }
+.impact-observed li a:hover { color: #f3bd4b; text-decoration: underline; }
+.impact-observed li small { overflow-wrap: anywhere; }
 .impact-evidence li > b, .impact-observed li > b { color: #e0e7e9; text-align: right; }
 .impact-evidence small, .impact-observed li small { grid-column: 1 / -1; color: #839197; font-size: 7px; }
 .impact-evidence a { color: #82c4d1; text-decoration: none; }

@@ -32,6 +32,17 @@ _lock = threading.Lock()
 _BALKAN_BOX = (34.0, 13.0, 50.0, 31.0)  # south, west, north, east
 _BG_AIR_BOX = "40,25,46,41"
 _BG_AIS_BOX = "40,25,46,41"
+_GLOBAL_AIS_POINTS = [
+    ("STRAIT OF HORMUZ", 26.56, 56.25),
+    ("SUEZ CANAL", 30.46, 32.34),
+    ("BAB EL-MANDEB", 12.58, 43.33),
+    ("STRAIT OF MALACCA", 2.5, 101.5),
+    ("BOSPORUS", 41.12, 29.07),
+    ("STRAIT OF GIBRALTAR", 36.0, -5.6),
+    ("PANAMA CANAL", 9.08, -79.68),
+    ("TAIWAN STRAIT", 24.5, 119.5),
+    ("ENGLISH CHANNEL", 50.3, -1.8),
+]
 _WEATHER_POINTS = [
     ("Sofia", "BG", 42.6977, 23.3219),
     ("Varna", "BG", 43.2141, 27.9147),
@@ -86,6 +97,27 @@ def _read_earthquakes() -> tuple[list[dict], dict]:
     }
 
 
+def _read_world_earthquakes() -> tuple[list[dict], dict]:
+    """Return all USGS M4.5+ earthquakes reported in the past 72 hours."""
+    now = datetime.now(timezone.utc)
+    params = urlencode({
+        "format": "geojson", "starttime": (now - timedelta(hours=72)).isoformat(),
+        "minmagnitude": 4.5, "orderby": "time",
+    })
+    data, stale, error = _cached_json(
+        "usgs-world-earthquakes",
+        f"https://earthquake.usgs.gov/fdsnws/event/1/query?{params}",
+        _QUAKE_TTL_S,
+    )
+    features = data.get("features", []) if isinstance(data, dict) else []
+    return [feature for feature in features if isinstance(feature, dict)], {
+        "id": "usgs-world", "name": "USGS WORLDWIDE M4.5+", "ok": not error,
+        "stale": stale, "error": error,
+        "asof": (data.get("metadata", {}).get("generated", 0) / 1000) if isinstance(data, dict) else 0,
+        "count": len(features), "url": "https://earthquake.usgs.gov/earthquakes/feed/",
+    }
+
+
 def _read_gdacs() -> tuple[list[dict], dict]:
     now = datetime.now(timezone.utc)
     params = urlencode({
@@ -96,11 +128,63 @@ def _read_gdacs() -> tuple[list[dict], dict]:
         "gdacs-events", f"https://www.gdacs.org/gdacsapi/api/Events/geteventlist/SEARCH?{params}", _GDACS_TTL_S
     )
     features = data.get("features", []) if isinstance(data, dict) else []
-    regional = [feature for feature in features if isinstance(feature, dict) and _gdacs_is_regional(feature)]
-    return regional, {
+    events = [feature for feature in features if isinstance(feature, dict)]
+    return events, {
         "id": "gdacs", "name": "GDACS RED / ORANGE ALERTS", "ok": not error,
-        "stale": stale, "error": error, "asof": time.time(), "count": len(regional),
+        "stale": stale, "error": error, "asof": time.time(), "count": len(events),
         "url": "https://www.gdacs.org/",
+    }
+
+
+def _read_chokepoint_ais() -> tuple[dict, dict]:
+    """Sample AIS positions in bounded windows around major global chokepoints."""
+    boxes = ";".join(
+        f"{lat - 0.5:.2f},{lon - 0.6:.2f},{lat + 0.5:.2f},{lon + 0.6:.2f}"
+        for _, lat, lon in _GLOBAL_AIS_POINTS
+    )
+    status, payload = vessel_snapshot(boxes)
+    features = payload.get("features", []) if status == 200 else []
+    rows = []
+    positions = []
+    for name, lat, lon in _GLOBAL_AIS_POINTS:
+        count = 0
+        for feature in features:
+            coords = (feature.get("geometry") or {}).get("coordinates") or []
+            try:
+                vessel_lon, vessel_lat = float(coords[0]), float(coords[1])
+            except (ValueError, TypeError, IndexError):
+                continue
+            if _distance_km(lon, lat, vessel_lon, vessel_lat) <= 46.3:
+                count += 1
+        rows.append({"name": name, "count_25nm": count})
+    for feature in features:
+        coords = (feature.get("geometry") or {}).get("coordinates") or []
+        try:
+            vessel_lon, vessel_lat = float(coords[0]), float(coords[1])
+        except (ValueError, TypeError, IndexError):
+            continue
+        nearest = min(
+            _GLOBAL_AIS_POINTS,
+            key=lambda point: _distance_km(point[2], point[1], vessel_lon, vessel_lat),
+        )
+        props = feature.get("properties") or {}
+        positions.append({
+            "name": props.get("name") or props.get("shipname") or "VESSEL",
+            "mmsi": props.get("mmsi", ""),
+            "lat": vessel_lat, "lon": vessel_lon,
+            "speed": props.get("sog") or props.get("speed"),
+            "chokepoint": nearest[0],
+        })
+    return {
+        "items": rows, "position_count": len(features), "vessels": positions,
+        "asof": payload.get("received_at", 0), "stale": bool(payload.get("stale")),
+    }, {
+        "id": "global-ais", "name": "AIS · 9 GLOBAL CHOKEPOINT WINDOWS",
+        "ok": status == 200, "stale": bool(payload.get("stale")),
+        "error": payload.get("error", "") if status != 200 else "",
+        "asof": payload.get("received_at", 0), "count": len(features),
+        "detail": "Sampled vessel reports within 25 nm of nine major straits/canals",
+        "url": "https://ais.openwaters.io/",
     }
 
 
@@ -176,7 +260,7 @@ def _read_weather() -> tuple[list[dict], dict]:
 
 def _sample_baseline(key: str, value: int, now: float) -> dict:
     with _lock:
-        samples = _history[key]
+        samples = _history.setdefault(key, deque(maxlen=9000))
         if not samples or now - samples[-1][0] >= 240:
             samples.append((now, value))
         cutoff = now - 30 * 86400
@@ -235,6 +319,7 @@ def _distance_km(lon: float, lat: float, other_lon: float, other_lat: float) -> 
 def _build_signals(
     news: dict, market: dict, gas: dict, ships: dict, aircraft: dict,
     conflict: dict, quakes: list[dict], gdacs: list[dict], weather: list[dict],
+    chokepoints: dict,
 ) -> list[dict]:
     now = int(time.time())
     signals: list[dict] = []
@@ -246,7 +331,7 @@ def _build_signals(
     energy_words = re_compile(r"energy|gas|oil|fuel|electric|power|pipeline|refinery|нефт|енерг|горив|електро|\bgaz\b|\benergie\b|petrol")
     energy_news = [row for row in recent_articles if energy_words.search(row.get("title", ""))]
     domains = {row.get("source", "") for row in energy_news}
-    market_rows = (market.get("items") or []) + (gas.get("items") or [])
+    market_rows = market.get("items") or []
     energy_moves = [row for row in market_rows if row.get("symbol") in {"BZ=F", "CL=F", "NG=F"} and abs(float(row.get("pct") or 0)) >= (4 if row.get("symbol") == "NG=F" else 2.5)]
     if energy_moves and len(domains) >= 2:
         observations = [
@@ -262,6 +347,185 @@ def _build_signals(
             confidence="MEDIUM" if len(energy_moves) + len(domains) >= 4 else "LOW",
             observations=observations, components=["MARKET", "REGIONAL NEWS"], metric=move,
             media_count=len(energy_news),
+        ))
+
+    # Global geopolitical and shipping-route reporting can affect regional
+    # energy and freight costs even when an event is far from Bulgaria.
+    route_topics = {
+        "STRAIT OF HORMUZ": r"strait of hormuz|hormuz",
+        "SUEZ / RED SEA": r"suez|bab.?el.?mandeb|red sea",
+        "BLACK SEA": r"black sea|bosporus|dardanelles",
+        "STRAIT OF MALACCA": r"strait of malacca|malacca strait",
+        "PANAMA CANAL": r"panama canal",
+        "TAIWAN STRAIT": r"taiwan strait",
+        "STRAIT OF GIBRALTAR": r"strait of gibraltar|gibraltar",
+        "ENGLISH CHANNEL": r"english channel",
+    }
+    route_disruption = re_compile(
+        r"clos(?:e|ed|ure)|blockade|halt(?:ed)?|suspend(?:ed)?|disrupt(?:ion|ed)?|"
+        r"attack|strike|missile|mine (?:explod|detonat|strike)|"
+        r"seiz(?:e|ed|ure)|rerout(?:e|ed)|"
+        r"tanker|shipping|vessel|cargo|navigation warning|port"
+    )
+    conflict_terms = re_compile(
+        r"war|armed conflict|hostilities|invasion|airstrike|missile strike|"
+        r"military strike|ceasefire|bombing|shelling|ground offensive|front line|"
+        r"troops killed|combat operations|military escalation"
+    )
+    conflict_places = {
+        "IRAN": r"\biran\b|tehran",
+        "ISRAEL / GAZA": r"israel|gaza|hamas|palestinian",
+        "UKRAINE": r"ukraine|kyiv",
+        "RUSSIA": r"russia|moscow|kremlin",
+        "YEMEN / RED SEA": r"yemen|houthi",
+        "LEBANON": r"lebanon|hezbollah|beirut",
+        "SYRIA": r"syria|damascus",
+        "SUDAN": r"\bsudan\b|khartoum",
+        "TAIWAN / CHINA": r"taiwan|beijing|south china sea",
+        "ARMENIA / AZERBAIJAN": r"armenia|azerbaijan|nagorno",
+        "IRAQ": r"\biraq\b|baghdad",
+    }
+    event_groups: dict[str, list[dict]] = {}
+    for row in recent_articles:
+        title = row.get("title", "")
+        route = next((name for name, pattern in route_topics.items() if re_compile(pattern).search(title)), None)
+        if route and route_disruption.search(title):
+            event_groups[f"ROUTE · {route}"] = event_groups.get(f"ROUTE · {route}", []) + [row]
+            continue
+        if conflict_terms.search(title):
+            place = next((name for name, pattern in conflict_places.items() if re_compile(pattern).search(title)), None)
+            if place:
+                key = f"CONFLICT · {place}"
+                event_groups[key] = event_groups.get(key, []) + [row]
+
+    related_moves = [
+        row for row in market_rows
+        if row.get("symbol") in {"BZ=F", "CL=F", "NG=F", "RB=F", "HO=F"}
+        and abs(float(row.get("pct") or 0)) >= (4 if row.get("symbol") == "NG=F" else 2.5)
+    ]
+    for topic, topic_articles in event_groups.items():
+        independent_sources = {
+            (row.get("url", "").split("/")[2].lower() if "://" in row.get("url", "") else row.get("source", "").casefold())
+            for row in topic_articles
+        }
+        independent_sources.discard("")
+        # A single publisher remains visible in the headlines panel but is
+        # insufficient by itself to create an early-warning assessment.
+        if len(independent_sources) < 2:
+            continue
+        has_price_move = bool(related_moves)
+        event_observations = [
+            {
+                "label": row.get("title", topic),
+                "value": row.get("source", "Publisher"),
+                "source": row.get("source", "Publisher"),
+                "source_url": row.get("url", ""),
+                "observed_at": _timestamp(row.get("published")),
+            }
+            for row in topic_articles[:8]
+        ]
+        event_observations.extend(
+            {
+                "label": f"{row.get('name')} daily move",
+                "value": f"{float(row.get('pct') or 0):+.2f}%",
+                "source": "Yahoo Finance",
+                "source_url": "https://finance.yahoo.com/",
+                "observed_at": row.get("asof"),
+                "series": row.get("series", []),
+            }
+            for row in related_moves
+        )
+        event_name = topic.split(" · ", 1)[-1]
+        route_event = topic.startswith("ROUTE")
+        signals.append(_signal(
+            key=f"global-event-{re_compile(r'[^a-z0-9]+').sub('-', topic.casefold()).strip('-')}",
+            title=f"{'SHIPPING-ROUTE' if route_event else 'CONFLICT'} WATCH · {event_name}",
+            summary=(
+                f"Multiple independent publishers report a developing issue involving {event_name}. "
+                + (
+                    "Tracked oil or fuel futures also show a notable daily move. It is plausible that a sustained disruption could affect regional energy or freight costs, but the price move is not attributed to this event. "
+                    if has_price_move else
+                    "This could have indirect energy or freight implications for the Balkans; no corresponding tracked fuel-price threshold is present now. "
+                )
+                + "These reports do not by themselves confirm a closure, cause, or future price direction."
+            ),
+            relevance=f"BULGARIA / BALKANS / EUROPE · GLOBAL {event_name} EXPOSURE",
+            severity="MEDIUM" if route_event or has_price_move else "LOW",
+            horizon="DEVELOPING · CURRENT REPORTING",
+            confidence="MEDIUM" if has_price_move and len(independent_sources) >= 3 else "LOW",
+            observations=event_observations,
+            components=["MULTI-PUBLISHER GLOBAL REPORTING"] + (["OIL / FUEL MARKET MOVE"] if has_price_move else []),
+            metric=max(
+                [abs(float(row.get("pct") or 0)) for row in related_moves]
+                + [float(len(independent_sources))],
+            ),
+            media_count=len(topic_articles),
+        ))
+
+    for row in (chokepoints or {}).get("items", []):
+        baseline = row.get("baseline") or {}
+        normal = baseline.get("value")
+        if normal in (None, 0):
+            continue
+        count = int(row.get("count_25nm") or 0)
+        change = (count / normal - 1) * 100
+        route_key = f"ROUTE · {row.get('name', '')}"
+        route_articles = event_groups.get(route_key, [])
+        publishers = {
+            item.get("url", "").split("/")[2].lower()
+            for item in route_articles if "://" in item.get("url", "")
+        }
+        price_moves = [
+            item for item in related_moves
+            if item.get("symbol") in {"BZ=F", "CL=F", "NG=F", "RB=F", "HO=F"}
+        ]
+        if change > -60 or (not price_moves and len(publishers) < 2):
+            continue
+        observations = [{
+            "label": f"{row.get('name')} AIS report count",
+            "value": f"{count} within 25 nm · {change:+.0f}% vs {baseline.get('hours', 0):.0f}h locally collected median ({baseline.get('samples', 0)} samples)",
+            "source": "Open Waters AIS",
+            "source_url": "https://ais.openwaters.io/",
+            "observed_at": (chokepoints or {}).get("asof"),
+        }]
+        observations.extend({
+            "label": f"{item.get('name')} daily move",
+            "value": f"{float(item.get('pct') or 0):+.2f}%",
+            "source": "Yahoo Finance",
+            "source_url": "https://finance.yahoo.com/",
+            "observed_at": item.get("asof"),
+            "series": item.get("series", []),
+        } for item in price_moves)
+        observations.extend({
+            "label": item.get("title", "Shipping-route report"),
+            "value": item.get("source", "Publisher"),
+            "source": item.get("source", "Publisher"),
+            "source_url": item.get("url", ""),
+            "observed_at": _timestamp(item.get("published")),
+        } for item in route_articles[:5])
+        slug = re_compile(r"[^a-z0-9]+").sub("-", row.get("name", "").casefold()).strip("-")
+        signals.append(_signal(
+            key=f"chokepoint-ais-{slug}",
+            title=f"CHOKEPOINT AIS REPORT DROP · {row.get('name')}",
+            summary=(
+                "AIS report volume in this fixed 25 nm window is substantially below this server’s collected median. "
+                "Receiver coverage and traffic mix vary, so a drop does not prove a closure. "
+                + (
+                    "A tracked energy future also has a notable daily move; no causal link is established."
+                    if price_moves else
+                    "Independent publishers also report a route-related development; no tracked fuel-price threshold is present now."
+                )
+            ),
+            relevance="BULGARIA / BALKANS / EUROPE · GLOBAL TRADE EXPOSURE",
+            severity="MEDIUM" if price_moves else "LOW",
+            horizon="CURRENT · BASELINE DEVIATION",
+            confidence="LOW",
+            observations=observations,
+            components=["AIS 25 NM WINDOW VS LOCAL BASELINE"]
+            + (["ENERGY FUTURES"] if price_moves else [])
+            + (["MULTI-PUBLISHER ROUTE REPORTING"] if publishers else []),
+            metric=abs(change),
+            media_count=len(route_articles),
         ))
 
     # Recent USGS events are observations, not forecasts. Proximity to Bulgaria
@@ -288,6 +552,8 @@ def _build_signals(
 
     for feature in gdacs:
         props = feature.get("properties") or {}
+        if not _gdacs_is_regional(feature):
+            continue
         alert = str(props.get("alertlevel", "")).upper()
         url = (props.get("url") or {}).get("report", "https://www.gdacs.org/")
         affected = [
@@ -360,8 +626,8 @@ def _build_signals(
                 metric=abs(change), media_count=len(shipping_news),
             ))
 
-    # Conflict/GPSJam are existing feeds. Expose Balkan observations only;
-    # a coded event or daily GNSS cell alone is kept at monitoring confidence.
+    # Conflict/GPSJam are global observations; only regional coded reports
+    # become Balkan-specific signals here.
     reports = (conflict or {}).get("reports", [])
     regional_reports = []
     for feature in reports:
@@ -453,19 +719,25 @@ def _source(name: str, result: object, error: str = "") -> dict:
 
 
 def impact_snapshot() -> tuple[int, dict]:
-    """Return current Balkan-first signals, observations and source health."""
+    """Return Balkan-first assessments with global-context observations."""
     cached = _payload_cache.get("latest")
     if cached is not None:
         return 200, cached
 
     tasks = {
         "news": lambda: aggregate_news("balkans"),
+        "global_news": lambda: aggregate_news("global"),
         "market": lambda: market_snapshot("CORE"),
+        "commodities": lambda: market_snapshot("COMMODITIES"),
+        "fx": lambda: market_snapshot("FX"),
+        "rates": lambda: market_snapshot("RATES"),
         "gas": lambda: quotes_for_symbols("NG=F"),
         "ships": lambda: vessel_snapshot(_BG_AIS_BOX),
+        "chokepoints": _read_chokepoint_ais,
         "air": lambda: aircraft_snapshot(_BG_AIR_BOX),
         "conflict": lambda: war_snapshot(),
         "quakes": _read_earthquakes,
+        "world_quakes": _read_world_earthquakes,
         "gdacs": _read_gdacs,
         "weather": _read_weather,
     }
@@ -480,16 +752,56 @@ def impact_snapshot() -> tuple[int, dict]:
             results[key] = None
 
     news = results.get("news") if isinstance(results.get("news"), dict) else {}
+    global_news = results.get("global_news") if isinstance(results.get("global_news"), dict) else {}
     market = results.get("market") if isinstance(results.get("market"), dict) else {}
+    commodities = results.get("commodities") if isinstance(results.get("commodities"), dict) else {}
+    fx = results.get("fx") if isinstance(results.get("fx"), dict) else {}
+    rates = results.get("rates") if isinstance(results.get("rates"), dict) else {}
     gas = results.get("gas") if isinstance(results.get("gas"), dict) else {}
+    all_market_rows = {
+        row.get("symbol"): row
+        for payload in (market, commodities, fx, rates, gas)
+        for row in payload.get("items", [])
+        if row.get("symbol")
+    }
+    market = {**market, "items": list(all_market_rows.values())}
+    news_rows = []
+    news_urls = set()
+    for payload in (news, global_news):
+        for row in payload.get("items", []):
+            url = row.get("url", "")
+            if url and url in news_urls:
+                continue
+            if url:
+                news_urls.add(url)
+            news_rows.append(row)
+    news_rows.sort(key=lambda row: _timestamp(row.get("published")), reverse=True)
+    combined_news = {**news, "items": news_rows}
     ship_result = results.get("ships")
     ships = ship_result[1] if isinstance(ship_result, tuple) and ship_result[0] == 200 else {}
+    chokepoint_result = results.get("chokepoints")
+    chokepoints = chokepoint_result[0] if isinstance(chokepoint_result, tuple) else {}
+    for item in chokepoints.get("items", []):
+        baseline = _sample_baseline(
+            f"chokepoint:{item.get('name', '')}",
+            int(item.get("count_25nm") or 0),
+            time.time(),
+        )
+        item["baseline"] = baseline
+        if baseline.get("value") not in (None, 0):
+            item["change_pct"] = round(
+                (int(item.get("count_25nm") or 0) / baseline["value"] - 1) * 100,
+                1,
+            )
+    chokepoint_source = chokepoint_result[1] if isinstance(chokepoint_result, tuple) else _source("global-ais", None, errors.get("chokepoints", "Unavailable"))
     air_result = results.get("air")
     aircraft = air_result[1] if isinstance(air_result, tuple) and air_result[0] == 200 else {}
     conflict_result = results.get("conflict")
     conflict = conflict_result[1] if isinstance(conflict_result, tuple) and conflict_result[0] == 200 else {}
     quake_result = results.get("quakes")
     quakes = quake_result[0] if isinstance(quake_result, tuple) else []
+    world_quake_result = results.get("world_quakes")
+    world_quakes = world_quake_result[0] if isinstance(world_quake_result, tuple) else []
     gdacs_result = results.get("gdacs")
     gdacs = gdacs_result[0] if isinstance(gdacs_result, tuple) else []
     weather_result = results.get("weather")
@@ -497,35 +809,80 @@ def impact_snapshot() -> tuple[int, dict]:
 
     sources = []
     sources.append({"id": "balkan-news", "name": "BALKAN NEWS", "ok": bool(news.get("sourceCount")), "stale": False, "error": errors.get("news", ""), "asof": news.get("fetched", 0), "count": len(news.get("items", [])), "detail": f"{news.get('sourceCount', 0)}/{len(news.get('sources', []))} publisher/index feeds"})
-    sources.append({"id": "market", "name": "MARKETS", "ok": bool(market.get("items")), "stale": False, "error": errors.get("market", ""), "asof": market.get("fetched", 0), "count": len(market.get("items", [])), "detail": market.get("source", "")})
-    sources.append({"id": "ais", "name": "OPEN WATERS AIS", "ok": bool(isinstance(ship_result, tuple) and ship_result[0] == 200), "stale": bool((ships or {}).get("stale")), "error": errors.get("ships", ""), "asof": (ships or {}).get("received_at", 0), "count": len((ships or {}).get("features", [])), "detail": "Fixed Bulgaria / western Black Sea snapshot"})
-    sources.append({"id": "opensky", "name": "OPENSKY ADS-B", "ok": bool(isinstance(air_result, tuple) and air_result[0] == 200), "stale": bool((aircraft or {}).get("stale")), "error": errors.get("air", ""), "asof": (aircraft or {}).get("time", 0), "count": len((aircraft or {}).get("aircraft", [])), "detail": "Anonymous state-vector snapshot; coverage varies"})
+    sources.append({"id": "global-news", "name": "GLOBAL NEWS", "ok": bool(global_news.get("sourceCount")), "stale": False, "error": errors.get("global_news", ""), "asof": global_news.get("fetched", 0), "count": len(global_news.get("items", [])), "detail": f"{global_news.get('sourceCount', 0)}/{len(global_news.get('sources', []))} publisher feeds"})
+    market_ok = all(
+        isinstance(results.get(key), dict) and bool(results[key].get("items"))
+        for key in ("market", "commodities", "fx")
+    )
+    commodity_count = len(commodities.get("items", []))
+    fx_count = len(fx.get("items", []))
+    rates_count = len(rates.get("items", []))
+    sources.append({"id": "market", "name": "GLOBAL MARKETS · FX / COMMODITIES / RATES", "ok": market_ok and bool(rates_count), "stale": False, "error": errors.get("market", "") or errors.get("commodities", "") or errors.get("fx", "") or errors.get("rates", ""), "asof": market.get("fetched", 0), "count": len(market.get("items", [])), "detail": f"Core + {commodity_count} commodity, {fx_count} FX, and {rates_count} rate rows"})
+    sources.append({"id": "ais", "name": "OPEN WATERS AIS", "ok": bool(isinstance(ship_result, tuple) and ship_result[0] == 200), "stale": bool((ships or {}).get("stale")), "error": errors.get("ships", "") or (ship_result[1].get("error", "") if isinstance(ship_result, tuple) else ""), "asof": (ships or {}).get("received_at", 0), "count": len((ships or {}).get("features", [])), "detail": "Fixed Bulgaria / western Black Sea snapshot"})
+    sources.append(chokepoint_source)
+    sources.append({"id": "opensky", "name": "OPENSKY ADS-B", "ok": bool(isinstance(air_result, tuple) and air_result[0] == 200), "stale": bool((aircraft or {}).get("stale")), "error": errors.get("air", "") or (air_result[1].get("error", "") if isinstance(air_result, tuple) else ""), "asof": (aircraft or {}).get("time", 0), "count": len((aircraft or {}).get("aircraft", [])), "detail": "Anonymous state-vector snapshot; coverage varies"})
     for key, result in (("quakes", quake_result), ("gdacs", gdacs_result), ("weather", weather_result)):
         if isinstance(result, tuple) and len(result) == 2:
             sources.append(result[1])
         else:
             sources.append(_source(key, None, errors.get(key, "Unavailable")))
-    sources.append({"id": "gdelt-gpsjam", "name": "GDELT / GPSJAM", "ok": bool(conflict), "stale": bool((conflict or {}).get("stale")), "error": errors.get("conflict", (conflict_result[1].get("error", "") if isinstance(conflict_result, tuple) else "")), "asof": (conflict or {}).get("updated_at", 0), "count": len((conflict or {}).get("reports", [])), "detail": "Coded media events + daily aircraft-reported GNSS aggregate"})
+    if isinstance(world_quake_result, tuple) and len(world_quake_result) == 2:
+        sources.append(world_quake_result[1])
+    else:
+        sources.append(_source("usgs-world", None, errors.get("world_quakes", "Unavailable")))
+    sources.append({"id": "gdelt-gpsjam", "name": "GDELT / GPSJAM", "ok": bool(conflict), "stale": bool((conflict or {}).get("stale")), "error": errors.get("conflict", (conflict_result[1].get("error", "") if isinstance(conflict_result, tuple) else "")), "asof": (conflict or {}).get("updated_at", 0), "count": len((conflict or {}).get("reports", [])), "detail": "Latest GDELT 15-minute export, violence-coded events from prior 7 days (up to 250), plus the complete latest daily GPSJam grid"})
 
-    signals = _build_signals(news, market, gas, ships, aircraft, conflict, quakes, gdacs, weather)
+    signals = _build_signals(
+        combined_news, market, gas, ships, aircraft, conflict, quakes, gdacs, weather, chokepoints
+    )
     healthy = sum(bool(source.get("ok")) for source in sources)
     payload = {
         "signals": signals,
         "sources": sources,
         "observations": {
-            "market": market.get("items", []) + gas.get("items", []),
+            "market": market.get("items", []),
             "weather": weather,
             "earthquakes": quakes[:30],
-            "gdacs": gdacs[:30],
+            "world_earthquakes": world_quakes,
+            "gdacs": gdacs,
             "ais": {"count": len((ships or {}).get("features", [])), "baseline": (ships or {}).get("baseline", {})},
             "air": {"count": len((aircraft or {}).get("aircraft", [])), "baseline": (aircraft or {}).get("baseline", {})},
-            "news": news.get("items", [])[:60],
+            "chokepoints": chokepoints,
+            "conflict": {
+                "reports": (conflict or {}).get("reports", []),
+                "frontline_segments": len((conflict or {}).get("frontline", [])),
+                "frontline_source": (conflict or {}).get("frontline_source", ""),
+                "frontline": (conflict or {}).get("frontline", []),
+                "gpsjam_date": ((conflict or {}).get("gpsjam") or {}).get("date", ""),
+                "gpsjam_cells": len(((conflict or {}).get("gpsjam") or {}).get("features", [])),
+                "gpsjam_top": sorted(
+                    ((conflict or {}).get("gpsjam") or {}).get("features", []),
+                    key=lambda feature: float((feature.get("properties") or {}).get("percent") or 0),
+                    reverse=True,
+                ),
+            },
+            "ais_positions": [
+                {
+                    "name": (feature.get("properties") or {}).get("name")
+                    or (feature.get("properties") or {}).get("shipname")
+                    or "VESSEL",
+                    "mmsi": (feature.get("properties") or {}).get("mmsi", ""),
+                    "speed": (feature.get("properties") or {}).get("sog")
+                    or (feature.get("properties") or {}).get("speed"),
+                    "lat": (feature.get("geometry") or {}).get("coordinates", [None, None])[1],
+                    "lon": (feature.get("geometry") or {}).get("coordinates", [None, None])[0],
+                }
+                for feature in (ships or {}).get("features", [])
+            ],
+            "global_ais_positions": chokepoints.get("vessels", []),
+            "aircraft": aircraft.get("aircraft", []),
+            "news": news_rows,
         },
         "updated_at": int(time.time()),
-        "status": "LIVE" if healthy >= 6 else "DEGRADED" if healthy else "OFFLINE",
+        "status": "LIVE" if healthy == len(sources) else "DEGRADED" if healthy else "OFFLINE",
         "healthy_sources": healthy,
         "source_count": len(sources),
-        "baseline_note": "AIS and ADS-B baselines build from this server’s same-region samples. A 24-hour baseline appears after at least 24 hours and 24 samples; restart resets collection.",
+        "baseline_note": "Coverage: global English-language and Balkan headlines; core markets, tracked FX / commodities / rates; all returned GDACS red/orange alerts and USGS events (Balkans M2.5+ / worldwide M4.5+, prior 72h); GDELT’s latest 15-minute violence-coded export (prior 7 days, up to 250) and full latest daily GPSJam grid; AIS around nine chokepoints plus Bulgaria/Black Sea. Weather and ADS-B are regional samples. Per-source limits/freshness are shown above. AIS/ADS-B baselines use server-collected same-region samples after at least 24h and 24 samples.",
     }
     _payload_cache.store("latest", payload)
     return 200, payload

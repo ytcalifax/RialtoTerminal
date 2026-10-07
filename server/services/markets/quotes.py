@@ -56,14 +56,14 @@ def _yahoo_quote(symbol: str, name: str | None = None) -> dict | None:
     """
     cached = _QUOTE_CACHE.get(symbol)
     if cached is not None:
-        return cached
+        return dict(cached)
     if symbol == "^SOFIX":
         return None  # served by _bse_sofix_row, which scrapes the exchange
 
     try:
         url = YAHOO_CHART_URL.format(symbol=quote(symbol, safe=""))
         result = json.loads(fetch(url, "application/json"))["chart"]["result"][0]
-        meta = result["meta"]
+        meta = result.get("meta") or {}
         resolved_name = (
             name
             or meta.get("shortName")
@@ -71,7 +71,9 @@ def _yahoo_quote(symbol: str, name: str | None = None) -> dict | None:
             or symbol
         )
         timestamps = result.get("timestamp") or []
-        closes = [v for v in result["indicators"]["quote"][0].get("close", []) if v is not None]
+        quote_indicators = result.get("indicators", {}).get("quote") or []
+        raw_closes = quote_indicators[0].get("close", []) if quote_indicators else []
+        closes = [v for v in raw_closes if v is not None and isinstance(v, (int, float))]
 
         # The live last price is whichever is fresher: Yahoo's consolidated
         # regularMarketPrice or the newest 1-minute bar close.
@@ -82,14 +84,17 @@ def _yahoo_quote(symbol: str, name: str | None = None) -> dict | None:
             last = regular_price
         else:
             last = closes[-1] if closes else regular_price
+        if last is None:
+            return None
         previous = meta.get("chartPreviousClose") or meta.get("previousClose") or (closes[0] if closes else last)
-        change = last - previous
+        change = (last - previous) if (last is not None and previous is not None) else 0.0
+        pct = (change / previous * 100) if (previous and previous != 0) else 0.0
         row = {
             "symbol": symbol,
             "name": resolved_name,
             "last": last,
             "change": change,
-            "pct": change / previous * 100 if previous else 0,
+            "pct": pct,
             "low": min(closes) if closes else None,
             "high": max(closes) if closes else None,
             "series": closes[-24:],
@@ -97,8 +102,8 @@ def _yahoo_quote(symbol: str, name: str | None = None) -> dict | None:
             "asof": meta.get("regularMarketTime") or (timestamps[-1] if timestamps else 0),
             "group": SYMBOL_GROUP.get(symbol, "INDICES"),
         }
-        _QUOTE_CACHE.store(symbol, row)
-        return row
+        _QUOTE_CACHE.store(symbol, dict(row))
+        return dict(row)
     except Exception:
         # One unavailable symbol must not break the snapshot; the UI flags
         # the gap via the "expected" count and carries stale rows forward.
@@ -115,7 +120,7 @@ def _bse_sofix_row() -> dict:
     now = time.time()
     cached = _SOFIX_CACHE.get("^SOFIX")
     if cached is not None:
-        return cached
+        return dict(cached)
 
     page, headers = fetch_response(
         BSE_SOFIX_URL,
@@ -144,11 +149,19 @@ def _bse_sofix_row() -> dict:
         return clean(html.unescape(re.sub(r"<[^>]+>", " ", found.group(1)))) if found else ""
 
     def number(value: str) -> float:
-        return float(value.replace(" ", "").replace(",", "."))
+        try:
+            return float(value.replace(" ", "").replace(",", "."))
+        except (ValueError, TypeError):
+            return 0.0
 
     last = number(field("top5_issue_size primary"))
-    pct_text = field("change green") or field("change red")
-    pct = float(pct_text.replace("%", "").replace("+", "").replace(",", "."))
+    pct_text = field("change green") or field("change red") or field("change")
+    pct = 0.0
+    if pct_text:
+        try:
+            pct = float(pct_text.replace("%", "").replace("+", "").replace(",", "."))
+        except (ValueError, TypeError):
+            pct = 0.0
     # The widget encodes direction via colour, not sign.
     if "change red" in block and "change green" not in block:
         pct = -abs(pct)
@@ -156,16 +169,18 @@ def _bse_sofix_row() -> dict:
     if pct < 0:
         change = -abs(change)
     # The widget's ask side bounds the low, its bid side the high.
-    low = number(field("top5_price_ask").split()[-1])
-    high = number(field("top5_price_bid").split()[-1])
+    low_parts = field("top5_price_ask").split()
+    low = number(low_parts[-1]) if low_parts else 0.0
+    high_parts = field("top5_price_bid").split()
+    high = number(high_parts[-1]) if high_parts else 0.0
 
     row = {
         "symbol": "^SOFIX", "name": "SOFIX", "last": last, "change": change,
         "pct": pct, "low": low, "high": high, "series": [], "currency": "EUR",
         "asof": source_time, "source": "BSE SOFIA · 3 MIN DELAY", "group": "INDICES",
     }
-    _SOFIX_CACHE.store("^SOFIX", row)
-    return row
+    _SOFIX_CACHE.store("^SOFIX", dict(row))
+    return dict(row)
 
 
 def market_snapshot(group: str = "CORE") -> dict:
@@ -243,9 +258,8 @@ def quotes_for_symbols(raw: str | None) -> dict:
             if len(symbols) >= QUOTES_MAX_SYMBOLS:
                 break
     rows = [
-        row for row in shared_pool().map(lambda s: _yahoo_quote(s), symbols)
+        {**row, "group": "CUSTOM"}
+        for row in shared_pool().map(lambda s: _yahoo_quote(s), symbols)
         if row is not None
     ]
-    for row in rows:
-        row["group"] = "CUSTOM"
     return {"items": rows, "group": "CUSTOM", "expected": len(symbols), "fetched": time.time()}

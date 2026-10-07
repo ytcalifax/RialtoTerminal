@@ -13,7 +13,8 @@ import { MIN_UPDATE_PULSE_MS } from './constants.js';
 
 /** Write a message to the bottom status bar (plain text, not HTML). */
 const setStatus = (message) => {
-  $('#statusText').textContent = message;
+  const el = $('#statusText');
+  if (el) el.textContent = message;
 };
 
 /** Fold the current feed states into the header indicator + caption. */
@@ -29,11 +30,14 @@ function renderConnection() {
       ? 'error'
       : reported.length < 4 ? 'partial'
       : reported.every((v) => v === 'ok') ? 'ok' : 'partial';
-  $('#dataStatus').textContent = pending
-    ? `FEEDS ${good}/${reported.length} · UPDATING`
-    : reported.length
-      ? `FEEDS ${good}/${reported.length} · ${reported.some((v) => v === 'delayed') ? 'DELAYED' : 'PUBLIC'}`
-      : 'DATA FEEDS · CONNECTING';
+  const ds = $('#dataStatus');
+  if (ds) {
+    ds.textContent = pending
+      ? `FEEDS ${good}/${reported.length} · UPDATING`
+      : reported.length
+        ? `FEEDS ${good}/${reported.length} · ${reported.some((v) => v === 'delayed') ? 'DELAYED' : 'PUBLIC'}`
+        : 'DATA FEEDS · CONNECTING';
+  }
 }
 
 let loadingSince = 0;

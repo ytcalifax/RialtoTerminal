@@ -151,15 +151,20 @@ def vessel_snapshot(boxes: str | None = None) -> tuple[int, dict]:
     try:
         merged: dict = {"type": "FeatureCollection", "features": []}
         seen_ids: set = set()
-        fetched = shared_pool().map(
-            lambda box: json.loads(
-                fetch(OPENWATERS_VESSELS_URL.format(bbox=box), "application/geo+json, application/json")
-            ),
-            regions,
-        )
+
+        def _fetch_one_box(box: str) -> dict | None:
+            try:
+                body = fetch(OPENWATERS_VESSELS_URL.format(bbox=box), "application/geo+json, application/json")
+                return json.loads(body)
+            except Exception:
+                return None
+
+        fetched = list(shared_pool().map(_fetch_one_box, regions))
+        any_success = False
         for data in fetched:
             if not isinstance(data, dict):
                 continue
+            any_success = True
             merged["attribution"] = data.get("attribution", merged.get("attribution", {}))
             merged["received_at"] = data.get("received_at", merged.get("received_at"))
             for feature in data.get("features", []):
@@ -170,9 +175,17 @@ def vessel_snapshot(boxes: str | None = None) -> tuple[int, dict]:
                 seen_ids.add(dedupe_key)
                 merged["features"].append(feature)
         merged["region"] = cache_key
-        _vessel_cache.store(cache_key, merged)
-        return 200, merged
+        if any_success:
+            _vessel_cache.store(cache_key, merged)
+            return 200, merged
+        stale = _vessel_cache.get_entry(cache_key)
+        if stale and stale.value.get("features"):
+            return 200, stale.value
+        return 502, {"error": "Upstream AIS sources unavailable", "features": [], "region": cache_key}
     except Exception as exc:
+        stale = _vessel_cache.get_entry(cache_key)
+        if stale and stale.value.get("features"):
+            return 200, stale.value
         return 502, {"error": str(exc), "features": [], "region": cache_key}
 
 
@@ -206,6 +219,9 @@ def aircraft_snapshot(circles_raw: str | None = None) -> tuple[int, dict]:
     if cached is not None:
         return (502 if "error" in cached else 200), cached
     if time.time() < _adsb_banned_until:
+        stale = _air_cache.get_entry(cache_key)
+        if stale and stale.value.get("aircraft"):
+            return 200, stale.value
         return 502, {"error": "ADSB.LOL rate limit cooling down", "aircraft": [], "region": cache_key}
     try:
         seen: dict[str, dict] = {}
@@ -247,6 +263,9 @@ def aircraft_snapshot(circles_raw: str | None = None) -> tuple[int, dict]:
         _air_cache.store(cache_key, payload)
         return 200, payload
     except Exception as exc:
+        stale = _air_cache.get_entry(cache_key)
+        if stale and stale.value.get("aircraft"):
+            return 200, stale.value
         payload = {"error": str(exc), "aircraft": [], "region": cache_key}
         if "429" in str(exc):
             # One window of back-off, then a longer cooldown before the next

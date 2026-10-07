@@ -27,8 +27,9 @@ from ..services.tracking import (
 Params = dict[str, list[str]]
 RouteHandler = Callable[[Params], tuple[int, dict]]
 
-# Query values arrive as lists (parse_qs); read the first value defensively.
-_first = lambda params, name, default="": params.get(name, [default])[0]
+def _first(params: Params, name: str, default: str = "") -> str:
+    vals = params.get(name)
+    return vals[0] if (vals and len(vals) > 0) else default
 
 
 def _news(params: Params) -> tuple[int, dict]:

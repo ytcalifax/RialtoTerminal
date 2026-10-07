@@ -35,11 +35,14 @@ function openPage(page) {
   const screen = Object.entries(SCREEN_BY_PAGE).find(([, p]) => p === page)?.[0];
   if (screen) state.screen = screen;
   $$('.tab-small').forEach((b) => b.classList.toggle('selected', b.dataset.screen === state.screen));
-  $('.session b').textContent = SESSION_LABELS[page] || page.toUpperCase();
+  const sessionEl = $('.session b');
+  if (sessionEl) sessionEl.textContent = SESSION_LABELS[page] || page.toUpperCase();
 
   const home = page === 'top';
-  $('#workspace').classList.toggle('hidden', !home);
-  $('#module').classList.toggle('hidden', home);
+  const workspace = $('#workspace');
+  if (workspace) workspace.classList.toggle('hidden', !home);
+  const moduleEl = $('#module');
+  if (moduleEl) moduleEl.classList.toggle('hidden', home);
 
   // Module rendering + page-specific (re)loads are wired in main.js.
   emit('page:changed', page);

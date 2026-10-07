@@ -317,11 +317,14 @@ function renderDashboardShips() {
     Object.assign(state.mapViews.homeReset, { lat, lon, zoom, userMoved: false });
   }
 
-  $('#shipCount').textContent = state.ships.length ? `${state.ships.length} POSITIONS${state.errors.vessels ? ' · DELAYED' : ''}` : 'NO DATA';
-  shipList.innerHTML = rows.length
-    ? rows.map((x, i) => `<button class="ship-row" data-ship-index="${i}"><b>${esc(x.name)}</b><span>${x.speed != null ? Number(x.speed).toFixed(1) + ' kn' : 'AIS'}</span><span>${ageLabel(x.age)}</span></button>`).join('')
-    : `<div class="loading">${state.errors.vessels ? 'AIS FEED ERROR · ' + esc(state.errors.vessels) : 'NO POSITIONS IN CURRENT AIS SNAPSHOT · COVERAGE DEPENDS ON RECEIVER NETWORK'}</div>`;
-  shipList.scrollTop = shipScroll;
+  const countEl = $('#shipCount');
+  if (countEl) countEl.textContent = state.ships.length ? `${state.ships.length} POSITIONS${state.errors.vessels ? ' · DELAYED' : ''}` : 'NO DATA';
+  if (shipList) {
+    shipList.innerHTML = rows.length
+      ? rows.map((x, i) => `<button class="ship-row" data-ship-index="${i}"><b>${esc(x.name)}</b><span>${x.speed != null ? Number(x.speed).toFixed(1) + ' kn' : 'AIS'}</span><span>${ageLabel(x.age)}</span></button>`).join('')
+      : `<div class="loading">${state.errors.vessels ? 'AIS FEED ERROR · ' + esc(state.errors.vessels) : 'NO POSITIONS IN CURRENT AIS SNAPSHOT · COVERAGE DEPENDS ON RECEIVER NETWORK'}</div>`;
+    shipList.scrollTop = shipScroll;
+  }
 
   if (map) {
     map.innerHTML = homeMapShell();
@@ -389,7 +392,8 @@ async function selectTrack(x, air = false, centerMap = false) {
   }
   $$('#trackRows tr').forEach((tr) => tr.classList.toggle('chosen', tr.dataset.trackId === String(x.id)));
   if (map) {
-    $$('.map-point', map).forEach((p) => p.classList.toggle('selected', map.dataset.trackIds.split('|')[Number(p.dataset.index)] === String(x.id)));
+    const ids = (map.dataset.trackIds || '').split('|');
+    $$('.map-point', map).forEach((p) => p.classList.toggle('selected', ids[Number(p.dataset.index)] === String(x.id)));
   }
   const detail = $('.detail-row');
   if (detail) detail.innerHTML = detailHTML(x, air);

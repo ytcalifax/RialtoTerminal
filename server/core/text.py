@@ -23,6 +23,13 @@ def parse_timestamp(value: str | None) -> float:
     if not value:
         return 0.0
     try:
+        val_float = float(value)
+        if val_float > 1e11:
+            val_float /= 1000.0
+        return val_float
+    except (TypeError, ValueError):
+        pass
+    try:
         return parsedate_to_datetime(value).timestamp()
     except (TypeError, ValueError, OverflowError):
         pass

@@ -9,12 +9,14 @@ from __future__ import annotations
 import time
 
 from ..config import BAZAR_LISTINGS_URL
+from ..core.cache import TTLCache
 from ..core.http_client import fetch
 from ..core.parsing.listings import ListingParser
 
 _SOURCE_LABEL = "Bazar.bg · All categories"
 _DEFAULT_LIMIT = 80
 _LIMIT_CAP = 100
+_MARKETPLACE_CACHE: TTLCache[list[dict]] = TTLCache(180)
 
 
 def _clamp_limit(limit) -> int:
@@ -38,13 +40,17 @@ def listing_search(query: str = "", limit=_DEFAULT_LIMIT) -> dict:
     """
     limit = _clamp_limit(limit)
     try:
-        body = fetch(BAZAR_LISTINGS_URL, "text/html").decode("utf-8", "replace")
-        parser = ListingParser()
-        parser.feed(body)
+        cached_rows = _MARKETPLACE_CACHE.get("all")
+        if cached_rows is None:
+            body = fetch(BAZAR_LISTINGS_URL, "text/html").decode("utf-8", "replace")
+            parser = ListingParser()
+            parser.feed(body)
+            cached_rows = parser.rows
+            _MARKETPLACE_CACHE.store("all", cached_rows)
 
         seen: set[str] = set()
         rows: list[dict] = []
-        for row in parser.rows:
+        for row in cached_rows:
             if row["url"] in seen:
                 continue
             seen.add(row["url"])

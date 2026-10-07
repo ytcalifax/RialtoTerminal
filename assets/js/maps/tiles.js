@@ -42,21 +42,29 @@ function paintMapTiles(stage, tiles, html) {
     if (ready) stage.querySelector('.map-tiles-fallback')?.remove();
   };
 
-  let remaining = images.filter((img) => !img.complete).length;
+  const pending = images.filter((img) => !img.complete);
+  let remaining = pending.length;
   if (!remaining) {
     settle();
     return;
   }
+  let settled = false;
   const finish = () => {
-    if (--remaining) return;
-    settle();
+    remaining--;
+    if (remaining <= 0 && !settled) {
+      settled = true;
+      settle();
+    }
   };
-  images.filter((img) => !img.complete).forEach((img) => {
+  pending.forEach((img) => {
     img.addEventListener('load', finish, { once: true });
     img.addEventListener('error', () => {
       img.style.display = 'none';
       finish();
     }, { once: true });
+    if (img.complete) {
+      finish();
+    }
   });
 }
 

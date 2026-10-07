@@ -38,15 +38,19 @@ async function loadNews(feed = state.feed, query = state.newsQuery || '') {
     setHealth('news', failed ? 'delayed' : 'ok', state.errors.news);
     renderNews();
     const status = `${state.news.length} STORIES · ${sourceCount}/${state.newsSources.length} FEEDS · ${feed === 'bulgaria' ? 'BULGARIA' : 'GLOBAL'} · ${fmtTime(state.timestamps.news)} · AUTO 3M`;
-    $('#newsStatus').textContent = status;
-    $('#leadSubhead').textContent = `${feed === 'bulgaria' ? 'БЪЛГАРИЯ' : 'GLOBAL'} HEADLINES · ${query ? 'SEARCH: ' + query.toUpperCase() : 'PUBLIC FEEDS'}`;
+    const ns = $('#newsStatus');
+    if (ns) ns.textContent = status;
+    const lsh = $('#leadSubhead');
+    if (lsh) lsh.textContent = `${feed === 'bulgaria' ? 'БЪЛГАРИЯ' : 'GLOBAL'} HEADLINES · ${query ? 'SEARCH: ' + query.toUpperCase() : 'PUBLIC FEEDS'}`;
   } catch (e) {
     if (id !== state.request.news) return;
     state.errors.news = e.message;
     setHealth('news', 'error', e.message);
     renderNews();
-    $('#newsStatus').textContent = `FEED ERROR · ${e.message} · LAST DATA RETAINED · AUTO 3M`;
-    $('#leadSubhead').textContent = 'PUBLIC FEED STATUS · LAST SUCCESSFUL HEADLINES RETAINED';
+    const ns = $('#newsStatus');
+    if (ns) ns.textContent = `FEED ERROR · ${e.message} · LAST DATA RETAINED · AUTO 3M`;
+    const lsh = $('#leadSubhead');
+    if (lsh) lsh.textContent = 'PUBLIC FEED STATUS · LAST SUCCESSFUL HEADLINES RETAINED';
     setStatus(`NEWS FEED ERROR · ${e.message}`);
   }
 }
@@ -65,9 +69,11 @@ function renderNews() {
   const focusHref = document.activeElement?.closest('a')?.href;
   const lead = $('#leadStories');
 
-  lead.innerHTML = rows.length
-    ? rows.slice(0, 8).map((x, i) => `<div tabindex="0" class="story ${i === 0 ? 'featured' : ''} ${state.selectedNews === x.url ? 'selected' : ''}" data-news-url="${esc(x.url)}"><span class="story-num">${String(i + 1).padStart(2, '0')}</span><div><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a><span class="story-meta">${esc(x.source || 'NEWS')} · ${esc(x.region || 'GLOBAL')} · ${esc(x.category || 'NEWS')}</span></div><span class="story-time">${timeAgo(x.published)}</span></div>`).join('')
-    : `<div class="empty-state">${state.errors.news ? 'NEWS SERVICE UNAVAILABLE · ' + esc(state.errors.news) : 'NO MATCHING HEADLINES · CHANGE FEED OR QUERY'}</div>`;
+  if (lead) {
+    lead.innerHTML = rows.length
+      ? rows.slice(0, 8).map((x, i) => `<div tabindex="0" class="story ${i === 0 ? 'featured' : ''} ${state.selectedNews === x.url ? 'selected' : ''}" data-news-url="${esc(x.url)}"><span class="story-num">${String(i + 1).padStart(2, '0')}</span><div><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a><span class="story-meta">${esc(x.source || 'NEWS')} · ${esc(x.region || 'GLOBAL')} · ${esc(x.category || 'NEWS')}</span></div><span class="story-time">${timeAgo(x.published)}</span></div>`).join('')
+      : `<div class="empty-state">${state.errors.news ? 'NEWS SERVICE UNAVAILABLE · ' + esc(state.errors.news) : 'NO MATCHING HEADLINES · CHANGE FEED OR QUERY'}</div>`;
+  }
 
   const visible = state.filter === 'all' ? rows
     : state.filter === 'bulgaria' ? rows.filter((x) => x.region === 'BULGARIA')
@@ -75,8 +81,10 @@ function renderNews() {
     : state.filter === 'balkans' ? rows.filter((x) => x.region === 'BALKANS')
     : rows.filter((x) => TOPIC_TERMS[state.filter]?.test(x.title) || String(x.category || '').toLowerCase() === state.filter);
 
-  $('#compactNews').innerHTML = visible.slice(0, 12).map((x) => `<div tabindex="0" class="compact-row ${state.selectedNews === x.url ? 'selected' : ''}" data-news-url="${esc(x.url)}"><span class="source">${esc((x.source || 'NEWS').slice(0, 12))}</span><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a><time>${timeAgo(x.published)}</time></div>`).join('')
-    || `<div class="empty-state">${state.errors.news ? 'PUBLIC FEED ERROR · ' + esc(state.errors.news) : 'NO HEADLINES MATCH THIS FILTER'}</div>`;
+  if (compact) {
+    compact.innerHTML = visible.slice(0, 12).map((x) => `<div tabindex="0" class="compact-row ${state.selectedNews === x.url ? 'selected' : ''}" data-news-url="${esc(x.url)}"><span class="source">${esc((x.source || 'NEWS').slice(0, 12))}</span><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a><time>${timeAgo(x.published)}</time></div>`).join('')
+      || `<div class="empty-state">${state.errors.news ? 'PUBLIC FEED ERROR · ' + esc(state.errors.news) : 'NO HEADLINES MATCH THIS FILTER'}</div>`;
+  }
 
   bindNewsRows();
   if (storyColumn) storyColumn.scrollTop = leadScroll;

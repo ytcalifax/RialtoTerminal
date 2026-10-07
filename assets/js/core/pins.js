@@ -36,8 +36,12 @@ export function loadPins() {
 
 /** Persist the pin list (one year, same-site). */
 export function savePins(pins) {
-  const value = encodeURIComponent(JSON.stringify(pins.slice(0, MAX_PINNED_SYMBOLS)));
-  document.cookie = `${PINNED_COOKIE}=${value}; max-age=31536000; path=/; SameSite=Lax`;
+  try {
+    const value = encodeURIComponent(JSON.stringify(pins.slice(0, MAX_PINNED_SYMBOLS)));
+    document.cookie = `${PINNED_COOKIE}=${value}; max-age=31536000; path=/; SameSite=Lax`;
+  } catch {
+    /* ignore cookie write errors in restricted or sandboxed environments */
+  }
 }
 
 /** Return a new list with the symbol appended (no duplicates, capped). */

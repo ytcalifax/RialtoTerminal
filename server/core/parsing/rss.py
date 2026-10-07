@@ -57,7 +57,12 @@ def rss_items(
     per feed — parse errors propagate to the caller).
     """
     body = fetch(url, "application/rss+xml, application/atom+xml, application/xml, text/xml")
-    root = ET.fromstring(body)
+    try:
+        root = ET.fromstring(body)
+    except ET.ParseError:
+        import re
+        clean_xml = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F]", "", body.decode("utf-8", "replace"))
+        root = ET.fromstring(clean_xml)
     items = [item for item in root.iter() if _tag_name(item) in _ITEM_TAGS]
 
     rows: list[dict] = []

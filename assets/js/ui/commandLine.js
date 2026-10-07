@@ -12,7 +12,7 @@ import { COMMAND_NAMES, HELP_ITEMS, MENU_ITEMS, COMMAND_PAGES, HISTORY_LIMIT } f
 import { openPage } from './navigation.js';
 import { loadNews } from '../features/news.js';
 
-const cmd = $('#command');
+const getCmd = () => $('#command');
 
 /** Activate the handler embedded in a suggestion/menu row. */
 function bindPopupCommands(box) {
@@ -81,18 +81,23 @@ function goCommand(value) {
 }
 
 /** Show prefix-matched command suggestions for the current input. */
-function showSuggestions(value = cmd.value) {
+function showSuggestions(value) {
+  const cmd = getCmd();
+  const raw = value !== undefined ? value : (cmd?.value || '');
   const box = $('#suggestions');
-  const v = value.trim().toUpperCase();
+  if (!box) return;
+  const v = raw.trim().toUpperCase();
   const list = Object.keys(COMMAND_NAMES).filter((x) => !v || x.startsWith(v));
   box.dataset.mode = 'command';
   box.innerHTML = list.map((x) => `<div class="command-option" data-command="${x}"><b>${x}</b><span>${COMMAND_NAMES[x]}</span></div>`).join('');
-  box.classList.toggle('open', document.activeElement === cmd || !v);
+  box.classList.toggle('open', (cmd && document.activeElement === cmd) || !v);
   bindPopupCommands(box);
 }
 
 /** Wire all command-line and global keyboard behaviour (call once at boot). */
 function initCommandLine() {
+  const cmd = getCmd();
+  if (!cmd) return;
   cmd.addEventListener('keydown', (e) => {
     const box = $('#suggestions');
     const opts = $$('[data-command]', box);

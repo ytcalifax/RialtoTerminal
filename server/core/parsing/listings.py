@@ -36,7 +36,7 @@ class ListingParser(HTMLParser):
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag != "a":
             return
-        href = dict(attrs).get("href", "")
+        href = dict(attrs).get("href") or ""
         path = urlparse(href).path
         if path.startswith("/obiava-"):
             self.current = {

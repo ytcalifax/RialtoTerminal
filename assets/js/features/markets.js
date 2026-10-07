@@ -147,11 +147,12 @@ const tradeUrl = (symbol) => COINBASE_SLUGS[symbol]
 
 /** Inline SVG sparkline of intraday closes; '' when no series. */
 function sparkline(series) {
-  if (!series?.length) return '';
-  const lo = Math.min(...series);
-  const hi = Math.max(...series);
+  const valid = (series || []).filter((v) => Number.isFinite(v));
+  if (valid.length < 2) return '';
+  const lo = Math.min(...valid);
+  const hi = Math.max(...valid);
   const span = hi - lo || 1;
-  const p = series.map((v, i) => `${i ? 'L' : 'M'} ${(i / (series.length - 1 || 1)) * 54} ${13 - (v - lo) / span * 11}`).join(' ');
+  const p = valid.map((v, i) => `${i ? 'L' : 'M'} ${(i / (valid.length - 1 || 1)) * 54} ${13 - (v - lo) / span * 11}`).join(' ');
   return `<svg class="spark" viewBox="0 0 54 14"><path d="${p}"/></svg>`;
 }
 
@@ -239,20 +240,27 @@ function renderMarkets() {
     $('#marketTable tbody').innerHTML = body
       || `<tr><td colspan="6" class="empty-state">${state.market.length ? 'NO PUBLIC SERIES IN ' + state.marketGroup : 'NO QUOTES RETURNED · RETRY OR CHECK SOURCE STATUS'}</td></tr>`;
   }
-  $('#marketTime').textContent = fmtTime(state.timestamps.market || Date.now());
+  const mt = $('#marketTime');
+  if (mt) mt.textContent = fmtTime(state.timestamps.market || Date.now());
 
-  $('#tickerQuotes').innerHTML = [...new Set([...state.pins.map((p) => p.symbol), ...TICKER_SYMBOLS])]
-    .map((s) => state.market.find((x) => x.symbol === s)).filter(Boolean)
-    .map((x) => `<button class="quote" data-market-symbol="${esc(x.symbol)}"><b>${esc(x.name)}</b> ${Number(x.last).toLocaleString('en-US', { maximumFractionDigits: 2 })} <em class="${x.change < 0 ? 'down' : ''}">${x.change >= 0 ? '+' : ''}${Number(x.pct).toFixed(2)}%</em></button>`).join('')
-    || 'QUOTE FEED UNAVAILABLE';
+  const tq = $('#tickerQuotes');
+  if (tq) {
+    tq.innerHTML = [...new Set([...state.pins.map((p) => p.symbol), ...TICKER_SYMBOLS])]
+      .map((s) => state.market.find((x) => x.symbol === s)).filter(Boolean)
+      .map((x) => `<button class="quote" data-market-symbol="${esc(x.symbol)}"><b>${esc(x.name)}</b> ${Number(x.last || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })} <em class="${(x.change || 0) < 0 ? 'down' : ''}">${(x.change || 0) >= 0 ? '+' : ''}${Number(x.pct || 0).toFixed(2)}%</em></button>`).join('')
+      || 'QUOTE FEED UNAVAILABLE';
+  }
 
   const sp = state.market.find((x) => x.symbol === '^GSPC');
   const line = $('#spotLine');
   if (line && sp?.series?.length) {
-    const lo = Math.min(...sp.series);
-    const hi = Math.max(...sp.series);
-    const span = hi - lo || 1;
-    line.setAttribute('d', sp.series.map((v, i) => `${i ? 'L' : 'M'} ${(i / (sp.series.length - 1 || 1)) * 280} ${72 - ((v - lo) / span) * 58}`).join(' '));
+    const valid = sp.series.filter(Number.isFinite);
+    if (valid.length >= 2) {
+      const lo = Math.min(...valid);
+      const hi = Math.max(...valid);
+      const span = hi - lo || 1;
+      line.setAttribute('d', valid.map((v, i) => `${i ? 'L' : 'M'} ${(i / (valid.length - 1 || 1)) * 280} ${72 - ((v - lo) / span) * 58}`).join(' '));
+    }
   }
 
   if (state.page === 'markets') renderFullMarketRows();

@@ -40,10 +40,11 @@ function timeAgo(raw) {
 
 /** Position age in seconds → "12m" / "5h" / "2d"; '—' when unknown. */
 function ageLabel(sec) {
-  if (sec == null) return '—';
-  return sec < 3600 ? `${Math.floor(sec / 60)}m`
-    : sec < 86400 ? `${Math.floor(sec / 3600)}h`
-    : `${Math.floor(sec / 86400)}d`;
+  if (sec == null || !Number.isFinite(Number(sec))) return '—';
+  const s = Math.max(0, Number(sec));
+  return s < 3600 ? `${Math.floor(s / 60)}m`
+    : s < 86400 ? `${Math.floor(s / 3600)}h`
+    : `${Math.floor(s / 86400)}d`;
 }
 
 export { fmtTime, newsTimestamp, timeAgo, ageLabel };

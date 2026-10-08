@@ -188,6 +188,22 @@
   box-shadow: inset 0 -2px var(--amber);
 }
 
+.function-nav > button[data-page="alerts"] {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.nav-alert-count {
+  min-width: 15px;
+  padding: 1px 4px;
+  border-radius: 8px;
+  background: #4a3820;
+  color: #f5bd57;
+  font: 9px Roboto Mono, monospace;
+  text-align: center;
+}
+
 .nav-spacer {
   flex: 1;
 }

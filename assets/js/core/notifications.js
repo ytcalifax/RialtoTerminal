@@ -58,21 +58,26 @@ function observeMarkets(items) {
 }
 
 function renderNotifications() {
-  const box = $('#notificationBox');
   const list = $('#notificationList');
-  if (!box || !list) return;
-  list.innerHTML = state.notifications.length
+  if (list) list.innerHTML = state.notifications.length
     ? state.notifications.slice(0, 12).map((x) => `<div class="notification-item"><b>${esc(x.title)}</b><span>${esc(x.detail)}</span>${x.link ? `<a href="${esc(x.link)}" target="_blank" rel="noopener">OPEN ↗</a>` : ''}</div>`).join('')
     : '<div class="notification-empty">NO ALERTS YET</div>';
-  $('#notificationCount').textContent = String(state.notifications.length);
+  const count = $('#notificationCount');
+  if (count) count.textContent = String(state.notifications.length);
+  const recent = $('#alertRecentCount');
+  if (recent) recent.textContent = `${state.notifications.length} RECENT`;
 }
 
-function renderSettings() {
+function renderAlertSettings() {
   $('#alertNews').checked = state.alertSettings.news;
   $('#alertConflict').checked = state.alertSettings.conflict;
   $('#alertMarkets').checked = state.alertSettings.markets;
-  $('#alertKeywords').value = state.alertSettings.keywords;
   $('#alertMove').value = state.alertSettings.marketMovePct;
+  const chips = $('#alertKeywordChips');
+  const terms = state.alertSettings.keywords.split(',').map((term) => term.trim()).filter(Boolean);
+  chips.innerHTML = terms.length
+    ? terms.map((term, index) => `<span class="alert-keyword-chip">${esc(term)}<button type="button" data-remove-keyword="${index}" aria-label="Remove ${esc(term)}">×</button></span>`).join('')
+    : '<span class="alert-terms-empty">No headline terms selected. All new headlines will match.</span>';
 }
 
 function initNotifications() {
@@ -85,18 +90,55 @@ function initNotifications() {
       state.alertSettings.keywords = DEFAULT_KEYWORDS;
     }
   } catch { /* use defaults when storage is unavailable */ }
-  $('#notificationToggle').onclick = () => $('#notificationBox').classList.toggle('open');
+  renderNotifications();
+}
+
+function initAlertsPage() {
+  renderAlertSettings();
+  renderNotifications();
   ['alertNews', 'alertConflict', 'alertMarkets'].forEach((id) => {
     $(`#${id}`).onchange = (e) => {
       state.alertSettings[{ alertNews: 'news', alertConflict: 'conflict', alertMarkets: 'markets' }[id]] = e.target.checked;
       saveSettings();
     };
   });
-  $('#alertKeywords').onchange = (e) => { state.alertSettings.keywords = e.target.value; saveSettings(); };
-  $('#alertMove').onchange = (e) => { state.alertSettings.marketMovePct = Number(e.target.value); saveSettings(); };
-  $('#clearNotifications').onclick = () => { state.notifications = []; renderNotifications(); };
-  renderSettings();
-  renderNotifications();
+  $('#alertKeywordChips').onclick = (event) => {
+    const button = event.target.closest('[data-remove-keyword]');
+    if (!button) return;
+    const terms = state.alertSettings.keywords.split(',').map((term) => term.trim()).filter(Boolean);
+    terms.splice(Number(button.dataset.removeKeyword), 1);
+    state.alertSettings.keywords = terms.join(', ');
+    saveSettings();
+    renderAlertSettings();
+  };
+  const addKeyword = () => {
+    const input = $('#alertKeywordAdd');
+    const term = input.value.trim();
+    if (!term) return;
+    const terms = state.alertSettings.keywords.split(',').map((value) => value.trim()).filter(Boolean);
+    if (!terms.some((value) => value.toLowerCase() === term.toLowerCase())) terms.push(term);
+    state.alertSettings.keywords = terms.join(', ');
+    saveSettings();
+    input.value = '';
+    renderAlertSettings();
+    input.focus();
+  };
+  $('#addAlertKeyword').onclick = addKeyword;
+  $('#alertKeywordAdd').onkeydown = (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      addKeyword();
+    }
+  };
+  $('#alertMove').onchange = (e) => {
+    state.alertSettings.marketMovePct = Math.max(0.1, Number(e.target.value) || 2);
+    e.target.value = state.alertSettings.marketMovePct;
+    saveSettings();
+  };
+  $('#clearNotifications').onclick = () => {
+    state.notifications = [];
+    renderNotifications();
+  };
 }
 
-export { initNotifications, observeNews, observeConflict, observeMarkets };
+export { initNotifications, initAlertsPage, observeNews, observeConflict, observeMarkets };

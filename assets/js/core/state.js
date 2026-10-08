@@ -11,7 +11,7 @@ import { loadPins } from './pins.js';
 
 const state = {
   // Navigation
-  page: 'top',            // current page: top|news|markets|ships|air|marketplace
+  page: 'top',            // current page: top|news|markets|alerts|ships|air|marketplace
   screen: '1',            // visible screen tab (1-4)
   history: [],            // command-line history (newest first)
   historyIndex: -1,       // position while browsing history

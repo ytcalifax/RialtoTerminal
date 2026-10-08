@@ -47,6 +47,7 @@ const SESSION_LABELS = {
   markets: 'MARKET MONITOR',
   ships: 'MARITIME',
   war: 'CONFLICT MONITOR',
+  alerts: 'ALERTS & TRENDS',
 };
 
 // --- Command line ---------------------------------------------------------------

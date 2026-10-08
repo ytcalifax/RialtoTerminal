@@ -3,6 +3,7 @@ import { state } from './state.js';
 
 const STORAGE_KEY = 'rialto_alert_settings_v1';
 let initialized = false;
+const HEADLINE_STOP_WORDS = new Set('a an and are as at be by for from has have in into is it its of on or our over says said the their this to up was were will with after amid new first more near'.split(' '));
 
 function saveSettings() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.alertSettings));
@@ -133,6 +134,69 @@ function renderAlertSettings() {
     : '<span class="alert-terms-empty">No headline terms selected. All new headlines will match.</span>';
 }
 
+function headlineTermSuggestions(query) {
+  const needle = query.trim().toLocaleLowerCase();
+  if (needle.length < 2) return [];
+  const counts = new Map();
+  const isTerm = (value) => {
+    const term = value.replace(/\s+/g, ' ').trim();
+    const words = term.split(' ');
+    if (term.length < 3 || words[0].length < 2 || HEADLINE_STOP_WORDS.has(words[0].toLowerCase()) || HEADLINE_STOP_WORDS.has(words.at(-1).toLowerCase())) return null;
+    return { key: term.toLocaleLowerCase(), term };
+  };
+  const addContext = (values) => {
+    const recordTerms = new Map();
+    const add = (value) => {
+      const candidate = isTerm(value);
+      if (candidate) recordTerms.set(candidate.key, candidate.term);
+    };
+    values.filter((value) => typeof value === 'string').forEach((value) => {
+      add(value);
+      const words = value.match(/[\p{L}\p{N}][\p{L}\p{N}'’.-]*/gu) || [];
+      for (let start = 0; start < words.length; start += 1) {
+        for (let length = 1; length <= 3 && start + length <= words.length; length += 1) {
+          add(words.slice(start, start + length).join(' '));
+        }
+      }
+    });
+    recordTerms.forEach((term, key) => {
+      const prior = counts.get(key);
+      counts.set(key, { term, count: (prior?.count || 0) + 1 });
+    });
+  };
+  state.news.slice(0, 100).forEach((item) => {
+    addContext([item.title, item.region, item.category]);
+  });
+  const worldMonitor = state.warWorldMonitor || {};
+  (worldMonitor.armed || []).forEach((item) => {
+    addContext([item.locationName, item.admin1, item.country, item.sideA, item.sideB, item.eventType, item.violenceType, ...(Array.isArray(item.actors) ? item.actors : [])]);
+  });
+  (worldMonitor.outages || []).forEach((item) => {
+    addContext([item.title, item.country, item.region, item.provider, item.cause, item.outageType, item.severity]);
+  });
+  (state.diseaseOutbreaks || []).forEach((item) => {
+    addContext([item.disease, item.location, item.countryCode, item.alertLevel]);
+  });
+  const selected = new Set(state.alertSettings.keywords.split(',').map((term) => term.trim().toLocaleLowerCase()).filter(Boolean));
+  return [...counts.entries()]
+    .filter(([key]) => !selected.has(key) && key.includes(needle))
+    .sort((a, b) => Number(b[0].startsWith(needle)) - Number(a[0].startsWith(needle)) || b[1].count - a[1].count || a[1].term.length - b[1].term.length)
+    .slice(0, 6)
+    .map(([key, value]) => ({ key, ...value }));
+}
+
+function renderHeadlineTermSuggestions(query, activeIndex = -1) {
+  const input = $('#alertKeywordAdd');
+  const list = $('#alertKeywordSuggestions');
+  const suggestions = headlineTermSuggestions(query);
+  list.innerHTML = suggestions.map((suggestion, index) => `<button type="button" role="option" aria-selected="${index === activeIndex}" id="headline-term-option-${index}" data-headline-term="${esc(suggestion.term)}"><span class="suggestion-term">${esc(suggestion.term)}</span><span class="suggestion-meta"><small>${suggestion.count} ${suggestion.count === 1 ? 'match' : 'matches'}</small><b>ADD ↵</b></span></button>`).join('');
+  list.hidden = !suggestions.length;
+  input.setAttribute('aria-expanded', String(suggestions.length > 0));
+  if (activeIndex >= 0 && suggestions[activeIndex]) input.setAttribute('aria-activedescendant', `headline-term-option-${activeIndex}`);
+  else input.removeAttribute('aria-activedescendant');
+  return suggestions;
+}
+
 function initNotifications() {
   if (initialized) return;
   initialized = true;
@@ -165,24 +229,57 @@ function initAlertsPage() {
     saveSettings();
     renderAlertSettings();
   };
-  const addKeyword = () => {
-    const input = $('#alertKeywordAdd');
-    const term = input.value.trim();
+  const input = $('#alertKeywordAdd');
+  let activeSuggestion = -1;
+  const hideSuggestions = () => {
+    $('#alertKeywordSuggestions').hidden = true;
+    input.setAttribute('aria-expanded', 'false');
+    input.removeAttribute('aria-activedescendant');
+    activeSuggestion = -1;
+  };
+  const addKeyword = (selectedTerm = '') => {
+    const term = (selectedTerm || input.value).trim();
     if (!term) return;
     const terms = state.alertSettings.keywords.split(',').map((value) => value.trim()).filter(Boolean);
     if (!terms.some((value) => value.toLowerCase() === term.toLowerCase())) terms.push(term);
     state.alertSettings.keywords = terms.join(', ');
     saveSettings();
     input.value = '';
+    hideSuggestions();
     renderAlertSettings();
     input.focus();
   };
   $('#addAlertKeyword').onclick = addKeyword;
-  $('#alertKeywordAdd').onkeydown = (event) => {
+  input.oninput = () => {
+    activeSuggestion = -1;
+    renderHeadlineTermSuggestions(input.value);
+  };
+  input.onblur = hideSuggestions;
+  input.onkeydown = (event) => {
+    const suggestions = headlineTermSuggestions(input.value);
+    if (event.key === 'ArrowDown' && suggestions.length) {
+      event.preventDefault();
+      activeSuggestion = (activeSuggestion + 1) % suggestions.length;
+      renderHeadlineTermSuggestions(input.value, activeSuggestion);
+      return;
+    }
+    if (event.key === 'ArrowUp' && suggestions.length) {
+      event.preventDefault();
+      activeSuggestion = activeSuggestion <= 0 ? suggestions.length - 1 : activeSuggestion - 1;
+      renderHeadlineTermSuggestions(input.value, activeSuggestion);
+      return;
+    }
     if (event.key === 'Enter') {
       event.preventDefault();
-      addKeyword();
+      addKeyword(activeSuggestion >= 0 ? suggestions[activeSuggestion]?.term : '');
+    } else if (event.key === 'Escape') {
+      hideSuggestions();
     }
+  };
+  $('#alertKeywordSuggestions').onmousedown = (event) => event.preventDefault();
+  $('#alertKeywordSuggestions').onclick = (event) => {
+    const option = event.target.closest('[data-headline-term]');
+    if (option) addKeyword(option.dataset.headlineTerm);
   };
   $('#alertMove').onchange = (e) => {
     state.alertSettings.marketMovePct = Math.max(0.1, Number(e.target.value) || 2);

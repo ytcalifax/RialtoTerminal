@@ -14,6 +14,7 @@ import urllib.request
 from http.client import HTTPMessage
 
 from ..config import MAX_RESPONSE_BYTES, UPSTREAM_TIMEOUT_S, USER_AGENT
+from .external_metrics import begin_request, finish_request
 
 
 class UpstreamError(RuntimeError):
@@ -64,10 +65,15 @@ def fetch_response(
             **(headers or {}),
         },
     )
+    metric = begin_request(url)
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            return response.read(MAX_RESPONSE_BYTES), response.headers
-    except urllib.error.HTTPError:
+            body = response.read(MAX_RESPONSE_BYTES)
+            finish_request(metric, response.status, len(body))
+            return body, response.headers
+    except urllib.error.HTTPError as exc:
+        finish_request(metric, exc.code, 0, f"HTTP {exc.code}")
         raise
     except Exception as exc:  # URLError, socket.timeout, ssl errors, ...
+        finish_request(metric, None, 0, type(exc).__name__)
         raise UpstreamError(str(exc)) from exc

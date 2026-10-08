@@ -14,6 +14,7 @@ import { $ } from './core/dom.js';
 import { on } from './core/hooks.js';
 import { state } from './core/state.js';
 import { initNotifications } from './core/notifications.js';
+import { initDebugPanel } from './core/debugPanel.js';
 
 import { openPage } from './ui/navigation.js';
 import { initChrome } from './ui/chrome.js';
@@ -61,6 +62,7 @@ on('geospatial:updated', () => renderModule());
 
 initChrome();
 initNotifications();
+initDebugPanel();
 initCommandLine();
 initNewsChrome();
 initMarketsChrome();

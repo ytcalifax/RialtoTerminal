@@ -29,6 +29,13 @@ python3 server.py
 
 Then open [http://localhost:8765](http://localhost:8765).
 
+Run `python3 server.py --debug` to log outbound API calls and show a live
+**DEBUG** panel in the header. It reports request counts, failures, elapsed
+time, and uploaded/downloaded bytes by service, plus the most recent calls.
+The panel omits query strings, headers, and request bodies. Debug metrics are
+kept in memory for the current server process and the stats endpoint is only
+available while debug mode is enabled.
+
 The World Monitor layers use its API from the local Python server. Set
 `WORLDMONITOR_API_KEY` in `.env` to enable them; the key is never sent to the
 browser. Some World Monitor endpoints require a paid entitlement, so those
@@ -80,7 +87,8 @@ The sample publishes only on the host loopback interface; put a secured
 reverse proxy in front if you need access from other devices.
 Compose reads credentials from the ignored `.env` file and passes them only to
 the container process. For direct `docker run`, pass the file with
-`--env-file .env`.
+`--env-file .env`. To run the container with diagnostics, use
+`docker compose run --service-ports rialto --debug`.
 
 ## 🧭 Workspaces
 

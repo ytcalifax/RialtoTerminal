@@ -36,7 +36,7 @@
     <header class="topline">
       <div class="brand"><h1 class="wordmark">rialto.</h1><span class="pro">TERMINAL</span></div>
       <div class="session">WORKSPACE: <b>GLOBAL MARKETS</b></div>
-      <div class="top-right"><span class="connection" id="dataConnection" data-state="loading"><i></i><span id="dataStatus">DATA FEEDS · CONNECTING</span></span><span id="clock">--:--:--</span><button class="icon-btn" id="helpBtn" title="Help (F2)">?</button></div>
+      <div class="top-right"><span class="connection" id="dataConnection" data-state="loading"><i></i><span id="dataStatus">DATA FEEDS · CONNECTING</span></span><button id="debugButton" class="debug-button" type="button" hidden title="Open external API diagnostics">DEBUG</button><span id="clock">--:--:--</span><button class="icon-btn" id="helpBtn" title="Help (F2)">?</button></div>
     </header>
     <div class="command-row">
       <button class="menu-btn" id="menuBtn">≡ MENU</button>
@@ -78,6 +78,12 @@
       </section>
     </main>
     <section id="module" class="module hidden"></section>
+    <section id="debugPanel" class="debug-panel" role="dialog" aria-label="External API diagnostics" hidden>
+      <header><div><b>EXTERNAL API DEBUG</b><span id="debugSummary">Waiting for request stats…</span></div><button id="debugClose" type="button" aria-label="Close debug panel">×</button></header>
+      <div class="debug-services-wrap"><table class="debug-services"><thead><tr><th>SERVICE</th><th>CALLS</th><th>FAIL</th><th>UP</th><th>DOWN</th><th>AVG</th><th>LAST</th></tr></thead><tbody id="debugServices"></tbody></table></div>
+      <div class="debug-recent-head">RECENT REQUESTS <small>QUERY STRINGS, HEADERS, AND BODIES ARE OMITTED</small></div>
+      <div id="debugRecent" class="debug-recent"></div>
+    </section>
     <footer class="statusbar"><span class="status-left"><b>RIA</b> TERMINAL</span><span id="statusText">Ready. Enter a function or select a workspace.</span><span class="status-right">EUR &nbsp; <b>BG</b> &nbsp; SOF</span></footer>
   </div>
   <script type="module" src="assets/js/main.js"></script>

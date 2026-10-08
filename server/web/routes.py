@@ -15,6 +15,7 @@ import re
 from collections.abc import Callable
 
 from ..services.airinfo import aircraft_info
+from ..core.external_metrics import debug_snapshot
 from ..services.conflict import disease_outbreak_snapshot, war_snapshot
 from ..services.marketplace import listing_search
 from ..services.markets.quotes import (
@@ -103,6 +104,11 @@ def _disease_outbreaks(params: Params) -> tuple[int, dict]:
     return disease_outbreak_snapshot()
 
 
+def _debug_stats(params: Params) -> tuple[int, dict]:
+    snapshot = debug_snapshot()
+    return (200, snapshot) if snapshot["enabled"] else (404, {"error": "Debug mode is disabled."})
+
+
 API_ROUTES: dict[str, RouteHandler] = {
     "/api/news": _news,
     "/api/market": _market,
@@ -116,4 +122,5 @@ API_ROUTES: dict[str, RouteHandler] = {
     "/api/air-track": _air_track,
     "/api/conficts": _conflicts,
     "/api/health/outbreaks": _disease_outbreaks,
+    "/api/debug/stats": _debug_stats,
 }

@@ -35,6 +35,7 @@ from ..config import (
     VESSELS_TTL_S,
 )
 from ..core.cache import TTLCache
+from ..core.external_metrics import begin_request, finish_request
 from ..core.http_client import fetch, fetch_response
 from ..core.pool import shared_pool
 
@@ -86,12 +87,17 @@ class _OpenSkyTokenManager:
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
                 method="POST",
             )
+            metric = begin_request(OPENSKY_TOKEN_URL, "POST", len(request.data or b""))
             try:
                 with urllib.request.urlopen(request, timeout=12) as response:
-                    data = json.loads(response.read().decode("utf-8"))
-            except urllib.error.HTTPError:
+                    body = response.read()
+                    finish_request(metric, response.status, len(body))
+                    data = json.loads(body.decode("utf-8"))
+            except urllib.error.HTTPError as exc:
+                finish_request(metric, exc.code, 0, f"HTTP {exc.code}")
                 raise
             except Exception as exc:
+                finish_request(metric, None, 0, type(exc).__name__)
                 raise RuntimeError(f"OpenSky authentication failed: {exc}") from exc
             token = data.get("access_token")
             if not token:

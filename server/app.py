@@ -6,9 +6,12 @@ Wires the route table into a threaded HTTP server. Run either as
 
 from __future__ import annotations
 
+import argparse
+from collections.abc import Sequence
 from http.server import ThreadingHTTPServer
 
 from .config import BIND_HOST, PORT
+from .core.external_metrics import set_debug_enabled
 from .web.handler import TerminalRequestHandler
 
 
@@ -23,10 +26,16 @@ def create_server() -> ThreadingHTTPServer:
     return ThreadingHTTPServer((BIND_HOST, PORT), TerminalRequestHandler)
 
 
-def main() -> None:
+def main(argv: Sequence[str] | None = None) -> None:
     """Serve until interrupted, releasing the socket cleanly on Ctrl+C."""
+    parser = argparse.ArgumentParser(description="Run the Rialto Terminal web app.")
+    parser.add_argument("--debug", action="store_true", help="log and expose outbound API request metrics")
+    args = parser.parse_args(argv)
+    set_debug_enabled(args.debug)
     server = create_server()
     print(f"Terminal UI running at http://localhost:{PORT}")
+    if args.debug:
+        print("External API metrics enabled; open the DEBUG button in the UI or /api/debug/stats.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

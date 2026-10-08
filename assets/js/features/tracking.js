@@ -14,6 +14,7 @@ import { req } from '../core/net.js';
 import { setHealth, setStatus } from '../core/status.js';
 import { emit } from '../core/hooks.js';
 import { state } from '../core/state.js';
+import { observeVessels, observeAircraft } from '../core/notifications.js';
 import { vesselTypeLabel, VESSEL_LOOKUP_URL, TRACK_REFETCH_DEBOUNCE_MS, MAX_COVERAGE_CELLS } from '../core/constants.js';
 import { clampMapZoom, mapProject, mapUnproject } from '../maps/projection.js';
 import { plotPoints, renderMapView } from '../maps/view.js';
@@ -199,6 +200,7 @@ async function loadShips() {
     const r = await req(`/api/vessels?boxes=${encodeURIComponent(boxes)}`);
     state.shipsRegion = boxes;
     state.ships = featureRows(r);
+    observeVessels(state.ships);
     state.vesselAttribution = r.attribution || {};
     state.timestamps.vessels = r.received_at ? Number(r.received_at) * 1000 : Date.now();
     setHealth('vessels', 'ok');
@@ -223,6 +225,7 @@ async function loadAir() {
     const r = await req(`/api/air?bbox=${encodeURIComponent(bbox)}`);
     state.airRegion = bbox;
     state.aircraft = aircraftRows(r);
+    observeAircraft(state.aircraft);
     state.timestamps.air = r.time ? Number(r.time) * 1000 : Date.now();
     state.errors.air = r.error || '';
     setHealth('air', r.error ? 'delayed' : 'ok', r.error || '');

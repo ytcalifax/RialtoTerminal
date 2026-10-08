@@ -2,7 +2,6 @@ import { $, esc } from './dom.js';
 import { state } from './state.js';
 
 const STORAGE_KEY = 'rialto_alert_settings_v1';
-const DEFAULT_KEYWORDS = 'Bulgaria, Balkans, Black Sea, Ukraine, Russia, NATO, EU, energy, gas, oil, Sofia';
 let initialized = false;
 
 function saveSettings() {
@@ -11,7 +10,7 @@ function saveSettings() {
 
 function addNotification(title, detail, link = '') {
   state.notifications.unshift({ id: `${Date.now()}-${Math.random()}`, title, detail, link, at: Date.now() });
-  state.notifications = state.notifications.slice(0, 40);
+  state.notifications = state.notifications.slice(0, 100);
   renderNotifications();
 }
 
@@ -21,13 +20,21 @@ function observeNews(items) {
     state.alertBaselines.news = [...current];
     return;
   }
+  const previous = state.alertBaselines.news;
+  state.alertBaselines.news = [...current];
   if (!state.alertSettings.news) return;
   const keywords = state.alertSettings.keywords.split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
-  items.filter((x) => !state.alertBaselines.news.includes(x.url)).filter((x) => {
+  items.filter((x) => !previous.includes(x.url)).filter((x) => {
     const text = `${x.title} ${x.region || ''} ${x.category || ''}`.toLowerCase();
     return !keywords.length || keywords.some((keyword) => text.includes(keyword));
   }).slice(0, 5).forEach((x) => addNotification('NEW HEADLINE', x.title, x.url));
-  state.alertBaselines.news = [...current];
+}
+
+function matchesTerms(item, terms) {
+  const needles = String(terms || '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
+  if (!needles.length) return true;
+  const text = Object.values(item).filter((x) => typeof x === 'string' || typeof x === 'number').join(' ').toLowerCase();
+  return needles.some((term) => text.includes(term));
 }
 
 function observeConflict(reports) {
@@ -38,6 +45,7 @@ function observeConflict(reports) {
   }
   if (state.alertSettings.conflict) {
     reports.filter((x) => !state.alertBaselines.conflict.includes(x.id || x.url || `${x.date}-${x.name}`))
+      .filter((x) => matchesTerms(x, state.alertSettings.conflictTerms))
       .slice(0, 5).forEach((x) => addNotification('NEW CONFLICT REPORT', `${x.name || x.location || 'Reported event'} · ${x.date || ''}`, x.url || ''));
   }
   state.alertBaselines.conflict = ids;
@@ -57,10 +65,28 @@ function observeMarkets(items) {
   state.alertBaselines.markets = snapshot;
 }
 
+function observeTracks(kind, items) {
+  const key = kind === 'vessels' ? 'vessels' : 'aircraft';
+  const previous = state.alertBaselines[key];
+  const current = items.map((x) => String(x.id));
+  if (!previous) { state.alertBaselines[key] = current; return; }
+  state.alertBaselines[key] = current;
+  if (!state.alertSettings[key]) return;
+  const terms = state.alertSettings[kind === 'vessels' ? 'vesselTerms' : 'aircraftTerms'];
+  const minimum = Number(state.alertSettings[kind === 'vessels' ? 'vesselMinSpeed' : 'aircraftMinAltitude']) || 0;
+  items.filter((x) => !previous.includes(String(x.id)))
+    .filter((x) => matchesTerms(x, terms))
+    .filter((x) => (kind === 'vessels' ? Number(x.speed) : Number(x.alt)) >= minimum)
+    .slice(0, 5).forEach((x) => addNotification(kind === 'vessels' ? 'VESSEL DETECTED' : 'AIRCRAFT DETECTED', `${x.name || x.id}${kind === 'vessels' && x.dest ? ` · ${x.dest}` : ''}`));
+}
+
+function observeVessels(items) { observeTracks('vessels', items); }
+function observeAircraft(items) { observeTracks('aircraft', items); }
+
 function renderNotifications() {
   const list = $('#notificationList');
   if (list) list.innerHTML = state.notifications.length
-    ? state.notifications.slice(0, 12).map((x) => `<div class="notification-item"><b>${esc(x.title)}</b><span>${esc(x.detail)}</span>${x.link ? `<a href="${esc(x.link)}" target="_blank" rel="noopener">OPEN ↗</a>` : ''}</div>`).join('')
+    ? state.notifications.map((x) => `<div class="notification-item"><b>${esc(x.title)}</b><span>${esc(x.detail)}</span>${x.link ? `<a href="${esc(x.link)}" target="_blank" rel="noopener">OPEN ↗</a>` : ''}<button type="button" data-remove-notification="${esc(x.id)}" aria-label="Remove alert">×</button></div>`).join('')
     : '<div class="notification-empty">NO ALERTS YET</div>';
   const count = $('#notificationCount');
   if (count) count.textContent = String(state.notifications.length);
@@ -72,7 +98,14 @@ function renderAlertSettings() {
   $('#alertNews').checked = state.alertSettings.news;
   $('#alertConflict').checked = state.alertSettings.conflict;
   $('#alertMarkets').checked = state.alertSettings.markets;
+  $('#alertVessels').checked = state.alertSettings.vessels;
+  $('#alertAircraft').checked = state.alertSettings.aircraft;
   $('#alertMove').value = state.alertSettings.marketMovePct;
+  $('#alertConflictTerms').value = state.alertSettings.conflictTerms;
+  $('#alertVesselTerms').value = state.alertSettings.vesselTerms;
+  $('#alertVesselSpeed').value = state.alertSettings.vesselMinSpeed;
+  $('#alertAircraftTerms').value = state.alertSettings.aircraftTerms;
+  $('#alertAircraftAltitude').value = state.alertSettings.aircraftMinAltitude;
   const chips = $('#alertKeywordChips');
   const terms = state.alertSettings.keywords.split(',').map((term) => term.trim()).filter(Boolean);
   chips.innerHTML = terms.length
@@ -86,9 +119,6 @@ function initNotifications() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
     state.alertSettings = { ...state.alertSettings, ...saved };
-    if (!Object.prototype.hasOwnProperty.call(saved, 'keywords')) {
-      state.alertSettings.keywords = DEFAULT_KEYWORDS;
-    }
   } catch { /* use defaults when storage is unavailable */ }
   renderNotifications();
 }
@@ -96,9 +126,9 @@ function initNotifications() {
 function initAlertsPage() {
   renderAlertSettings();
   renderNotifications();
-  ['alertNews', 'alertConflict', 'alertMarkets'].forEach((id) => {
+  ['alertNews', 'alertConflict', 'alertMarkets', 'alertVessels', 'alertAircraft'].forEach((id) => {
     $(`#${id}`).onchange = (e) => {
-      state.alertSettings[{ alertNews: 'news', alertConflict: 'conflict', alertMarkets: 'markets' }[id]] = e.target.checked;
+      state.alertSettings[{ alertNews: 'news', alertConflict: 'conflict', alertMarkets: 'markets', alertVessels: 'vessels', alertAircraft: 'aircraft' }[id]] = e.target.checked;
       saveSettings();
     };
   });
@@ -135,10 +165,28 @@ function initAlertsPage() {
     e.target.value = state.alertSettings.marketMovePct;
     saveSettings();
   };
+  const fields = {
+    alertConflictTerms: ['conflictTerms', null], alertVesselTerms: ['vesselTerms', null],
+    alertVesselSpeed: ['vesselMinSpeed', 0], alertAircraftTerms: ['aircraftTerms', null],
+    alertAircraftAltitude: ['aircraftMinAltitude', 0],
+  };
+  Object.entries(fields).forEach(([id, [key, minimum]]) => {
+    $(`#${id}`).onchange = (event) => {
+      state.alertSettings[key] = minimum === null ? event.target.value.trim() : Math.max(minimum, Number(event.target.value) || 0);
+      event.target.value = state.alertSettings[key];
+      saveSettings();
+    };
+  });
   $('#clearNotifications').onclick = () => {
     state.notifications = [];
     renderNotifications();
   };
+  $('#notificationList').onclick = (event) => {
+    const button = event.target.closest('[data-remove-notification]');
+    if (!button) return;
+    state.notifications = state.notifications.filter((item) => item.id !== button.dataset.removeNotification);
+    renderNotifications();
+  };
 }
 
-export { initNotifications, initAlertsPage, observeNews, observeConflict, observeMarkets };
+export { initNotifications, initAlertsPage, observeNews, observeConflict, observeMarkets, observeVessels, observeAircraft };

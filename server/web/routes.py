@@ -22,6 +22,7 @@ from ..services.markets.quotes import (
     quotes_for_symbols,
     search_symbols,
 )
+from ..services.markets.fuel_prices import fuel_price_snapshot
 from ..services.news.aggregator import aggregate_news
 from ..services.tracking import (
     aircraft_snapshot,
@@ -57,6 +58,10 @@ def _symbol_search(params: Params) -> tuple[int, dict]:
 
 def _quotes(params: Params) -> tuple[int, dict]:
     return 200, quotes_for_symbols(_first(params, "symbols"))
+
+
+def _fuel_prices(params: Params) -> tuple[int, dict]:
+    return 200, fuel_price_snapshot()
 
 
 def _marketplace(params: Params) -> tuple[int, dict]:
@@ -104,6 +109,7 @@ API_ROUTES: dict[str, RouteHandler] = {
     "/api/market": _market,
     "/api/symbol-search": _symbol_search,
     "/api/quotes": _quotes,
+    "/api/fuel-prices": _fuel_prices,
     "/api/marketplace": _marketplace,
     "/api/vessels": _vessels,
     "/api/vessel-track": _vessel_track,

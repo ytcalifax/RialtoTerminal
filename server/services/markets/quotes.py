@@ -32,6 +32,7 @@ from ...core.cache import TTLCache
 from ...core.http_client import fetch, fetch_response
 from ...core.pool import shared_pool
 from ...core.text import clean
+from .fuel_prices import fuel_quotes_for_symbols
 from .symbols import CORE_MARKETS, MARKET_GROUPS, SYMBOL_GROUP
 
 _QUOTE_CACHE: TTLCache[dict] = TTLCache(MARKET_TTL_S)
@@ -285,11 +286,14 @@ def quotes_for_symbols(raw: str | None) -> dict:
                 symbols.append(symbol)
             if len(symbols) >= QUOTES_MAX_SYMBOLS:
                 break
+    fuel_symbols = [symbol for symbol in symbols if symbol.startswith("FUEL-")]
+    yahoo_symbols = [symbol for symbol in symbols if symbol not in fuel_symbols]
     rows = [
         {**row, "group": "CUSTOM"}
-        for row in shared_pool().map(lambda s: _yahoo_quote(s), symbols)
+        for row in shared_pool().map(lambda s: _yahoo_quote(s), yahoo_symbols)
         if row is not None
     ]
+    rows.extend(fuel_quotes_for_symbols(fuel_symbols))
     return {
         "items": rows,
         "group": "CUSTOM",

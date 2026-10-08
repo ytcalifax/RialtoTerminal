@@ -59,6 +59,7 @@ const COMMAND_PAGES = {
   SHIP: 'ships', VESSEL: 'ships',
   AIR: 'air', FLIGHT: 'air',
   MKT: 'markets', MARKET: 'markets', MON: 'markets',
+  ALT: 'alerts', ALERTS: 'alerts',
   MPL: 'marketplace', MARKETPLACE: 'marketplace',
   CON: 'war', CONFLICT: 'war',
 };
@@ -70,6 +71,7 @@ const COMMAND_NAMES = {
   SHIP: 'Vessel Tracking',
   AIR: 'Aircraft Tracking',
   MKT: 'Market Monitor',
+  ALT: 'Alert Settings',
   MPL: 'Marketplace',
   CON: 'Conflict Monitor',
 };
@@ -79,6 +81,7 @@ const MENU_ITEMS = [
   ['TOP', 'Top News'],
   ['NEWS', 'News Search'],
   ['MKT', 'Market Monitor'],
+  ['ALT', 'Alert Settings'],
   ['SHIP', 'Vessel Tracking'],
   ['AIR', 'Aircraft Tracking'],
   ['MPL', 'Marketplace'],
@@ -92,6 +95,7 @@ const HELP_ITEMS = [
   ['SHIP', 'Vessel Tracking'],
   ['AIR', 'Aircraft Tracking'],
   ['MKT', 'Market Monitor'],
+  ['ALT', 'Alert Settings'],
   ['MPL', 'Marketplace'],
   ['CON', 'Conflict Monitor'],
 ];

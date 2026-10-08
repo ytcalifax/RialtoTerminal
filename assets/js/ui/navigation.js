@@ -48,7 +48,7 @@ function openPage(page) {
   emit('page:changed', page);
 
   const command = page === 'war' ? 'CON' : page.toUpperCase();
-  setStatus(`${command} <GO> · ${state.errors[page === 'ships' ? 'vessels' : page === 'air' ? 'air' : page] || 'public data'}`);
+  setStatus(`${command} · ${state.errors[page === 'ships' ? 'vessels' : page === 'air' ? 'air' : page] || 'public data'}`);
 }
 
 export { openPage };

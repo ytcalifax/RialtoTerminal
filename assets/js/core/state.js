@@ -27,13 +27,20 @@ const state = {
   selectedNews: '',       // URL of the highlighted headline
   notifications: [],
   alertSettings: {
-    news: true,
-    conflict: true,
-    markets: true,
-    keywords: 'Bulgaria, Balkans, Black Sea, Ukraine, Russia, NATO, EU, energy, gas, oil, Sofia',
+    news: false,
+    conflict: false,
+    markets: false,
+    vessels: false,
+    aircraft: false,
+    keywords: '',
+    conflictTerms: '',
+    vesselTerms: '',
+    vesselMinSpeed: 0,
+    aircraftTerms: '',
+    aircraftMinAltitude: 0,
     marketMovePct: 2,
   },
-  alertBaselines: { news: null, conflict: null, markets: null },
+  alertBaselines: { news: null, conflict: null, markets: null, vessels: null, aircraft: null },
   marketplace: [],        // latest marketplace listings
   marketplaceQuery: '',   // latest marketplace search
 

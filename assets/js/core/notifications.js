@@ -139,7 +139,11 @@ function headlineTermSuggestions(query) {
   if (needle.length < 2) return [];
   const counts = new Map();
   const isTerm = (value) => {
-    const term = value.replace(/\s+/g, ' ').trim();
+    const enumValue = value.includes('_') && value === value.toUpperCase();
+    const normalized = value.replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+    const term = enumValue
+      ? normalized.toLocaleLowerCase().replace(/\b\p{L}/gu, (letter) => letter.toLocaleUpperCase())
+      : normalized;
     const words = term.split(' ');
     if (term.length < 3 || words[0].length < 2 || HEADLINE_STOP_WORDS.has(words[0].toLowerCase()) || HEADLINE_STOP_WORDS.has(words.at(-1).toLowerCase())) return null;
     return { key: term.toLocaleLowerCase(), term };
@@ -249,7 +253,7 @@ function initAlertsPage() {
     renderAlertSettings();
     input.focus();
   };
-  $('#addAlertKeyword').onclick = addKeyword;
+  $('#addAlertKeyword').onclick = () => addKeyword();
   input.oninput = () => {
     activeSuggestion = -1;
     renderHeadlineTermSuggestions(input.value);

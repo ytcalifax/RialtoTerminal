@@ -14,6 +14,7 @@ import { emit } from '../core/hooks.js';
 import { state } from '../core/state.js';
 import { MARKET_GROUPS, TICKER_SYMBOLS, COINBASE_SLUGS, CUSTOM_GROUP } from '../core/constants.js';
 import { savePins, withPin, withoutPin } from '../core/pins.js';
+import { observeMarkets } from '../core/notifications.js';
 
 // --- Pinned symbols (cookie-backed dashboard favourites) --------------------
 
@@ -198,6 +199,7 @@ async function loadMarket(group = 'CORE') {
       ...previous.filter((x) => !bySymbol.has(x.symbol)).map((x) => (affectsGroup(x) ? { ...x, stale: true } : x)),
       ...bySymbol.values(),
     ];
+    observeMarkets(state.market);
     const sourceTimes = fresh.map((x) => Number(x.asof || 0)).filter(Boolean);
     state.timestamps.market = sourceTimes.length
       ? Math.max(...sourceTimes) * 1000

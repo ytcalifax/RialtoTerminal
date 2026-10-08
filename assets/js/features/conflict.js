@@ -2,6 +2,7 @@
 import { req } from '../core/net.js';
 import { emit } from '../core/hooks.js';
 import { state } from '../core/state.js';
+import { observeConflict } from '../core/notifications.js';
 
 let warBusy = false;
 async function loadWar(force = false) {
@@ -10,6 +11,7 @@ async function loadWar(force = false) {
   try {
     const data = await req('/api/war');
     state.warReports = data.reports || [];
+    observeConflict(state.warReports);
     state.warFrontline = data.frontline || [];
     state.warGpsJam = data.gpsjam || { date: '', features: [] };
     state.timestamps.war = Date.now();

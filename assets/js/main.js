@@ -13,6 +13,7 @@
 import { $ } from './core/dom.js';
 import { on } from './core/hooks.js';
 import { state } from './core/state.js';
+import { initNotifications } from './core/notifications.js';
 
 import { openPage } from './ui/navigation.js';
 import { initChrome } from './ui/chrome.js';
@@ -58,6 +59,7 @@ on('geospatial:updated', () => renderModule());
 // --- Boot -------------------------------------------------------------------
 
 initChrome();
+initNotifications();
 initCommandLine();
 initNewsChrome();
 initMarketsChrome();
@@ -66,9 +68,15 @@ loadNews();
 loadMarket();
 if (state.pins.length) loadMarket(CUSTOM_GROUP); // pin quotes feed the ticker
 loadShips();
+loadAir();
+loadWar();
+loadMarketplace();
 
 setInterval(() => loadNews(state.feed, state.newsQuery), 180000);
 setInterval(loadShips, 60000);
+setInterval(loadAir, 900000);
+setInterval(loadWar, 600000);
+setInterval(() => loadMarketplace(state.marketplaceQuery), 900000);
 setInterval(() => {
   if (state.page === 'air') loadAir();
 }, 900000);

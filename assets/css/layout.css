@@ -69,6 +69,7 @@
 }
 
 .top-right {
+  position: relative;
   margin-left: auto;
   display: flex;
   align-items: center;

@@ -42,6 +42,103 @@
   color: #fff;
 }
 
+.top-right #notificationToggle {
+  width: 48px;
+  font: 8px Roboto Mono, monospace;
+  color: #cbd2d5;
+  cursor: pointer;
+}
+
+.top-right #notificationToggle b {
+  color: #f1b33f;
+}
+
+.notification-box {
+  display: none;
+  position: absolute;
+  top: 27px;
+  right: 34px;
+  z-index: 30;
+  width: 300px;
+  padding: 8px;
+  background: #151a1d;
+  border: 1px solid #56636a;
+  box-shadow: 0 5px 10px #000;
+  color: #cbd2d5;
+  font: 9px Roboto Mono, monospace;
+}
+
+.notification-box.open {
+  display: block;
+}
+
+.notification-head {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 7px;
+  color: #f1b33f;
+}
+
+.notification-head button {
+  border: 0;
+  background: transparent;
+  color: #929da2;
+  font: inherit;
+  cursor: pointer;
+}
+
+.notification-box label {
+  display: block;
+  margin: 5px 0;
+}
+
+.notification-box input[type="text"],
+.notification-box input[type="number"],
+.notification-box input:not([type]) {
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 4px;
+  padding: 4px;
+  border: 1px solid #4b585e;
+  background: #20282c;
+  color: #dce2e4;
+  font: inherit;
+}
+
+.notification-box input[type="number"] {
+  width: 48px;
+  margin: 0 3px;
+}
+
+.notification-item {
+  padding: 7px 0;
+  border-top: 1px solid #283034;
+}
+
+.notification-item b,
+.notification-item span,
+.notification-item a {
+  display: block;
+}
+
+.notification-item b {
+  color: #f1b33f;
+}
+
+.notification-item span {
+  margin: 3px 0;
+  color: #dce2e4;
+}
+
+.notification-item a {
+  color: #78b6da;
+}
+
+.notification-empty {
+  padding-top: 8px;
+  color: #929da2;
+}
+
 /* --- Suggestions / menu / help popup ---------------------------------------- */
 
 .suggestions {

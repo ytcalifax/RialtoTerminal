@@ -25,6 +25,15 @@ const state = {
   newsSources: [],        // per-feed health statuses from the last fetch
   newsQuery: '',          // current headline search term
   selectedNews: '',       // URL of the highlighted headline
+  notifications: [],
+  alertSettings: {
+    news: true,
+    conflict: true,
+    markets: true,
+    keywords: 'Bulgaria, Balkans, Black Sea, Ukraine, Russia, NATO, EU, energy, gas, oil, Sofia',
+    marketMovePct: 2,
+  },
+  alertBaselines: { news: null, conflict: null, markets: null },
   marketplace: [],        // latest marketplace listings
   marketplaceQuery: '',   // latest marketplace search
 

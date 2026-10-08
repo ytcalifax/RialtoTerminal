@@ -361,6 +361,16 @@
   box-shadow: inset 2px 0 #f3b33e;
 }
 
+.intel-row-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.intel-row-title b { font-weight: 700; }
+.intel-row .external-indicator { flex: none; color: #f2bd53; font-size: 12px; line-height: 9px; }
+
 .intel-row span,
 .intel-row small {
   color: #879398;
@@ -390,6 +400,46 @@
   background: #ed6b49;
   box-shadow: 0 0 7px #ed6b49;
 }
+
+.war-map .map-point.war-armed { background: #fa3f4f; box-shadow: 0 0 8px #fa3f4f; }
+.war-map .map-point.war-outages { background: #42d6d2; box-shadow: 0 0 8px #42d6d2; }
+
+.event-type-filter {
+  position: relative;
+  flex: 0 0 auto;
+  color: #dce2e4;
+  font: 9px Roboto Mono, monospace;
+}
+
+.event-type-filter summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 6px 8px;
+  border: 1px solid #4b585e;
+  background: #20282c;
+}
+
+.event-type-filter summary::-webkit-details-marker { display: none; }
+.event-type-filter summary::after { content: ' ▾'; color: #f2bd53; }
+
+.event-type-options {
+  position: absolute;
+  z-index: 8;
+  top: calc(100% + 3px);
+  left: 0;
+  display: grid;
+  gap: 7px;
+  min-width: 190px;
+  padding: 9px;
+  border: 1px solid #657078;
+  background: #11191df5;
+  box-shadow: 0 5px 18px #0009;
+}
+
+.event-type-options label { display: flex; align-items: center; gap: 7px; cursor: pointer; }
+.event-type-options input { accent-color: #f2bd53; }
+.module-controls .event-type-options input { width: 13px; height: 13px; flex: 0 0 13px; padding: 0; border: 0; background: transparent; }
+
 
 .map-point-popup {
   position: absolute;

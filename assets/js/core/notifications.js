@@ -51,6 +51,25 @@ function observeConflict(reports) {
   state.alertBaselines.conflict = ids;
 }
 
+function observeDiseaseOutbreaks(outbreaks) {
+  const idFor = (item) => String(item.id || item.sourceUrl || `${item.disease}-${item.countryCode}-${item.publishedAt}`);
+  const previous = state.alertBaselines.diseaseOutbreaks;
+  const current = outbreaks.map(idFor);
+  if (!previous) {
+    state.alertBaselines.diseaseOutbreaks = current;
+    return;
+  }
+  if (state.alertSettings.diseaseOutbreaks) {
+    outbreaks.filter((item) => !previous.includes(idFor(item))).slice(0, 5).forEach((item) => {
+      const title = [item.disease, item.location].filter(Boolean).join(' · ') || 'Disease outbreak';
+      const detail = [item.alertLevel, item.sourceName, item.countryCode].filter(Boolean).join(' · ');
+      const link = typeof item.sourceUrl === 'string' && item.sourceUrl.startsWith('https://') ? item.sourceUrl : '';
+      addNotification('NEW DISEASE OUTBREAK', detail ? `${title} · ${detail}` : title, link);
+    });
+  }
+  state.alertBaselines.diseaseOutbreaks = current;
+}
+
 function observeMarkets(items) {
   const snapshot = Object.fromEntries(items.map((x) => [x.symbol, Number(x.pct)]));
   if (!state.alertBaselines.markets) {
@@ -97,6 +116,7 @@ function renderNotifications() {
 function renderAlertSettings() {
   $('#alertNews').checked = state.alertSettings.news;
   $('#alertConflict').checked = state.alertSettings.conflict;
+  $('#alertDiseaseOutbreaks').checked = state.alertSettings.diseaseOutbreaks;
   $('#alertMarkets').checked = state.alertSettings.markets;
   $('#alertVessels').checked = state.alertSettings.vessels;
   $('#alertAircraft').checked = state.alertSettings.aircraft;
@@ -130,9 +150,9 @@ function initNotifications() {
 function initAlertsPage() {
   renderAlertSettings();
   renderNotifications();
-  ['alertNews', 'alertConflict', 'alertMarkets', 'alertVessels', 'alertAircraft'].forEach((id) => {
+  ['alertNews', 'alertConflict', 'alertDiseaseOutbreaks', 'alertMarkets', 'alertVessels', 'alertAircraft'].forEach((id) => {
     $(`#${id}`).onchange = (e) => {
-      state.alertSettings[{ alertNews: 'news', alertConflict: 'conflict', alertMarkets: 'markets', alertVessels: 'vessels', alertAircraft: 'aircraft' }[id]] = e.target.checked;
+      state.alertSettings[{ alertNews: 'news', alertConflict: 'conflict', alertDiseaseOutbreaks: 'diseaseOutbreaks', alertMarkets: 'markets', alertVessels: 'vessels', alertAircraft: 'aircraft' }[id]] = e.target.checked;
       saveSettings();
     };
   });
@@ -193,4 +213,4 @@ function initAlertsPage() {
   };
 }
 
-export { initNotifications, initAlertsPage, observeNews, observeConflict, observeMarkets, observeVessels, observeAircraft };
+export { initNotifications, initAlertsPage, observeNews, observeConflict, observeDiseaseOutbreaks, observeMarkets, observeVessels, observeAircraft };

@@ -29,6 +29,8 @@ function exportText() {
       reports: state.warReports,
       frontline: state.warFrontline,
       gpsJam: state.warGpsJam,
+      worldMonitor: state.warWorldMonitor,
+      enabledTypes: state.conflictTypes,
     },
     marketplace: {
       query: state.marketplaceQuery,

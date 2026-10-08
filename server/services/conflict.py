@@ -3,29 +3,106 @@
 from __future__ import annotations
 
 import csv
+from concurrent.futures import ThreadPoolExecutor
 import io
 import json
+import os
 import re
 import time
 import zipfile
 from datetime import datetime, timezone
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 
 from ..core.cache import TTLCache
-from ..core.http_client import fetch
+from ..core.http_client import fetch, fetch_response
 from ..core.pool import shared_pool
 
 _WAR_TTL_S = 600
 _war_cache: TTLCache[dict] = TTLCache(_WAR_TTL_S, max_entries=2)
+_outbreak_cache: TTLCache[dict] = TTLCache(_WAR_TTL_S, max_entries=1)
 _gpsjam_cache: TTLCache[dict] = TTLCache(3600, max_entries=1)
 
 _GDELT_MANIFEST_URL = "https://data.gdeltproject.org/gdeltv2/lastupdate.txt"
 _FRONTLINE_URL = (
-    "https://gis.unocha.org/server/rest/services/UKR_HNS_Front_Line_Overlap_MIL1/"
-    "MapServer/0/query?where=1%3D1&outFields=Source,Date&returnGeometry=true&"
+    "https://gis.unocha.org/server/rest/services/Hosted/UKR_Front_Line/"
+    "FeatureServer/0/query?where=1%3D1&outFields=source,date&returnGeometry=true&"
     "outSR=4326&f=geojson"
 )
 _GPSJAM_MANIFEST_URL = "https://gpsjam.org/data/manifest.csv"
+_WORLDMONITOR_API = "https://api.worldmonitor.app"
+
+
+def _worldmonitor_json(path: str, params: dict[str, str] | None = None) -> dict:
+    """Read one World Monitor API resource with the locally configured key."""
+    key = os.environ.get("WORLDMONITOR_API_KEY", "").strip()
+    if not key:
+        raise ValueError("WORLDMONITOR_API_KEY is not configured")
+    query = f"?{urlencode(params)}" if params else ""
+    body, _ = fetch_response(
+        f"{_WORLDMONITOR_API}{path}{query}",
+        "application/json",
+        headers={"X-WorldMonitor-Key": key},
+    )
+    result = json.loads(body)
+    if not isinstance(result, dict):
+        raise ValueError("World Monitor returned an invalid payload")
+    return result
+
+
+def _worldmonitor_layers() -> dict:
+    """Fetch the conflict-map layers independently so one tier failure degrades gracefully."""
+    def read(name: str, path: str, key: str, params: dict[str, str] | None = None) -> tuple[str, list]:
+        try:
+            payload = _worldmonitor_json(path, params)
+            items = payload.get(key, [])
+            if not isinstance(items, list):
+                raise ValueError("unexpected response shape")
+            return name, items
+        except Exception:
+            return name, []
+
+    with ThreadPoolExecutor(max_workers=3, thread_name_prefix="worldmonitor") as pool:
+        jobs = {
+            "ucdp": pool.submit(read, "ucdp", "/api/conflict/v1/list-ucdp-events", "events"),
+            "acled": pool.submit(read, "acled", "/api/conflict/v1/list-acled-events", "events"),
+            "outages": pool.submit(read, "outages", "/api/infrastructure/v1/list-internet-outages", "outages"),
+        }
+        layers = {name: future.result()[1] for name, future in jobs.items()}
+    layers["armed"] = [
+        {**event, "source": "UCDP"}
+        for event in layers["ucdp"]
+    ] + [
+        {**event, "source": "ACLED"}
+        for event in layers["acled"]
+    ]
+    layers["configured"] = bool(os.environ.get("WORLDMONITOR_API_KEY", "").strip())
+    layers["source"] = "World Monitor API"
+    layers["updated_at"] = int(time.time())
+    return layers
+
+
+def disease_outbreak_snapshot() -> tuple[int, dict]:
+    """Return recent World Monitor disease alerts, with a stale fallback."""
+    cached = _outbreak_cache.get("latest")
+    if cached is not None:
+        return 200, cached
+    stale = _outbreak_cache.get_entry("latest")
+    try:
+        payload = _worldmonitor_json("/api/health/v1/list-disease-outbreaks")
+        outbreaks = payload.get("outbreaks", [])
+        if not isinstance(outbreaks, list):
+            raise ValueError("World Monitor returned an invalid outbreak list")
+        result = {
+            "outbreaks": [item for item in outbreaks if isinstance(item, dict)],
+            "source": "World Monitor API",
+            "updated_at": int(time.time()),
+        }
+        _outbreak_cache.store("latest", result)
+        return 200, result
+    except Exception:
+        if stale is not None:
+            return 200, {**stale.value, "stale": True}
+        return 200, {"outbreaks": [], "partial": True, "source": "World Monitor API"}
 
 
 def _features(data: object) -> list[dict]:
@@ -54,13 +131,16 @@ def _conflict_events() -> list[dict]:
             continue
         try:
             event_day = datetime.strptime(row[1], "%Y%m%d").date()
-            lat, lon = float(row[56]), float(row[57])
         except (ValueError, IndexError):
             continue
-        if event_day.toordinal() < cutoff or not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        if event_day.toordinal() < cutoff:
             continue
-        if lat == 0 and lon == 0:
-            continue
+        try:
+            lat, lon = float(row[56]), float(row[57])
+            if not (-90 <= lat <= 90 and -180 <= lon <= 180) or (lat == 0 and lon == 0):
+                lat, lon = None, None
+        except (ValueError, IndexError):
+            lat, lon = None, None
         url = row[60]
         domain = urlsplit(url).hostname or "GDELT"
         actors = " vs ".join(actor for actor in (row[6], row[16]) if actor)
@@ -74,7 +154,8 @@ def _conflict_events() -> list[dict]:
             "geores": int(row[51]) if row[51].isdigit() else 0,
             "event_date": event_day.isoformat(),
         }
-        results.append({"type": "Feature", "geometry": {"type": "Point", "coordinates": [lon, lat]}, "properties": props})
+        geometry = {"type": "Point", "coordinates": [lon, lat]} if lat is not None and lon is not None else None
+        results.append({"type": "Feature", "geometry": geometry, "properties": props})
         if len(results) >= 250:
             break
     return results
@@ -163,12 +244,14 @@ def war_snapshot() -> tuple[int, dict]:
         reports_future = pool.submit(_conflict_events)
         front_future = pool.submit(_read_frontline)
         gpsjam_future = pool.submit(_read_gpsjam)
+        wm_future = pool.submit(_worldmonitor_layers)
         try:
             reports = reports_future.result()
         except Exception:
             reports = []
         front = front_future.result()
         gpsjam = gpsjam_future.result()
+        worldmonitor = wm_future.result()
         report_features = reports if isinstance(reports, list) else []
         frontline_features = _features(front)
         if not report_features and not frontline_features:
@@ -177,8 +260,9 @@ def war_snapshot() -> tuple[int, dict]:
             "source": "GDELT Event Database",
             "reports": report_features,
             "frontline": frontline_features,
-            "frontline_source": "UN OCHA Ukraine Front Line layer",
+            "frontline_source": "UN OCHA / ISW & CTP Ukraine Front Line",
             "gpsjam": gpsjam or {"date": "", "source": "GPSJam", "features": []},
+            "worldmonitor": worldmonitor,
             "partial": not report_features or not frontline_features or gpsjam is None,
             "updated_at": int(time.time()),
         }

@@ -8,6 +8,7 @@
  */
 
 import { loadPins } from './pins.js';
+import { loadConflictTypes } from './conflictFilters.js';
 
 const state = {
   // Navigation
@@ -29,6 +30,7 @@ const state = {
   alertSettings: {
     news: false,
     conflict: false,
+    diseaseOutbreaks: false,
     markets: false,
     vessels: false,
     aircraft: false,
@@ -40,7 +42,7 @@ const state = {
     aircraftMinAltitude: 0,
     marketMovePct: 2,
   },
-  alertBaselines: { news: null, conflict: null, markets: null, vessels: null, aircraft: null },
+  alertBaselines: { news: null, conflict: null, diseaseOutbreaks: null, markets: null, vessels: null, aircraft: null },
   marketplace: [],        // latest marketplace listings
   marketplaceQuery: '',   // latest marketplace search
 
@@ -63,9 +65,13 @@ const state = {
   warReports: [],
   warFrontline: [],
   warGpsJam: { date: '', features: [] },
+  warShowFrontline: true,
+  warShowGpsJam: false,
+  warWorldMonitor: { armed: [], outages: [], configured: false },
+  diseaseOutbreaks: [],
   warSelectedId: null,
   conflictQuery: '',
-  conflictType: 'ALL',
+  conflictTypes: loadConflictTypes(),
   shipsRegion: null,      // last fetched vessel region: 'minLat,minLon,maxLat,maxLon'
   airRegion: null,        // last fetched aircraft region: 'minLat,minLon,maxLat,maxLon'
   vesselAttribution: {},  // AIS source credits from the snapshot payload

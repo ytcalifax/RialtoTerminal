@@ -77,7 +77,7 @@ function renderMapView(map) {
     const py = p.y - center.y + h / 2;
     if (px < -8 || px > w + 8 || py < -8 || py > h + 8) return '';
     const index = visible.push(x) - 1;
-    return `<button class="map-point ${map._air ? 'air' : ''} ${state.selectedTrack?.id === x.id || map._selectedPointId === x.id ? 'selected' : ''}" style="position:absolute;left:${px}px;top:${py}px" title="${esc(x.name)} · ${esc(x.id)}" aria-label="Select ${esc(x.name)}" data-index="${index}"></button>`;
+    return `<button class="map-point ${map._air ? 'air' : ''} ${map.dataset.mapKind === 'war' ? `war-${esc(x.category || 'reports')}` : ''} ${state.selectedTrack?.id === x.id || map._selectedPointId === x.id ? 'selected' : ''}" style="position:absolute;left:${px}px;top:${py}px" title="${esc(x.name)} · ${esc(x.id)}" aria-label="Select ${esc(x.name)}" data-index="${index}"></button>`;
   }).join('');
   map._visibleTracks = visible;
   map.dataset.trackIds = visible.map((x) => x.id).join('|');

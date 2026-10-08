@@ -15,7 +15,7 @@ import re
 from collections.abc import Callable
 
 from ..services.airinfo import aircraft_info
-from ..services.conflict import war_snapshot
+from ..services.conflict import disease_outbreak_snapshot, war_snapshot
 from ..services.marketplace import listing_search
 from ..services.markets.quotes import (
     market_snapshot,
@@ -95,8 +95,12 @@ def _air_track(params: Params) -> tuple[int, dict]:
     return aircraft_track(icao24)
 
 
-def _war(params: Params) -> tuple[int, dict]:
+def _conflicts(params: Params) -> tuple[int, dict]:
     return war_snapshot()
+
+
+def _disease_outbreaks(params: Params) -> tuple[int, dict]:
+    return disease_outbreak_snapshot()
 
 
 API_ROUTES: dict[str, RouteHandler] = {
@@ -110,5 +114,6 @@ API_ROUTES: dict[str, RouteHandler] = {
     "/api/air": _air,
     "/api/air-info": _air_info,
     "/api/air-track": _air_track,
-    "/api/war": _war,
+    "/api/conficts": _conflicts,
+    "/api/health/outbreaks": _disease_outbreaks,
 }

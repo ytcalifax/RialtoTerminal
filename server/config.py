@@ -6,6 +6,28 @@ bottom of the dependency graph.
 """
 
 import os
+from pathlib import Path
+
+
+def _load_local_env() -> None:
+    """Load simple KEY=VALUE settings from the ignored project .env file."""
+    try:
+        lines = (Path(__file__).resolve().parents[1] / ".env").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name, value = line.split("=", 1)
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        if name.strip():
+            os.environ.setdefault(name.strip(), value)
+
+
+_load_local_env()
 
 # --- HTTP server -----------------------------------------------------------
 PORT = int(os.environ.get("RIALTO_PORT", "8765"))
@@ -62,16 +84,12 @@ OPENSKY_TOKEN_URL = (
 )
 
 
-OPENSKY_CREDENTIALS = (
-    ("trayanovboris-api-client", "0ykN6iWiGILvfaTG0cDnaAx2Bcb6t6cf"),
-    (
-        "ohemaaaboate.ng4@gmail.com-api-client",
-        "6UoGYocB6Kr7olPAGj66OxD1TBlvvAvP",
-    ),
-    (
-        "ana.ndaal.len370@gmail.com-api-client",
-        "zFTC3VGF6MUi2GOHczXXgdKjPt4WSjt7",
-    ),
+OPENSKY_CREDENTIALS = tuple(
+    (client_id, client_secret)
+    for entry in os.environ.get("OPENSKY_CREDENTIALS", "").split(";")
+    if ":" in entry
+    for client_id, client_secret in (entry.split(":", 1),)
+    if client_id.strip() and client_secret.strip()
 )
 ADSBDB_URL = "https://api.adsbdb.com/v0"
 BAZAR_LISTINGS_URL = "https://bazar.bg/obiavi"

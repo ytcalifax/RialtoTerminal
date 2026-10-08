@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import cast
 from urllib.parse import parse_qs, urlparse
 
+from ..core.logging_config import logger
 from .routes import API_ROUTES
 
 # server/web/handler.py -> server/ -> project root (holds index.html, assets/).
@@ -31,6 +32,10 @@ class TerminalRequestHandler(SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         super().end_headers()
+
+    def log_message(self, format: str, *args) -> None:
+        """Keep stdlib HTTP access logs in the shared application format."""
+        logger.info("http.client=%s %s", self.address_string(), format % args)
 
     def send_json(self, payload: dict, status: int = 200) -> None:
         """Serialize ``payload`` as UTF-8 JSON with explicit length."""

@@ -118,7 +118,11 @@ function initNotifications() {
   initialized = true;
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    const hadFuelSettings = Object.prototype.hasOwnProperty.call(saved, 'fuelWatches') || Object.prototype.hasOwnProperty.call(saved, 'fuelMovePct');
+    delete saved.fuelWatches;
+    delete saved.fuelMovePct;
     state.alertSettings = { ...state.alertSettings, ...saved };
+    if (hadFuelSettings) saveSettings();
   } catch { /* use defaults when storage is unavailable */ }
   renderNotifications();
 }

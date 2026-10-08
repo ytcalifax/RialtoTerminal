@@ -49,8 +49,6 @@ YAHOO_CHART_URL = (
     "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?range=1d&interval=1m"
 )
 YAHOO_SEARCH_URL = "https://query1.finance.yahoo.com/v1/finance/search?q={query}&quotesCount=8&newsCount=0"
-FUEL_PRICES_URL = "https://www.fuel-prices.eu/live/api.php?action=summary"
-FUEL_PRICES_TTL_S = 3600  # national averages refresh from 30 min to daily
 SEARCH_TTL_S = 3600
 QUOTES_MAX_SYMBOLS = 12
 BSE_SOFIX_URL = "https://www.bse-sofia.bg/en/indices/sofix"

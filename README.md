@@ -84,7 +84,7 @@ Keyboard shortcuts: `/` focuses the command line, `F2` opens help, `↑` and `�
 
 ## 🔌 Data Sources
 
-Rialto reads public data from Yahoo Finance, the Bulgarian Stock Exchange, publisher RSS feeds and Google News, OpenSky, Open Waters AIS, ADSBDB aircraft enrichment, Bazar.bg, GDELT, UN OCHA, and GPSJam. Coverage, update timing, and available fields depend on each provider. Market quotes may be delayed or indicative; the app does not place orders.
+Rialto reads public data from Yahoo Finance, the Bulgarian Stock Exchange, publisher RSS feeds and Google News, OpenSky, Open Waters AIS, ADSBDB aircraft enrichment, Bazar.bg, GDELT, UN OCHA, and GPSJam. Coverage, update timing, and available fields depend on each provider. The app does not place orders.
 
 The SHIP map marks major maritime chokepoints and counts loaded AIS positions within 25 nautical miles of each marker. Counts depend on receiver coverage and the currently loaded map area; they are not a global traffic census. The CON workspace combines GDELT’s 15-minute coded event export, the UN OCHA Ukraine front-line layer, and GPSJam’s latest daily H3 hex data. GPSJam aggregates aircraft-reported navigation accuracy over 24 hours; the hexes indicate possible interference, not verified jammer locations. GDELT event locations and actor names are derived from reporting, not verified live positions for units or equipment. Front-line recency follows OCHA’s published date.
 

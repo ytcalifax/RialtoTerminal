@@ -20,14 +20,20 @@ export function loadPins() {
     if (!Array.isArray(raw)) return [];
     const pins = [];
     const seen = new Set();
+    let removedFuelPins = false;
     for (const entry of raw) {
       if (!entry || !SYMBOL_RE.test(String(entry.symbol || ''))) continue;
       const symbol = String(entry.symbol).toUpperCase();
+      if (symbol.startsWith('FUEL-')) {
+        removedFuelPins = true;
+        continue;
+      }
       if (seen.has(symbol)) continue;
       seen.add(symbol);
       pins.push({ symbol, name: String(entry.name || symbol).slice(0, 60) });
       if (pins.length >= MAX_PINNED_SYMBOLS) break;
     }
+    if (removedFuelPins) savePins(pins);
     return pins;
   } catch {
     return [];

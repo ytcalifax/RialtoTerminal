@@ -96,6 +96,7 @@ function syncDashboardCustomTab() {
     btn.dataset.marketGroup = CUSTOM_GROUP;
     btn.textContent = '★ CUSTOM';
     tabs.insertBefore(btn, tabs.querySelector('.right'));
+    bindMarketGroups();
   } else if (!state.pins.length && btn) {
     btn.remove();
   }
@@ -334,7 +335,7 @@ function renderFullMarketRows() {
   const selected = state.market.find((x) => x.symbol === state.selectedInstrument);
   if (detail) {
     detail.textContent = selected
-      ? `${selected.name} · ${selected.symbol} · LAST ${Number(selected.last).toLocaleString('en-US')} · ${selected.pct >= 0 ? '+' : ''}${Number(selected.pct).toFixed(2)}% · ${selected.source || 'YAHOO FINANCE'} · ${selected.stale ? 'CARRIED FORWARD · ' : ''}INDICATIVE / DELAYED`
+      ? `${selected.name} · ${selected.symbol} · LAST ${Number(selected.last).toLocaleString('en-US')}${selected.pct == null ? '' : ` · ${selected.pct >= 0 ? '+' : ''}${Number(selected.pct).toFixed(2)}%`} · ${selected.source || 'YAHOO FINANCE'}${selected.stale ? ' · CARRIED FORWARD' : ''}`
       : 'Select instrument row for quote detail. External links open quote pages; no order routing.';
   }
 

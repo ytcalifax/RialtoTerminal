@@ -7,7 +7,7 @@
  *
  * Poll schedule (matches the source data rhythms):
  *   news 3 min · vessels 60 s · aircraft 15 min while visible ·
- *   markets 60 s (STOCKS group 4 min: 150-symbol Yahoo bursts) ·
+ *   markets 5 min (STOCKS group 10 min: 150-symbol Yahoo bursts) ·
  *   marketplace 15 min while visible · conflict 10 min
  */
 import { $ } from './core/dom.js';
@@ -83,11 +83,11 @@ setInterval(() => {
 setInterval(() => {
   if (state.page === 'war') loadWar();
 }, 600000);
-// Markets poll: fresh quotes every minute. The 150-symbol STOCKS group is
-// throttled to every 4 min — Yahoo rate-limits per-request bursts, and one
-// snapshot of that group is 150 requests.
+// Yahoo's chart URL accepts one symbol per request. Keep the useful intraday
+// snapshot while limiting each symbol to one upstream refresh per 5 min;
+// the much larger STOCKS tab refreshes every 10 min.
 const marketPollDelayMs = () =>
-  state.page === 'markets' && state.marketGroup === 'STOCKS' ? 240000 : 60000;
+  state.page === 'markets' && state.marketGroup === 'STOCKS' ? 600000 : 300000;
 (function pollMarkets() {
   setTimeout(() => {
     const group = state.page === 'markets'

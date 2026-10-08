@@ -494,6 +494,16 @@
   font: 9px Roboto Mono, monospace;
 }
 
+.mini-tabs button small {
+  color: #647176;
+  font: 7px Roboto Mono, monospace;
+}
+
+.mini-tabs button.active small,
+.mini-tabs button:hover small {
+  color: #c79b4d;
+}
+
 .mini-tabs button:hover,
 .mini-tabs button.active {
   color: #f0b344;

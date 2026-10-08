@@ -20,7 +20,7 @@ USER_AGENT = "Mozilla/5.0 (compatible; RialtoTerminal/1.0)"
 
 # --- Cache lifetimes (seconds) ---------------------------------------------
 NEWS_TTL_S = 120  # publisher feeds are polled every 3 min by the UI
-MARKET_TTL_S = 60  # per-symbol quotes; UI polls every 60 s for freshness
+MARKET_TTL_S = 300  # per-symbol quotes; limits Yahoo refreshes to one per 5 min
 MARKET_STALE_AFTER_S = 86400  # older quotes are retained but explicitly stale
 SOFIX_TTL_S = 180  # BSE labels the index widget 3 min delayed
 

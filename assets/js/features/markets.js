@@ -21,13 +21,42 @@ import { observeMarkets } from '../core/notifications.js';
 /** Mini-tabs markup: universe groups + the ★ CUSTOM tab when pins exist. */
 function marketGroupTabsHTML() {
   const tabs = MARKET_GROUPS
-    .map(([id, label]) => `<button data-market-group="${id}" class="${state.marketGroup === id ? 'active' : ''}">${label}</button>`)
+    .map(([id, label]) => `<button data-market-group="${id}" class="${state.marketGroup === id ? 'active' : ''}">${label} <small data-market-delay="${id}">AVG —</small></button>`)
     .join('');
   const custom = state.pins.length
-    ? `<button data-market-group="${CUSTOM_GROUP}" class="${state.marketGroup === CUSTOM_GROUP ? 'active' : ''}">★ CUSTOM</button>`
+    ? `<button data-market-group="${CUSTOM_GROUP}" class="${state.marketGroup === CUSTOM_GROUP ? 'active' : ''}">★ CUSTOM <small data-market-delay="${CUSTOM_GROUP}">AVG —</small></button>`
     : '';
   return tabs + custom;
 }
+
+/** Show the average age of each group's latest quote beside its tab. */
+function updateMarketTabDelays() {
+  $$('[data-market-group]').forEach((button) => {
+    const group = button.dataset.marketGroup;
+    const ages = state.market
+      .filter((row) => row.group === group && Number.isFinite(Number(row.asof)) && Number(row.asof) > 0)
+      .map((row) => Math.max(0, Date.now() / 1000 - Number(row.asof)));
+    const average = ages.length ? ages.reduce((sum, age) => sum + age, 0) / ages.length : null;
+    let label = 'AVG —';
+    if (average != null) {
+      const seconds = Math.round(average);
+      label = seconds < 60 ? `AVG ${seconds}s`
+        : seconds < 3600 ? `AVG ${Math.round(seconds / 60)}m`
+          : `AVG ${Math.floor(seconds / 3600)}h ${Math.round((seconds % 3600) / 60)}m`;
+    }
+    const delay = button.querySelector('[data-market-delay]');
+    if (delay) delay.textContent = label;
+    else {
+      const node = document.createElement('small');
+      node.dataset.marketDelay = group;
+      node.textContent = label;
+      button.append(' ', node);
+    }
+    button.title = average == null ? 'Average quote delay unavailable' : `Average quote delay: ${label.slice(4)}`;
+  });
+}
+
+setInterval(updateMarketTabDelays, 30000);
 
 let lastSearchResults = null;
 let lastSearchQuotes = {};
@@ -236,6 +265,7 @@ async function loadMarket(group = 'CORE') {
 
 /** Repaint the dashboard market table, ticker strip and spot chart. */
 function renderMarkets() {
+  updateMarketTabDelays();
   const scroller = $('.market-table-wrap');
   const scrollTop = scroller?.scrollTop || 0;
   const active = document.activeElement?.closest('#tickerQuotes [data-market-symbol],#marketTable [data-market-symbol]');
@@ -298,7 +328,7 @@ function renderFullMarketRows() {
 
   const status = $('#marketRowsMeta');
   const expected = state.marketGroupExpected?.[state.marketGroup] || groupRows.length;
-  if (status) status.textContent = `${rows.length}${q ? ' MATCHES' : ' QUOTES'} · ${groupRows.length}/${expected} ${state.marketGroup} · AS OF ${fmtTime(state.timestamps.market)} · AUTO 1M · 1 MIN BARS${state.errors.market ? ' · ' + state.errors.market : ''}`;
+  if (status) status.textContent = `${rows.length}${q ? ' MATCHES' : ' QUOTES'} · ${groupRows.length}/${expected} ${state.marketGroup} · AS OF ${fmtTime(state.timestamps.market)} · AUTO 5M${state.errors.market ? ' · ' + state.errors.market : ''}`;
 
   const detail = $('#instrumentDetail');
   const selected = state.market.find((x) => x.symbol === state.selectedInstrument);

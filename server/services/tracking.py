@@ -16,12 +16,17 @@ import math
 import threading
 import time
 import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import datetime, timedelta
 from urllib.parse import urlencode
 
 from ..config import (
     AIR_SNAPSHOT_TTL_S,
     DEFAULT_VESSELS_BBOX,
+    OPENSKY_CREDENTIALS,
     OPENSKY_STATES_URL,
+    OPENSKY_TOKEN_URL,
     OPENSKY_TRACKS_URL,
     OPENWATERS_TRACK_URL,
     OPENWATERS_VESSELS_URL,
@@ -30,7 +35,7 @@ from ..config import (
     VESSELS_TTL_S,
 )
 from ..core.cache import TTLCache
-from ..core.http_client import fetch
+from ..core.http_client import fetch, fetch_response
 from ..core.pool import shared_pool
 
 # Default home region: lat_min,lon_min,lat_max,lon_max.
@@ -48,6 +53,78 @@ _air_request_lock = threading.Lock()
 _last_air_request = 0.0
 
 
+class _OpenSkyTokenManager:
+    """Cache the OAuth2 client-credentials token until shortly before expiry."""
+
+    def __init__(self, client_id: str, client_secret: str) -> None:
+        self._client_id = client_id
+        self._client_secret = client_secret
+        self._token: str | None = None
+        self._expires_at: datetime | None = None
+        self._lock = threading.Lock()
+
+    def get_token(self, force_refresh: bool = False) -> str | None:
+        with self._lock:
+            if (
+                not force_refresh
+                and self._token
+                and self._expires_at
+                and datetime.now() < self._expires_at
+            ):
+                return self._token
+            if not self._client_id or not self._client_secret:
+                return None
+            request = urllib.request.Request(
+                OPENSKY_TOKEN_URL,
+                data=urllib.parse.urlencode(
+                    {
+                        "grant_type": "client_credentials",
+                        "client_id": self._client_id,
+                        "client_secret": self._client_secret,
+                    }
+                ).encode(),
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(request, timeout=12) as response:
+                    data = json.loads(response.read().decode("utf-8"))
+            except urllib.error.HTTPError:
+                raise
+            except Exception as exc:
+                raise RuntimeError(f"OpenSky authentication failed: {exc}") from exc
+            token = data.get("access_token")
+            if not token:
+                raise RuntimeError("OpenSky authentication returned no access token")
+            expires_in = max(1, int(data.get("expires_in", 1800)) - 30)
+            self._token = token
+            self._expires_at = datetime.now() + timedelta(seconds=expires_in)
+            return token
+
+    def invalidate(self) -> None:
+        with self._lock:
+            self._token = None
+            self._expires_at = None
+
+
+_air_tokens = [
+    _OpenSkyTokenManager(client_id, client_secret)
+    for client_id, client_secret in OPENSKY_CREDENTIALS
+]
+if not _air_tokens:
+    _air_tokens = [_OpenSkyTokenManager("", "")]
+_air_token_index = 0
+_air_token_index_lock = threading.Lock()
+
+
+def _next_air_token_manager() -> _OpenSkyTokenManager:
+    global _air_token_index
+    with _air_token_index_lock:
+        manager = _air_tokens[_air_token_index]
+        _air_token_index = (_air_token_index + 1) % len(_air_tokens)
+        return manager
+
+
 def _fetch_air_source(url: str) -> bytes:
     """Serialize OpenSky calls and keep them at or below one request/second."""
     global _last_air_request
@@ -56,7 +133,21 @@ def _fetch_air_source(url: str) -> bytes:
         if wait > 0:
             time.sleep(wait)
         _last_air_request = time.monotonic()
-        return fetch(url, _JSON_ACCEPT)
+        token_manager = _next_air_token_manager()
+        token = token_manager.get_token()
+        headers = {"Authorization": f"Bearer {token}"} if token else None
+        try:
+            return fetch_response(url, _JSON_ACCEPT, headers=headers)[0]
+        except urllib.error.HTTPError as exc:
+            if exc.code != 401 or not token:
+                raise
+            token_manager.invalidate()
+            refreshed = token_manager.get_token(force_refresh=True)
+            return fetch_response(
+                url,
+                _JSON_ACCEPT,
+                headers={"Authorization": f"Bearer {refreshed}"},
+            )[0]
 
 
 def _parse_bbox(raw: str | None, max_area: float | None = VESSELS_MAX_SQ_DEG) -> str:

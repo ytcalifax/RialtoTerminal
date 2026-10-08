@@ -55,6 +55,23 @@ OPENWATERS_VESSELS_URL = "https://ais.openwaters.io/v1/vessels?bbox={bbox}"
 OPENWATERS_TRACK_URL = "https://ais.openwaters.io/v1/vessels/{mmsi}/track"
 OPENSKY_TRACKS_URL = "https://opensky-network.org/api/tracks/all"
 OPENSKY_STATES_URL = "https://opensky-network.org/api/states/all"
+OPENSKY_TOKEN_URL = (
+    "https://auth.opensky-network.org/auth/realms/opensky-network"
+    "/protocol/openid-connect/token"
+)
+
+
+OPENSKY_CREDENTIALS = (
+    ("trayanovboris-api-client", "0ykN6iWiGILvfaTG0cDnaAx2Bcb6t6cf"),
+    (
+        "ohemaaaboate.ng4@gmail.com-api-client",
+        "6UoGYocB6Kr7olPAGj66OxD1TBlvvAvP",
+    ),
+    (
+        "ana.ndaal.len370@gmail.com-api-client",
+        "zFTC3VGF6MUi2GOHczXXgdKjPt4WSjt7",
+    ),
+)
 ADSBDB_URL = "https://api.adsbdb.com/v0"
 BAZAR_LISTINGS_URL = "https://bazar.bg/obiavi"
 GOOGLE_NEWS_SEARCH_URL = "https://news.google.com/rss/search"

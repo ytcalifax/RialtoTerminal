@@ -45,6 +45,7 @@ def fetch_response(
     url: str,
     accept: str = "*/*",
     timeout: float = UPSTREAM_TIMEOUT_S,
+    headers: dict[str, str] | None = None,
 ) -> tuple[bytes, HTTPMessage]:
     """Like :func:`fetch` but also returns the response headers.
 
@@ -56,7 +57,12 @@ def fetch_response(
         raise UpstreamError(f"Refused non-HTTP upstream scheme: {scheme!r}")
 
     request = urllib.request.Request(
-        url, headers={"User-Agent": USER_AGENT, "Accept": accept}
+        url,
+        headers={
+            "User-Agent": USER_AGENT,
+            "Accept": accept,
+            **(headers or {}),
+        },
     )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:

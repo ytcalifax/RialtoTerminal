@@ -5,6 +5,7 @@ import { $, $$ } from '../core/dom.js';
 import { state } from '../core/state.js';
 import { SCREEN_BY_PAGE } from '../core/constants.js';
 import { openPage } from './navigation.js';
+import { copyCurrentData } from '../core/exportData.js';
 
 /** Sofia-local wall clock into the header; runs every second. */
 function startClock() {
@@ -32,6 +33,17 @@ function initChrome() {
     };
   });
   startClock();
+  document.addEventListener('click', (event) => {
+    const target = event.target;
+    const button = target instanceof Element ? target.closest('[data-copy-data]') : null;
+    if (!button) return;
+    copyCurrentData(button).catch(() => {
+      button.textContent = 'COPY FAILED';
+      setTimeout(() => {
+        button.textContent = button.dataset.copyLabel || 'COPY DATA';
+      }, 1600);
+    });
+  });
 }
 
 export { initChrome };

@@ -27,6 +27,21 @@
   padding: 0;
 }
 
+.top-right .icon-btn[data-copy-data] {
+  width: 34px;
+  height: 19px;
+  padding: 0;
+  color: #cbd2d5;
+  font: 8px Roboto Mono, monospace;
+  cursor: pointer;
+}
+
+.top-right .icon-btn[data-copy-data]:hover,
+.top-right .icon-btn[data-copy-data]:focus-visible {
+  border-color: #d1a346;
+  color: #fff;
+}
+
 /* --- Suggestions / menu / help popup ---------------------------------------- */
 
 .suggestions {

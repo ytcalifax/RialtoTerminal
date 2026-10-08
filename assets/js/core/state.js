@@ -25,6 +25,8 @@ const state = {
   newsSources: [],        // per-feed health statuses from the last fetch
   newsQuery: '',          // current headline search term
   selectedNews: '',       // URL of the highlighted headline
+  marketplace: [],        // latest marketplace listings
+  marketplaceQuery: '',   // latest marketplace search
 
   // Markets
   market: [],             // quote rows (stale rows are carried forward)

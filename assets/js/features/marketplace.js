@@ -24,6 +24,8 @@ async function loadMarketplace(q = '') {
     const r = await req(`/api/marketplace?q=${encodeURIComponent(q)}&limit=80`);
     if (id !== state.request.marketplace) return;
     const rows = r.items || [];
+    state.marketplace = rows;
+    state.marketplaceQuery = q;
     state.timestamps.marketplace = r.fetched ? Number(r.fetched) * 1000 : Date.now();
     if ($('#marketplaceStatus')) {
       $('#marketplaceStatus').textContent = `${rows.length} RESULTS · ${r.source} · LIMIT 80 · ${fmtTime(state.timestamps.marketplace)} · AUTO 15M`;

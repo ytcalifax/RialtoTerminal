@@ -24,6 +24,31 @@
   font-weight: 400;
 }
 
+.module-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.module-title-actions button {
+  background: #29343a;
+  border: 1px solid #657078;
+  color: #e3e9eb;
+  padding: 3px 7px;
+  font: 9px Roboto Mono, monospace;
+  cursor: pointer;
+}
+
+.module-title-actions button:hover {
+  border-color: #d1a346;
+  color: #fff;
+}
+
+.module-title-actions button:disabled {
+  opacity: 0.8;
+  cursor: default;
+}
+
 .module-controls {
   display: flex;
   align-items: center;

@@ -56,6 +56,7 @@
 
 @media (max-width: 900px) {
   .alerts-layout { grid-template-columns: 1fr; overflow: visible; }
+  .alerts-settings { overflow: visible; }
   .alert-activity { min-height: 260px; }
 
   .map-stage {

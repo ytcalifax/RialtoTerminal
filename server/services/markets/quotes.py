@@ -19,6 +19,7 @@ from urllib.parse import quote
 
 from ...config import (
     BSE_SOFIX_URL,
+    MARKET_STALE_AFTER_S,
     MARKET_TTL_S,
     QUOTES_MAX_SYMBOLS,
     SEARCH_TTL_S,
@@ -85,12 +86,15 @@ def _yahoo_quote(symbol: str, name: str | None = None) -> dict | None:
         previous = (
             meta.get("chartPreviousClose")
             or meta.get("previousClose")
-            or (closes[0] if closes else last)
+            or (closes[0] if closes else None)
         )
         change = (
             (last - previous) if (last is not None and previous is not None) else 0.0
         )
-        pct = (change / previous * 100) if (previous and previous != 0) else 0.0
+        pct = (change / previous * 100) if (previous and previous != 0) else None
+        if previous is None:
+            change = None
+        asof = meta.get("regularMarketTime") or (timestamps[-1] if timestamps else 0)
         row = {
             "symbol": symbol,
             "name": resolved_name,
@@ -101,8 +105,8 @@ def _yahoo_quote(symbol: str, name: str | None = None) -> dict | None:
             "high": max(closes) if closes else None,
             "series": closes[-24:],
             "currency": meta.get("currency", ""),
-            "asof": meta.get("regularMarketTime")
-            or (timestamps[-1] if timestamps else 0),
+            "asof": asof,
+            "stale": not asof or time.time() - asof > MARKET_STALE_AFTER_S,
             "group": SYMBOL_GROUP.get(symbol, "INDICES"),
         }
         _QUOTE_CACHE.store(symbol, dict(row))

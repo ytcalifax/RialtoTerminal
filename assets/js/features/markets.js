@@ -199,6 +199,13 @@ async function loadMarket(group = 'CORE') {
       ...previous.filter((x) => !bySymbol.has(x.symbol)).map((x) => (affectsGroup(x) ? { ...x, stale: true } : x)),
       ...bySymbol.values(),
     ];
+    const snapshotAt = Date.now();
+    fresh.forEach((row) => {
+      const history = state.marketHistory[row.symbol] || [];
+      history.push({ at: snapshotAt, last: row.last, pct: row.pct });
+      state.marketHistory[row.symbol] = history.slice(-96);
+      row.series = state.marketHistory[row.symbol].map((point) => point.last);
+    });
     observeMarkets(state.market);
     const sourceTimes = fresh.map((x) => Number(x.asof || 0)).filter(Boolean);
     state.timestamps.market = sourceTimes.length
@@ -249,7 +256,7 @@ function renderMarkets() {
   if (tq) {
     tq.innerHTML = [...new Set([...state.pins.map((p) => p.symbol), ...TICKER_SYMBOLS])]
       .map((s) => state.market.find((x) => x.symbol === s)).filter(Boolean)
-      .map((x) => `<button class="quote" data-market-symbol="${esc(x.symbol)}"><b>${esc(x.name)}</b> ${Number(x.last || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })} <em class="${(x.change || 0) < 0 ? 'down' : ''}">${(x.change || 0) >= 0 ? '+' : ''}${Number(x.pct || 0).toFixed(2)}%</em></button>`).join('')
+      .map((x) => `<button class="quote" data-market-symbol="${esc(x.symbol)}"><b>${esc(x.name)}</b> ${Number(x.last || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })} <em class="${(x.change || 0) < 0 ? 'down' : ''}">${x.pct == null ? '—' : `${x.pct >= 0 ? '+' : ''}${Number(x.pct).toFixed(2)}%`}</em></button>`).join('')
       || 'QUOTE FEED UNAVAILABLE';
   }
 
@@ -286,7 +293,7 @@ function renderFullMarketRows() {
   const q = state.marketQuery.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const rows = groupRows.filter((x) => !q || `${x.name} ${x.symbol}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().includes(q));
 
-  body.innerHTML = rows.map((x) => `<tr tabindex="0" data-market-symbol="${esc(x.symbol)}" class="${state.selectedInstrument === x.symbol ? 'chosen' : ''}"><td>${esc(x.name)}${state.marketGroup === CUSTOM_GROUP ? ` <a class="pin-x" data-unpin="${esc(x.symbol)}" title="Remove from dashboard">✕</a>` : ''}</td><td>${esc(x.symbol)}${x.source ? ' · BSE SOFIA' : ''}${x.stale ? ' · CARRIED' : ''}</td><td>${Number(x.last).toLocaleString('en-US', { maximumFractionDigits: 3 })}</td><td class="${x.change >= 0 ? 'positive' : 'negative'}">${x.change >= 0 ? '+' : ''}${Number(x.change).toFixed(2)}</td><td>${Number(x.pct).toFixed(2)}%</td><td>${x.low == null ? '—' : Number(x.low).toFixed(2)}</td><td>${x.high == null ? '—' : Number(x.high).toFixed(2)}</td><td>${sparkline(x.series)}</td><td><a class="trade-link" onclick="event.stopPropagation()" href="${tradeUrl(x.symbol)}" target="_blank" rel="noopener">${tradeLabel(x.symbol)}</a></td></tr>`).join('')
+  body.innerHTML = rows.map((x) => `<tr tabindex="0" data-market-symbol="${esc(x.symbol)}" class="${state.selectedInstrument === x.symbol ? 'chosen' : ''}"><td>${esc(x.name)}${state.marketGroup === CUSTOM_GROUP ? ` <a class="pin-x" data-unpin="${esc(x.symbol)}" title="Remove from dashboard">✕</a>` : ''}</td><td>${esc(x.symbol)}${x.source ? ' · BSE SOFIA' : ''}${x.stale ? ' · STALE' : ''}</td><td>${Number(x.last).toLocaleString('en-US', { maximumFractionDigits: 3 })}</td><td class="${x.change == null ? '' : x.change >= 0 ? 'positive' : 'negative'}">${x.change == null ? '—' : `${x.change >= 0 ? '+' : ''}${Number(x.change).toFixed(2)}`}</td><td>${x.pct == null ? '—' : `${x.pct >= 0 ? '+' : ''}${Number(x.pct).toFixed(2)}%`}</td><td>${x.low == null ? '—' : Number(x.low).toFixed(2)}</td><td>${x.high == null ? '—' : Number(x.high).toFixed(2)}</td><td>${sparkline(x.series)}</td><td><a class="trade-link" onclick="event.stopPropagation()" href="${tradeUrl(x.symbol)}" target="_blank" rel="noopener">${tradeLabel(x.symbol)}</a></td></tr>`).join('')
     || `<tr><td colspan="9" class="empty-state">${state.marketGroup === CUSTOM_GROUP && !state.pins.length ? 'NO PINNED INSTRUMENTS YET · SEARCH ABOVE AND PRESS + ADD' : q ? 'NO ' + state.marketGroup + ' INSTRUMENT MATCHES “' + esc(q.toUpperCase()) + '”' : 'NO QUOTES RETURNED · PUBLIC SOURCE UNAVAILABLE'}</td></tr>`;
 
   const status = $('#marketRowsMeta');

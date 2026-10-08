@@ -42,6 +42,7 @@ const state = {
   marketGroup: 'INDICES', // active market group tab
   marketQuery: '',        // instrument filter text
   marketGroupExpected: {},// expected symbol count per group (gap detection)
+  marketHistory: {},      // per-symbol quote snapshots for trend analysis
   pins: loadPins(),       // cookie-backed pinned dashboard symbols
 
   // Selected instrument/track

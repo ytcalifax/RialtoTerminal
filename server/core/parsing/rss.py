@@ -7,6 +7,7 @@ the fixed endpoints listed in :mod:`server.services.news_feeds`.
 from __future__ import annotations
 
 # noinspection PyPep8Naming — `ET` is the universal stdlib idiom
+import re
 import xml.etree.ElementTree as ET
 
 from ..http_client import fetch
@@ -15,6 +16,17 @@ from ..text import clean
 # Feed item tags, compared without the XML namespace prefix.
 _ITEM_TAGS = {"item", "entry"}
 _DATE_TAGS = {"pubdate", "published", "updated", "date"}
+_BULGARIA_TERMS = re.compile(r"\b(bulgaria|sofia|plovdiv|varna|burgas)\b", re.I)
+_BALKAN_TERMS = re.compile(
+    r"\b(balkans?|serbia|romania|greece|albania|kosovo|montenegro|"
+    r"north macedonia|bosnia|croatia|slovenia|moldova)\b",
+    re.I,
+)
+_EUROPE_TERMS = re.compile(
+    r"\b(europe|european union|brussels|germany|france|italy|spain|"
+    r"uk|britain|poland|sweden|norway|finland)\b",
+    re.I,
+)
 
 
 def _tag_name(element: ET.Element) -> str:
@@ -65,8 +77,6 @@ def rss_items(
     try:
         root = ET.fromstring(body)
     except ET.ParseError:
-        import re
-
         clean_xml = re.sub(
             r"[\x00-\x08\x0B\x0C\x0E-\x1F]", "", body.decode("utf-8", "replace")
         )
@@ -79,14 +89,22 @@ def rss_items(
         link = _item_link(item)
         if not (title and link):
             continue
+        item_region = region
+        if region == "GLOBAL":
+            if _BULGARIA_TERMS.search(title):
+                item_region = "BULGARIA"
+            elif _BALKAN_TERMS.search(title):
+                item_region = "BALKANS"
+            elif _EUROPE_TERMS.search(title):
+                item_region = "EUROPE"
         rows.append(
             {
                 "title": title,
                 "url": link,
                 "published": local_text(item, _DATE_TAGS),
-                "source": local_text(item, {"source"}) or source_override or "NEWSWIRE",
+                "source": source_override or "NEWSWIRE",
                 "category": category,
-                "region": region,
+                "region": item_region,
                 "language": language,
                 "country": country,
                 "timeType": "PUBLISHED",

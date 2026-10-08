@@ -110,6 +110,7 @@ def _deduplicate(rows: list[dict]) -> list[dict]:
     """
     seen_urls: set[str] = set()
     seen_titles: set[str] = set()
+    title_tokens: list[set[str]] = []
     output: list[dict] = []
     for row in rows:
         parts = urlsplit(row["url"])
@@ -117,10 +118,24 @@ def _deduplicate(rows: list[dict]) -> list[dict]:
         canonical = urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
         canonical = canonical.rstrip("/").casefold()
         title_key = re.sub(r"[^\w]+", "", row["title"].casefold())
-        if canonical in seen_urls or title_key in seen_titles:
+        tokens = {
+            token for token in re.findall(r"[a-z0-9]{3,}", row["title"].casefold())
+            if token not in {"the", "and", "for", "with", "from", "that", "this"}
+        }
+        duplicate_cluster = any(
+            len(tokens & other) / max(1, min(len(tokens), len(other))) >= 0.65
+            for other in title_tokens
+        )
+        if (
+            canonical in seen_urls
+            or title_key in seen_titles
+            or duplicate_cluster
+            or re.search(r"\bDATE\b", row["title"], re.IGNORECASE)
+        ):
             continue
         seen_urls.add(canonical)
         seen_titles.add(title_key)
+        title_tokens.append(tokens)
         row["url"] = url
         output.append(row)
     return output

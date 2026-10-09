@@ -313,9 +313,7 @@ def war_snapshot() -> tuple[int, dict]:
         gpsjam = cached.get("gpsjam") or {}
         if gpsjam.get("features"):
             return 200, cached
-        # A transient GPSJam failure should not pin an empty layer in the
-        # broader 15-minute conflict snapshot cache. Retry just that feed on
-        # subsequent requests and repair the cached payload once it recovers.
+        # Retry GPSJam when the cached conflict snapshot has no hexes.
         try:
             recovered_gpsjam = _gpsjam_coverage()
         except Exception:

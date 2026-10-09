@@ -61,7 +61,16 @@
   cursor: pointer;
 }
 
-.suggestions div:hover {
+.suggestions .command-option[data-command] {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.suggestions div:hover,
+.suggestions .command-option[data-command]:hover {
   background: #303b40;
   color: white;
 }
@@ -277,7 +286,9 @@
 }
 
 .spot-chart {
-  height: 105px;
+  flex: 1;
+  height: auto;
+  min-height: 105px;
   margin: 5px 0;
   border: 1px solid #30383b;
   background: #0e1316;
@@ -287,7 +298,8 @@
 
 .spot-chart svg {
   width: 100%;
-  height: 67px;
+  height: calc(100% - 20px);
+  min-height: 67px;
 }
 
 .chart-label {
@@ -320,22 +332,17 @@
   font: 7px Roboto Mono, monospace;
 }
 
-.spot-item {
-  padding: 7px 3px;
-  border-bottom: 1px solid #30373a;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
+.chart-empty {
+  position: absolute;
+  inset: 17px 5px 12px;
+  display: grid;
+  place-items: center;
+  color: #78848a;
+  font: 8px Roboto Mono, monospace;
 }
 
-.spot-item b {
-  font: 9px Roboto Mono, monospace;
-  color: #e5ae49;
-}
-
-.spot-item span {
-  font-size: 10px;
-  color: #9ea7ab;
+.chart-empty[hidden] {
+  display: none;
 }
 
 .source-note {

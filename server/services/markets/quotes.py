@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import html
 import json
+import math
 import re
 import threading
 import time
@@ -90,7 +91,11 @@ def _yahoo_quote(symbol: str, name: str | None = None) -> dict | None:
             timestamps = result.get("timestamp") or []
             quote_indicators = result.get("indicators", {}).get("quote") or []
             raw_closes = quote_indicators[0].get("close", []) if quote_indicators else []
-            closes = [float(v) for v in raw_closes if isinstance(v, (int, float))]
+            closes = [
+                float(v)
+                for v in raw_closes
+                if isinstance(v, (int, float)) and math.isfinite(v)
+            ]
 
             # The live last price is whichever is fresher: Yahoo's consolidated
             # regularMarketPrice or the newest 1-minute bar close.
@@ -104,11 +109,34 @@ def _yahoo_quote(symbol: str, name: str | None = None) -> dict | None:
             if last is None:
                 _QUOTE_FAILURE_CACHE.store(symbol, True)
                 return None
+            try:
+                last = float(last)
+            except (TypeError, ValueError, OverflowError):
+                _QUOTE_FAILURE_CACHE.store(symbol, True)
+                return None
+            if not math.isfinite(last):
+                _QUOTE_FAILURE_CACHE.store(symbol, True)
+                return None
             previous = (
                 meta.get("chartPreviousClose")
                 or meta.get("previousClose")
                 or (closes[0] if closes else None)
             )
+            # Yahoo occasionally returns a previous close in a different
+            # scale than the session bars (for example Shanghai: 0.0002 vs
+            # ~3,800). The first bar is not the prior close, so omit daily
+            # change values instead of publishing a nonsensical percentage.
+            if previous is not None:
+                try:
+                    previous_value = float(previous)
+                except (TypeError, ValueError, OverflowError):
+                    previous_value = math.nan
+                reference = next((close for close in closes if close > 0), None)
+                scale = previous_value / reference if reference else 1
+                if not math.isfinite(previous_value) or previous_value <= 0 or scale < 0.1 or scale > 10:
+                    previous = None
+                else:
+                    previous = previous_value
             change = (
                 (last - previous) if (last is not None and previous is not None) else 0.0
             )

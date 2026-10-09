@@ -147,7 +147,26 @@ function correlate(sourceName, item, targetName, targetItems, title) {
   if (state.alertBaselines.deductions.includes(key)) return;
   state.alertBaselines.deductions.push(key);
   state.alertBaselines.deductions = state.alertBaselines.deductions.slice(-200);
-  const detail = [...new Set([item.name, item.title, item.location, item.country, match.title, match.name].filter(Boolean))].slice(0, 3).join(' · ');
+  const headline = sourceName === 'news' ? item.title : targetName === 'news' ? match.title : '';
+  const detail = [...new Set([headline, item.name, item.title, item.location, item.country, match.title, match.name].filter(Boolean))].slice(0, 3).join(' · ');
+  if (headline) {
+    const signalKey = `news-signal:${fingerprintOf(headline, '')}`;
+    const matchingSignals = state.notifications.filter((notification) =>
+      notification.title.includes('NEWS SIGNAL')
+      && fingerprintOf(notification.detail, '').includes(fingerprintOf(headline, '')));
+    if (state.alertBaselines.seenAlerts.includes(signalKey) || matchingSignals.length) {
+      state.alertBaselines.seenAlerts.push(signalKey);
+      state.alertBaselines.seenAlerts = state.alertBaselines.seenAlerts.slice(-300);
+      // Clean up duplicates created by earlier feed refreshes while retaining
+      // the first signal and its source label.
+      state.notifications = state.notifications.filter((notification) =>
+        !matchingSignals.includes(notification) || notification === matchingSignals[0]);
+      renderNotifications();
+      return;
+    }
+    state.alertBaselines.seenAlerts.push(signalKey);
+    state.alertBaselines.seenAlerts = state.alertBaselines.seenAlerts.slice(-300);
+  }
   addNotification(title, detail || 'Related signals detected');
 }
 
@@ -247,20 +266,22 @@ function observeDiseaseOutbreaks(outbreaks) {
 }
 
 function observeMarkets(items) {
-  const snapshot = Object.fromEntries(items.map((x) => [x.symbol, Number(x.pct)]));
+  const available = items.filter((x) => !x.stale && x.pct != null && x.pct !== '' && Number.isFinite(Number(x.pct)));
+  const snapshot = Object.fromEntries(available.map((x) => [x.symbol, Number(x.pct)]));
   if (!state.alertBaselines.markets) {
-    state.alertBaselines.markets = snapshot;
+    state.alertBaselines.markets = Object.keys(snapshot).length ? snapshot : null;
     return [];
   }
-  const changed = items.filter((x) => Math.abs(Number(x.pct)) >= (Number(state.alertSettings.marketMovePct) || 2)
+  const threshold = Number(state.alertSettings.marketMovePct) || 2;
+  const changed = available.filter((x) => Object.hasOwn(state.alertBaselines.markets, x.symbol)
+    && Math.abs(Number(x.pct)) >= threshold
     && Math.abs(Number(x.pct) - Number(state.alertBaselines.markets[x.symbol] || 0)) >= 0.25);
   if (state.alertSettings.markets) {
-    const threshold = Number(state.alertSettings.marketMovePct) || 2;
-    items.filter((x) => Math.abs(Number(x.pct)) >= threshold && Math.abs(Number(x.pct) - Number(state.alertBaselines.markets[x.symbol] || 0)) >= 0.25)
+    changed
       .filter(matchesTopics)
       .slice(0, 5).forEach((x) => addNotification('MARKET MOVE', `${x.name} ${Number(x.pct) >= 0 ? '+' : ''}${Number(x.pct).toFixed(2)}%`));
   }
-  state.alertBaselines.markets = snapshot;
+  state.alertBaselines.markets = { ...state.alertBaselines.markets, ...snapshot };
   return changed;
 }
 

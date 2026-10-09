@@ -26,7 +26,7 @@ function openTerminalMenu() {
   const box = $('#suggestions');
   box.dataset.mode = 'menu';
   box.innerHTML = `<div class="help-head">FUNCTION MENU · SELECT DESTINATION</div>`
-    + MENU_ITEMS.map(([c, n]) => `<div class="command-option" data-command="${c}"><b>${c}</b><span>${n}</span></div>`).join('');
+    + MENU_ITEMS.map(([c, n]) => `<button type="button" class="command-option" data-command="${c}"><b>${c}</b><span>${n}</span></button>`).join('');
   box.classList.add('open');
   bindPopupCommands(box);
   setStatus('MENU · SELECT A FUNCTION');
@@ -43,7 +43,7 @@ function runHelp() {
     + `<div class="command-option"><b>ENTER</b><span>Run command or selected function</span></div>`
     + `<div class="command-option"><b>ESC</b><span>Close panel / return to top screen</span></div>`
     + `<div class="help-head">FUNCTIONS · SELECT TO OPEN</div>`
-    + HELP_ITEMS.map(([c, n]) => `<div class="command-option" data-command="${c}"><b>${c}</b><span>${n}</span></div>`).join('');
+    + HELP_ITEMS.map(([c, n]) => `<button type="button" class="command-option" data-command="${c}"><b>${c}</b><span>${n}</span></button>`).join('');
   box.classList.add('open');
   bindPopupCommands(box);
   setStatus('HELP · F2 PANEL · / COMMAND LINE · ESC CLOSE');
@@ -89,7 +89,7 @@ function showSuggestions(value) {
   const v = raw.trim().toUpperCase();
   const list = Object.keys(COMMAND_NAMES).filter((x) => !v || x.startsWith(v));
   box.dataset.mode = 'command';
-  box.innerHTML = list.map((x) => `<div class="command-option" data-command="${x}"><b>${x}</b><span>${COMMAND_NAMES[x]}</span></div>`).join('');
+  box.innerHTML = list.map((x) => `<button type="button" class="command-option" data-command="${x}"><b>${x}</b><span>${COMMAND_NAMES[x]}</span></button>`).join('');
   box.classList.toggle('open', (cmd && document.activeElement === cmd) || !v);
   bindPopupCommands(box);
 }
@@ -165,7 +165,10 @@ function initCommandLine() {
       e.stopPropagation();
       runHelp();
     }
-    if (e.key === '/' && document.activeElement !== cmd) {
+    const target = e.target;
+    const editing = target instanceof Element
+      && (target.matches('input, textarea, select') || target.isContentEditable);
+    if (e.key === '/' && document.activeElement !== cmd && !editing) {
       e.preventDefault();
       cmd.focus();
       showSuggestions('');

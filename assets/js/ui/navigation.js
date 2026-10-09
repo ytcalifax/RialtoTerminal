@@ -31,7 +31,12 @@ function openPage(page) {
   if (page === 'air' && !state.mapViews.air.hasPositions) focusPositionView('air', state.aircraft);
 
   state.page = page;
-  $$('.function-nav button[data-page]').forEach((b) => b.classList.toggle('selected', b.dataset.page === page));
+  $$('.function-nav button[data-page]').forEach((b) => {
+    const current = b.dataset.page === page;
+    b.classList.toggle('selected', current);
+    if (current) b.setAttribute('aria-current', 'page');
+    else b.removeAttribute('aria-current');
+  });
   const screen = Object.entries(SCREEN_BY_PAGE).find(([, p]) => p === page)?.[0];
   if (screen) state.screen = screen;
   $$('.tab-small').forEach((b) => b.classList.toggle('selected', b.dataset.screen === state.screen));

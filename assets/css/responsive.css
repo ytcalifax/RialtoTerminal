@@ -36,21 +36,168 @@
     min-height: 70vh;
   }
 
-  .module-body {
-    grid-template-columns: 38% 62%;
+  .topline {
+    min-height: 44px;
+    height: auto;
+  }
+
+  .command-row {
+    min-height: 44px;
+    height: auto;
+  }
+
+  .menu-btn,
+  .go-btn {
+    min-height: 36px;
+  }
+
+  .icon-btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  .function-nav {
+    height: 44px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
   }
 
   .function-nav > button {
-    padding: 0 7px;
-    font-size: 0;
+    flex: none;
+    min-height: 44px;
+    padding: 0 10px;
+    font-size: 11px;
+    white-space: nowrap;
   }
 
-  .function-nav > button .key {
-    font-size: 10px;
+  .function-nav .nav-spacer {
+    display: none;
   }
 
   .function-nav .tab-small {
     display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .topline {
+    flex-wrap: nowrap;
+    gap: 8px;
+    padding-inline: 8px;
+  }
+
+  .top-right {
+    gap: 6px;
+    min-width: 0;
+  }
+
+  #clock {
+    display: none;
+  }
+
+  .connection {
+    white-space: nowrap;
+    font-size: 8px;
+    flex: none;
+  }
+
+  .ticker {
+    gap: 10px;
+  }
+
+  .ticker-source {
+    display: none;
+  }
+
+  .lead-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .spotlight {
+    display: none;
+  }
+
+  .news-toolbar {
+    gap: 8px;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+
+  .feed-meta {
+    display: none;
+  }
+
+  #marketPanel .mini-tabs {
+    overflow-x: auto;
+    white-space: nowrap;
+    scrollbar-width: thin;
+  }
+
+  #marketPanel .mini-tabs .right {
+    display: none;
+  }
+
+  .market-groups {
+    overflow-x: auto;
+    white-space: nowrap;
+    scrollbar-width: thin;
+  }
+
+  .market-groups .right {
+    display: none;
+  }
+
+  .alert-filter-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .module-list:not(.intel-list) table {
+    table-layout: fixed;
+  }
+
+  .module-list:not(.intel-list) th:nth-child(2),
+  .module-list:not(.intel-list) td:nth-child(2),
+  .module-list:not(.intel-list) th:nth-child(3),
+  .module-list:not(.intel-list) td:nth-child(3) {
+    display: none;
+  }
+
+  .module-list:not(.intel-list) th:first-child { width: 64%; }
+  .module-list:not(.intel-list) th:nth-child(4) { width: 19%; }
+  .module-list:not(.intel-list) th:nth-child(5) { width: 17%; }
+
+  .module {
+    overflow: visible;
+  }
+
+  .module-title {
+    height: auto;
+    min-height: 38px;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 6px 8px;
+  }
+
+  .module-title small {
+    display: block;
+    margin-left: 0;
+  }
+
+  .module-body {
+    flex: none;
+    height: auto;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(230px, 35vh) minmax(300px, 55vh);
+  }
+
+  .module-list {
+    border-right: 0;
+    border-bottom: 1px solid #3b4346;
+  }
+
+  .function-nav > button {
+    padding: 0 9px;
   }
 }
 

@@ -20,6 +20,31 @@
 
 * {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: #465055 #101316;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #101316;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #465055;
+  border: 2px solid #101316;
+  border-radius: 8px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #68767c;
+}
+
+*::-webkit-scrollbar-corner {
+  background: #101316;
 }
 
 html, body {

@@ -42,12 +42,14 @@ const SCREEN_BY_PAGE = { '1': 'top', '2': 'news', '3': 'markets', '4': 'ships' }
 
 /** Header session label per page (falls back to the page name upper-cased). */
 const SESSION_LABELS = {
-  top: 'GLOBAL MARKETS',
+  top: 'TOP NEWS',
   news: 'NEWS & RESEARCH',
   markets: 'MARKET MONITOR',
   ships: 'MARITIME',
+  air: 'AIRCRAFT',
   war: 'CONFLICT MONITOR',
   alerts: 'ALERTS & TRENDS',
+  marketplace: 'MARKETPLACE',
 };
 
 // --- Command line ---------------------------------------------------------------
@@ -68,12 +70,12 @@ const COMMAND_PAGES = {
 const COMMAND_NAMES = {
   TOP: 'Top News',
   NEWS: 'News Search', N: 'News Search',
+  MKT: 'Market Monitor',
+  CON: 'Conflict Monitor',
   SHIP: 'Vessel Tracking',
   AIR: 'Aircraft Tracking',
-  MKT: 'Market Monitor',
   ALT: 'Alert Settings',
   MPL: 'Marketplace',
-  CON: 'Conflict Monitor',
 };
 
 /** Function menu entries, in their own display order: [command, description]. */
@@ -81,23 +83,23 @@ const MENU_ITEMS = [
   ['TOP', 'Top News'],
   ['NEWS', 'News Search'],
   ['MKT', 'Market Monitor'],
-  ['ALT', 'Alert Settings'],
+  ['CON', 'Conflict Monitor'],
   ['SHIP', 'Vessel Tracking'],
   ['AIR', 'Aircraft Tracking'],
+  ['ALT', 'Alert Settings'],
   ['MPL', 'Marketplace'],
-  ['CON', 'Conflict Monitor'],
 ];
 
 /** Help-panel function directory, in its own display order. */
 const HELP_ITEMS = [
   ['TOP', 'Top News'],
   ['NEWS', 'News Search'],
+  ['MKT', 'Market Monitor'],
+  ['CON', 'Conflict Monitor'],
   ['SHIP', 'Vessel Tracking'],
   ['AIR', 'Aircraft Tracking'],
-  ['MKT', 'Market Monitor'],
   ['ALT', 'Alert Settings'],
   ['MPL', 'Marketplace'],
-  ['CON', 'Conflict Monitor'],
 ];
 
 // --- News --------------------------------------------------------------------------

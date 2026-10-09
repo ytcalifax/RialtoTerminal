@@ -274,7 +274,7 @@ function renderMarkets() {
   const focusRoot = active?.closest('#tickerQuotes') ? '#tickerQuotes' : '#marketTable';
   const marketRows = state.market.filter((x) => x.group === state.marketGroup);
 
-  const body = marketRows.map((x) => `<tr tabindex="0" data-market-symbol="${esc(x.symbol)}" class="${state.selectedInstrument === x.symbol ? 'chosen' : ''}"><td>${esc(x.name)} <span class="source-badge">${esc(x.symbol)}${x.source ? ' · BSE' : ''}${x.stale ? ' · RETAINED' : ''}</span></td><td>${Number(x.last).toLocaleString('en-US', { maximumFractionDigits: 3 })}</td><td class="${x.change >= 0 ? 'positive' : 'negative'}">${x.change >= 0 ? '+' : ''}${Number(x.change).toFixed(2)}</td><td class="${x.pct >= 0 ? 'positive' : 'negative'}">${x.pct >= 0 ? '+' : ''}${Number(x.pct).toFixed(2)}%</td><td>${x.low != null ? Number(x.low).toFixed(2) + '–' + Number(x.high).toFixed(2) : '—'}</td><td>${sparkline(x.series)}</td></tr>`).join('');
+  const body = marketRows.map((x) => `<tr tabindex="0" data-market-symbol="${esc(x.symbol)}" class="${state.selectedInstrument === x.symbol ? 'chosen' : ''}"><td>${esc(x.name)} <span class="source-badge">${esc(x.symbol)}${x.source ? ' · BSE' : ''}${x.stale ? ' · RETAINED' : ''}</span></td><td>${Number(x.last).toLocaleString('en-US', { maximumFractionDigits: 3 })}</td><td class="${x.change == null ? '' : x.change >= 0 ? 'positive' : 'negative'}">${x.change == null ? '—' : `${x.change >= 0 ? '+' : ''}${Number(x.change).toFixed(2)}`}</td><td class="${x.pct == null ? '' : x.pct >= 0 ? 'positive' : 'negative'}">${x.pct == null ? '—' : `${x.pct >= 0 ? '+' : ''}${Number(x.pct).toFixed(2)}%`}</td><td>${x.low != null ? Number(x.low).toFixed(2) + '–' + Number(x.high).toFixed(2) : '—'}</td><td>${sparkline(x.series)}</td></tr>`).join('');
 
   if ($('#marketTable tbody')) {
     $('#marketTable tbody').innerHTML = body
@@ -293,9 +293,12 @@ function renderMarkets() {
 
   const sp = state.market.find((x) => x.symbol === '^GSPC');
   const line = $('#spotLine');
-  if (line && sp?.series?.length) {
-    const valid = sp.series.filter(Number.isFinite);
-    if (valid.length >= 2) {
+  if (line) {
+    const valid = (sp?.series || []).filter(Number.isFinite);
+    const hasTrend = valid.length >= 2;
+    line.setAttribute('d', '');
+    $('#spotEmpty')?.toggleAttribute('hidden', hasTrend);
+    if (hasTrend) {
       const lo = Math.min(...valid);
       const hi = Math.max(...valid);
       const span = hi - lo || 1;
@@ -389,7 +392,8 @@ function selectInstrument(symbol) {
     row.scrollIntoView({ block: 'nearest' });
     row.focus({ preventScroll: true });
   }
-  setStatus(`${x.name.toUpperCase()} · ${x.symbol} · ${Number(x.last).toLocaleString('en-US')} · ${x.pct >= 0 ? '+' : ''}${Number(x.pct).toFixed(2)}%`);
+  const pct = x.pct == null ? 'CHANGE UNAVAILABLE' : `${x.pct >= 0 ? '+' : ''}${Number(x.pct).toFixed(2)}%`;
+  setStatus(`${x.name.toUpperCase()} · ${x.symbol} · ${Number(x.last).toLocaleString('en-US')} · ${pct}`);
 }
 
 /** Bind static market chrome: the dashboard ticker strip + pin actions. */

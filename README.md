@@ -98,10 +98,10 @@ attached to the server process.
 | `TOP` | Home | Scan top stories, market highlights, and recent vessel reports. |
 | `NEWS` | News | Search headlines and switch between global and English-language Bulgarian feeds. |
 | `MKT` | Markets | Browse market groups, charts, and instrument details. |
-| `ALT` | Alerts | Set alerts for headlines, conflict, outbreaks, market moves, vessels, and aircraft. |
 | `CON` | Conflict monitor | Review geolocated reports, the weekly UN OCHA / ISW & CTP Ukraine front line, and GPSJam interference hexes. |
 | `SHIP` | Vessels | Search vessel reports, explore AIS positions and tracks, and see nearby vessel counts at major maritime chokepoints. |
 | `AIR` | Aircraft | Explore aircraft positions, details, and available tracks. |
+| `ALT` | Alerts | Set alerts for headlines, conflict, outbreaks, market moves, vessels, and aircraft. |
 | `MPL` | Marketplace | Search public Bazar.bg listings. |
 
 Keyboard shortcuts: `/` focuses the command line, `F2` opens help, `↑` and `↓` browse command history, and `Esc` returns to the top screen.

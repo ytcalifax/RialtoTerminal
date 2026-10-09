@@ -67,7 +67,9 @@ function worldMonitorRows() {
   add('ARMED CONFLICT', 'armed', wm.armed || [], (item, i) => {
     const point = coords(item);
     const violence = displayCode(item.violenceType || item.eventType || 'ARMED CONFLICT');
-    return { id: `wm-armed-${item.id || i}`, name: item.locationName || item.admin1 || item.country || 'ARMED CONFLICT EVENT', ...point, domain: item.source || 'UCDP / ACLED', date: day(item.occurredAt || item.dateStart), names: [item.sideA, item.sideB, ...(item.actors || [])].filter(Boolean).join(' vs '), themes: `${violence} · ${item.fatalities ?? item.deathsBest ?? 0} FATALITIES` };
+    const fatalities = item.fatalities ?? item.deathsBest;
+    const fatalityText = fatalities == null || fatalities === '' ? 'FATALITIES UNREPORTED' : `${fatalities} FATALITIES`;
+    return { id: `wm-armed-${item.id || i}`, name: item.locationName || item.admin1 || item.country || 'ARMED CONFLICT EVENT', ...point, domain: item.source || 'UCDP / ACLED', date: day(item.occurredAt || item.dateStart), names: [item.sideA, item.sideB, ...(item.actors || [])].filter(Boolean).join(' vs '), themes: `${violence} · ${fatalityText}` };
   });
   add('INTERNET DISRUPTION', 'outages', wm.outages || [], (item, i) => {
     const point = coords(item);

@@ -258,7 +258,7 @@ def vessel_snapshot(boxes: str | None = None) -> tuple[int, dict]:
             return 200, merged
         stale = _vessel_cache.get_entry(cache_key)
         if stale and stale.value.get("features"):
-            return 200, stale.value
+            return 200, {**stale.value, "stale": True}
         return 502, {
             "error": "Upstream AIS sources unavailable",
             "features": [],
@@ -267,7 +267,7 @@ def vessel_snapshot(boxes: str | None = None) -> tuple[int, dict]:
     except Exception as exc:
         stale = _vessel_cache.get_entry(cache_key)
         if stale and stale.value.get("features"):
-            return 200, stale.value
+            return 200, {**stale.value, "stale": True}
         return 502, {"error": str(exc), "features": [], "region": cache_key}
 
 
@@ -334,7 +334,7 @@ def aircraft_snapshot(bbox_raw: str | None = None) -> tuple[int, dict]:
     except Exception as exc:
         stale = _air_cache.get_entry(cache_key)
         if stale and stale.value.get("aircraft"):
-            return 200, stale.value
+            return 200, {**stale.value, "stale": True}
         payload = {"error": str(exc), "aircraft": [], "region": cache_key}
         return 502, payload
 

@@ -295,6 +295,8 @@
 .fear-greed-factor > i { height: 4px; background: #252d30; }
 .fear-greed-factor > i b { display: block; height: 100%; background: linear-gradient(90deg, #ce5946, #d2b04c, #66a75b); }
 .fear-greed-factor > strong { color: #bdc6c9; font-weight: 400; text-align: right; }
+.fear-greed-factor.degraded > span, .fear-greed-factor.unavailable > span, .fear-greed-factor.unavailable > strong { color: #d4a64d; }
+.fear-greed-factor.unavailable > i { background: #353331; }
 
 .chart-label {
   position: absolute;

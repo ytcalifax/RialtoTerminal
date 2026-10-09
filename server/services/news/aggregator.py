@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import threading
 import time
-from urllib.parse import urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from ...config import GOOGLE_NEWS_SEARCH_URL, NEWS_TTL_S
 from ...core.cache import TTLCache
@@ -111,32 +111,24 @@ def _deduplicate(rows: list[dict]) -> list[dict]:
     """
     seen_urls: set[str] = set()
     seen_titles: set[str] = set()
-    title_tokens: list[set[str]] = []
     output: list[dict] = []
     for row in rows:
         parts = urlsplit(row["url"])
         url = urlunsplit((parts.scheme, parts.netloc, parts.path, parts.query, ""))
-        canonical = urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
-        canonical = canonical.rstrip("/").casefold()
+        query = [
+            (key, value) for key, value in parse_qsl(parts.query, keep_blank_values=True)
+            if key.casefold() not in {"fbclid", "gclid", "dclid", "msclkid", "ref_src"}
+            and not key.casefold().startswith("utm_")
+        ]
+        canonical = urlunsplit((parts.scheme.casefold(), parts.netloc.casefold(), parts.path.rstrip("/"), urlencode(sorted(query), doseq=True), ""))
         title_key = re.sub(r"[^\w]+", "", row["title"].casefold())
-        tokens = {
-            token for token in re.findall(r"[a-z0-9]{3,}", row["title"].casefold())
-            if token not in {"the", "and", "for", "with", "from", "that", "this"}
-        }
-        duplicate_cluster = any(
-            len(tokens & other) / max(1, min(len(tokens), len(other))) >= 0.65
-            for other in title_tokens
-        )
         if (
             canonical in seen_urls
             or title_key in seen_titles
-            or duplicate_cluster
-            or re.search(r"\bDATE\b", row["title"], re.IGNORECASE)
         ):
             continue
         seen_urls.add(canonical)
         seen_titles.add(title_key)
-        title_tokens.append(tokens)
         row["url"] = url
         output.append(row)
     return output

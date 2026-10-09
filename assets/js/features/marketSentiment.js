@@ -33,13 +33,22 @@ async function loadMarketSentiment() {
     $('#cnnFearGreed').textContent = `CNN ${fear.cnnLabel || '—'}${Number.isFinite(cnnScore) ? ` ${cnnScore}` : ''}`;
     $('#fearGreedPrevious').textContent = `PRIOR ${Number.isFinite(previous) ? previous.toFixed(1) : '—'}`;
     $('#fearGreedFactors').innerHTML = FACTORS.map(([label, key]) => {
-      const raw = fear[key]?.score;
+      const factor = fear[key];
+      const raw = factor?.score;
       const value = raw == null ? NaN : Number(raw);
-      if (!Number.isFinite(value)) return '';
+      if (!Number.isFinite(value)) return `<div class="fear-greed-factor unavailable" title="${label} factor unavailable"><span>${label}</span><i></i><strong>—</strong></div>`;
       const percent = Math.max(0, Math.min(100, value));
-      return `<div class="fear-greed-factor"><span>${label}</span><i><b style="width:${percent}%"></b></i><strong>${Math.round(value)}</strong></div>`;
+      const weight = Number.isFinite(Number(factor.weight)) ? ` · WEIGHT ${(Number(factor.weight) * 100).toFixed(0)}%` : '';
+      const degraded = factor.degraded ? ' · DEGRADED INPUT' : '';
+      return `<div class="fear-greed-factor${factor.degraded ? ' degraded' : ''}" title="${label}${weight}${degraded}"><span>${label}${factor.degraded ? ' *' : ''}</span><i><b style="width:${percent}%"></b></i><strong>${Math.round(value)}</strong></div>`;
     }).join('');
-    $('#fearGreedUpdated').textContent = `${result.stale ? 'CACHED' : 'UPDATED'} ${fmtTime(Number(result.fetched) * 1000)}`;
+    const sourceAt = Date.parse(fear.seededAt || '');
+    const sourceLabel = Number.isFinite(sourceAt)
+      ? `SRC ${new Date(sourceAt).toLocaleDateString(undefined, { day: '2-digit', month: 'short' }).toUpperCase()} ${fmtTime(sourceAt)}`
+      : 'SRC TIME N/A';
+    $('#fearGreedUpdated').textContent = sourceLabel;
+    $('#fearGreedFetched').textContent = `${result.stale ? 'CACHED' : 'FETCH'} ${fmtTime(Number(result.fetched) * 1000)}`;
+    $('#fearGreedUpdated').title = `Source snapshot: ${fear.seededAt || 'timestamp unavailable'} · API fetched: ${fmtTime(Number(result.fetched) * 1000)}`;
   } catch (error) {
     if (id !== requestId) return;
     $('#fearGreedLabel').textContent = error.message || 'INDEX UNAVAILABLE';

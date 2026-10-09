@@ -190,7 +190,7 @@ async function loadMarket(group = 'CORE') {
     if (requestId !== state.request.market[group]) return;
     const fresh = r.items || [];
     const previous = state.market;
-    const bySymbol = new Map(fresh.map((x) => [x.symbol, { ...x, stale: false }]));
+    const bySymbol = new Map(fresh.map((x) => [x.symbol, { ...x, stale: x.stale === true }]));
     state.marketGroupExpected[group] = group === CUSTOM_GROUP
       ? state.pins.length
       : (r.expected || fresh.length);
@@ -204,7 +204,11 @@ async function loadMarket(group = 'CORE') {
       const history = state.marketHistory[row.symbol] || [];
       history.push({ at: snapshotAt, last: row.last, pct: row.pct });
       state.marketHistory[row.symbol] = history.slice(-96);
-      row.series = state.marketHistory[row.symbol].map((point) => point.last);
+      // Keep source intraday bars for Yahoo symbols. Local fetch snapshots
+      // are only a fallback for instruments without a source series (SOFIX).
+      if (!Array.isArray(row.series) || row.series.length < 2) {
+        row.series = state.marketHistory[row.symbol].map((point) => point.last);
+      }
     });
     observeDerivedSignals('market', observeMarkets(state.market));
     const sourceTimes = fresh.map((x) => Number(x.asof || 0)).filter(Boolean);
@@ -212,12 +216,13 @@ async function loadMarket(group = 'CORE') {
       ? Math.max(...sourceTimes) * 1000
       : (r.fetched ? Number(r.fetched) * 1000 : Date.now());
     const partial = fresh.length < (r.expected || fresh.length);
+    const staleRows = fresh.filter((x) => x.stale === true).length;
     if (partial) {
       const missing = (r.expected || fresh.length) - fresh.length;
       const carried = previous.filter((x) => !bySymbol.has(x.symbol) && affectsGroup(x)).length;
       state.errors.market = `${missing} SYMBOL${missing === 1 ? '' : 'S'} UNAVAILABLE${carried ? ` · ${carried} CARRIED FORWARD` : ''}`;
     } else {
-      state.errors.market = '';
+      state.errors.market = staleRows ? `${staleRows} STALE SOURCE QUOTE${staleRows === 1 ? '' : 'S'}` : '';
     }
     // Only flag DELAYED when symbols are actually missing; a clean snapshot
     // is 'ok' (the source itself may still be exchange-delayed, which the

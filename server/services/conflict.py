@@ -124,15 +124,15 @@ def market_sentiment_snapshot() -> dict:
 
 
 def _worldmonitor_layers() -> dict:
-    def read(name: str, path: str, key: str, params: dict[str, str] | None = None) -> tuple[str, list]:
+    def read(name: str, path: str, key: str, params: dict[str, str] | None = None) -> tuple[str, list, bool]:
         try:
             payload = _worldmonitor_json(path, params)
-            items = payload.get(key, [])
+            items = payload.get(key)
             if not isinstance(items, list):
                 raise ValueError("unexpected response shape")
-            return name, items
+            return name, items, True
         except Exception:
-            return name, []
+            return name, [], False
 
     with ThreadPoolExecutor(max_workers=3, thread_name_prefix="worldmonitor") as pool:
         jobs = {
@@ -140,7 +140,9 @@ def _worldmonitor_layers() -> dict:
             "acled": pool.submit(read, "acled", "/api/conflict/v1/list-acled-events", "events"),
             "outages": pool.submit(read, "outages", "/api/infrastructure/v1/list-internet-outages", "outages"),
         }
-        layers = {name: future.result()[1] for name, future in jobs.items()}
+        results = {name: future.result() for name, future in jobs.items()}
+        layers = {name: result[1] for name, result in results.items()}
+        layers["source_status"] = {name: "OK" if result[2] else "UNAVAILABLE" for name, result in results.items()}
     layers["armed"] = [
         {**event, "source": "UCDP"}
         for event in layers["ucdp"]
@@ -340,7 +342,8 @@ def war_snapshot() -> tuple[int, dict]:
             "frontline_source": "UN OCHA / ISW & CTP Ukraine Front Line",
             "gpsjam": gpsjam or {"date": "", "source": "GPSJam", "features": []},
             "worldmonitor": worldmonitor,
-            "partial": not report_features or not frontline_features or gpsjam is None,
+            "partial": not report_features or not frontline_features or gpsjam is None
+            or any(status != "OK" for status in worldmonitor.get("source_status", {}).values()),
             "updated_at": int(time.time()),
         }
         _war_cache.store("global", payload)

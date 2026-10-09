@@ -113,9 +113,15 @@ function ageMs(item) {
 }
 function rowText(item) {
   const values = [];
+  const contentKeys = new Set(['properties', 'title', 'headline', 'description', 'summary', 'text', 'content', 'name', 'location', 'locationname', 'admin1', 'country', 'sidea', 'sideb', 'actors', 'themes', 'mentionedthemes', 'mentionednames', 'disease', 'severity', 'cause', 'outagetype']);
+  const metadataKeys = new Set(['url', 'sourceurl', 'id', 'source', 'provider', 'category', 'domain', 'region', 'language', 'date', 'published', 'publishedat', 'occurredat', 'detectedat']);
   const walk = (value) => {
-    if (Array.isArray(value)) value.forEach(walk);
-    else if (value && typeof value === 'object') Object.values(value).forEach(walk);
+    if (Array.isArray(value)) value.forEach((entry) => walk(entry));
+    else if (value && typeof value === 'object') Object.entries(value).forEach(([key, child]) => {
+      const normalized = key.toLocaleLowerCase();
+      if (metadataKeys.has(normalized)) return;
+      if (contentKeys.has(normalized)) walk(child);
+    });
     else if (typeof value === 'string') values.push(value);
   };
   walk(item);

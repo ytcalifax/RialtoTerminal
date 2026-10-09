@@ -182,8 +182,8 @@ async function loadShips() {
     observeDerivedSignals('vessels', observeVessels(state.ships));
     state.vesselAttribution = r.attribution || {};
     state.timestamps.vessels = r.received_at ? Number(r.received_at) * 1000 : Date.now();
-    setHealth('vessels', 'ok');
-    state.errors.vessels = '';
+    state.errors.vessels = r.stale ? 'SHOWING CACHED AIS POSITIONS · SOURCE UNAVAILABLE' : '';
+    setHealth('vessels', r.stale ? 'delayed' : 'ok', state.errors.vessels);
     renderShips();
   } catch (e) {
     state.errors.vessels = e.message;
@@ -204,8 +204,8 @@ async function loadAir() {
     state.aircraft = aircraftRows(r);
     observeDerivedSignals('aircraft', observeAircraft(state.aircraft));
     state.timestamps.air = r.time ? Number(r.time) * 1000 : Date.now();
-    state.errors.air = r.error || '';
-    setHealth('air', r.error ? 'delayed' : 'ok', r.error || '');
+    state.errors.air = r.stale ? 'SHOWING CACHED OPENSKY POSITIONS · SOURCE UNAVAILABLE' : (r.error || '');
+    setHealth('air', r.stale || r.error ? 'delayed' : 'ok', state.errors.air);
     renderAir();
   } catch (e) {
     state.errors.air = e.message;

@@ -67,17 +67,25 @@ function renderDeliveryControls() {
   $('#alertDeliveryStatus').textContent = `${status} · ${state.alertSettings.soundMuted ? 'MUTED' : 'SOUND ON'}`;
 }
 
+function contentText(item, fields = ['title', 'headline', 'description', 'summary', 'text', 'content', 'properties', 'name', 'location', 'locationName', 'admin1', 'country', 'sideA', 'sideB', 'actors', 'themes', 'mentionedthemes', 'mentionednames', 'disease', 'severity', 'cause', 'outageType', 'dest', 'destination', 'callsign']) {
+  const allowed = new Set(fields.map((field) => field.toLocaleLowerCase()));
+  const values = [];
+  const walk = (value, key = '') => {
+    if (Array.isArray(value)) value.forEach((entry) => walk(entry, key));
+    else if (value && typeof value === 'object') Object.entries(value).forEach(([childKey, child]) => walk(child, childKey));
+    else if (typeof value === 'string' && allowed.has(key.toLocaleLowerCase())) values.push(value);
+  };
+  walk(item);
+  return values.join(' ').toLocaleLowerCase();
+}
+
 function matchesTopics(item) {
   const topics = state.alertSettings.keywords
     .split(',')
     .map((term) => term.trim().toLocaleLowerCase())
     .filter(Boolean);
   if (!topics.length) return true;
-  const text = Object.values(item)
-    .flatMap((value) => Array.isArray(value) ? value : [value])
-    .filter((value) => typeof value === 'string' || typeof value === 'number')
-    .join(' ')
-    .toLocaleLowerCase();
+  const text = contentText(item);
   return topics.some((topic) => text.includes(topic));
 }
 
@@ -109,11 +117,9 @@ function matchesTermList(text, terms) {
   return !include.length || include.some((term) => normalized.includes(term));
 }
 
-function matchesTerms(item, terms) {
+function matchesTerms(item, terms, fields) {
   if (!String(terms || '').trim()) return true;
-  const text = Object.values(item).flatMap((value) => Array.isArray(value) ? value : [value])
-    .filter((x) => typeof x === 'string' || typeof x === 'number').join(' ');
-  return matchesTermList(text, terms);
+  return matchesTermList(contentText(item, fields), terms);
 }
 
 function matchesSquawk(squawk, terms) {
@@ -232,7 +238,7 @@ function observeConflict(reports) {
   const newReports = reports.filter((x) => !state.alertBaselines.conflict.includes(x.id || x.url || `${x.date}-${x.name}`));
   if (state.alertSettings.conflict) {
     newReports
-      .filter((x) => matchesTerms(x, state.alertSettings.conflictTerms))
+      .filter((x) => matchesTerms(x, state.alertSettings.conflictTerms, ['properties', 'title', 'headline', 'description', 'summary', 'name', 'location', 'names', 'themes', 'mentionednames', 'mentionedthemes', 'actors', 'country', 'admin1', 'sideA', 'sideB']))
       .filter(matchesTopics)
       .slice(0, 5).forEach((x) => addNotification('NEW CONFLICT REPORT', `${x.name || x.location || 'Reported event'} · ${x.date || ''}`, x.url || ''));
   }
@@ -255,7 +261,7 @@ function observeWorldMonitor(layers) {
   const newEvents = events.filter((item) => !previous.includes(idFor(item)));
   if (state.alertSettings.conflict) {
     newEvents
-      .filter((item) => matchesTerms(item, state.alertSettings.conflictTerms))
+      .filter((item) => matchesTerms(item, state.alertSettings.conflictTerms, ['properties', 'title', 'headline', 'description', 'summary', 'name', 'locationName', 'location', 'names', 'themes', 'actors', 'country', 'admin1', 'sideA', 'sideB', 'severity']))
       .filter(matchesTopics)
       .slice(0, 5)
       .forEach((item) => {
@@ -322,7 +328,7 @@ function observeTracks(kind, items) {
   const terms = state.alertSettings[kind === 'vessels' ? 'vesselTerms' : 'aircraftTerms'];
   const minimum = Number(state.alertSettings[kind === 'vessels' ? 'vesselMinSpeed' : 'aircraftMinAltitude']) || 0;
   newItems
-    .filter((x) => matchesTerms(x, terms))
+    .filter((x) => matchesTerms(x, terms, kind === 'vessels' ? ['name', 'dest', 'destination'] : ['callsign', 'id']))
     .filter(matchesTopics)
     .filter((x) => kind !== 'aircraft' || matchesSquawk(x.squawk, state.alertSettings.aircraftExcludedSquawks))
     .filter((x) => (kind === 'vessels' ? Number(x.speed) : Number(x.alt)) >= minimum)

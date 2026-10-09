@@ -80,22 +80,29 @@ def _yahoo_quote(symbol: str, name: str | None = None) -> dict | None:
             resolved_name = name or meta.get("shortName") or meta.get("longName") or symbol
             timestamps = result.get("timestamp") or []
             quote_indicators = result.get("indicators", {}).get("quote") or []
-            raw_closes = quote_indicators[0].get("close", []) if quote_indicators else []
-            closes = [
-                float(v)
-                for v in raw_closes
-                if isinstance(v, (int, float)) and math.isfinite(v)
+            quote_data = quote_indicators[0] if quote_indicators else {}
+            raw_closes = quote_data.get("close", [])
+            bars = [
+                (timestamps[index], float(value))
+                for index, value in enumerate(raw_closes)
+                if index < len(timestamps)
+                and isinstance(value, (int, float))
+                and math.isfinite(value)
+                and isinstance(timestamps[index], (int, float))
             ]
+            closes = [value for _, value in bars]
 
             # The live last price is whichever is fresher: Yahoo's consolidated
             # regularMarketPrice or the newest 1-minute bar close.
-            last_bar_time = timestamps[-1] if timestamps else 0
+            last_bar_time, last_bar = bars[-1] if bars else (0, None)
             regular_time = meta.get("regularMarketTime") or 0
             regular_price = meta.get("regularMarketPrice")
             if regular_price is not None and regular_time >= last_bar_time:
                 last = regular_price
+                asof = regular_time
             else:
-                last = closes[-1] if closes else regular_price
+                last = last_bar if last_bar is not None else regular_price
+                asof = last_bar_time or regular_time
             if last is None:
                 _QUOTE_FAILURE_CACHE.store(symbol, True)
                 return None
@@ -107,11 +114,7 @@ def _yahoo_quote(symbol: str, name: str | None = None) -> dict | None:
             if not math.isfinite(last):
                 _QUOTE_FAILURE_CACHE.store(symbol, True)
                 return None
-            previous = (
-                meta.get("chartPreviousClose")
-                or meta.get("previousClose")
-                or (closes[0] if closes else None)
-            )
+            previous = meta.get("chartPreviousClose") or meta.get("previousClose")
             # Yahoo occasionally returns a previous close in a different
             # scale than the session bars (for example Shanghai: 0.0002 vs
             # ~3,800). The first bar is not the prior close, so omit daily
@@ -127,21 +130,39 @@ def _yahoo_quote(symbol: str, name: str | None = None) -> dict | None:
                     previous = None
                 else:
                     previous = previous_value
-            change = (
-                (last - previous) if (last is not None and previous is not None) else 0.0
-            )
+            change = (last - previous) if previous is not None else None
             pct = (change / previous * 100) if (previous and previous != 0) else None
-            if previous is None:
-                change = None
-            asof = meta.get("regularMarketTime") or (timestamps[-1] if timestamps else 0)
+
+            def valid_meta_number(key: str) -> float | None:
+                value = meta.get(key)
+                try:
+                    parsed = float(value)
+                except (TypeError, ValueError, OverflowError):
+                    return None
+                return parsed if math.isfinite(parsed) and parsed > 0 else None
+
+            day_low = valid_meta_number("regularMarketDayLow")
+            day_high = valid_meta_number("regularMarketDayHigh")
+            low_values = [
+                float(value) for value in quote_data.get("low", [])
+                if isinstance(value, (int, float)) and math.isfinite(value)
+            ]
+            high_values = [
+                float(value) for value in quote_data.get("high", [])
+                if isinstance(value, (int, float)) and math.isfinite(value)
+            ]
+            if day_low is None and low_values:
+                day_low = min(low_values)
+            if day_high is None and high_values:
+                day_high = max(high_values)
             row = {
                 "symbol": symbol,
                 "name": resolved_name,
                 "last": last,
                 "change": change,
                 "pct": pct,
-                "low": min(closes) if closes else None,
-                "high": max(closes) if closes else None,
+                "low": day_low,
+                "high": day_high,
                 "series": closes[-24:],
                 "currency": meta.get("currency", ""),
                 "asof": asof,
@@ -163,8 +184,8 @@ def _bse_sofix_row() -> dict:
     """Read the public BSE Sofia index widget (the exchange labels it 3 min delayed).
 
     Raises when the widget markup cannot be found or parsed; callers decide
-    whether that is fatal. The exchange's ``Date`` response header is used as
-    the snapshot time, falling back to local now if the header is missing.
+    whether that is fatal. The HTTP Date is retrieval time; the exchange says
+    the quote is delayed three minutes, so ``asof`` is an estimate.
     """
     now = time.time()
     cached = _SOFIX_CACHE.get("^SOFIX")
@@ -181,6 +202,7 @@ def _bse_sofix_row() -> dict:
         source_time = parsedate_to_datetime(headers.get("Date", "")).timestamp()
     except (TypeError, ValueError, OverflowError):
         source_time = now
+    estimated_quote_time = source_time - 180
 
     # The index sits in the first row of the exchange's "top 5" widget.
     match = re.search(
@@ -202,31 +224,30 @@ def _bse_sofix_row() -> dict:
             else ""
         )
 
-    def number(value: str) -> float:
+    def number(value: str) -> float | None:
         try:
-            return float(value.replace(" ", "").replace(",", "."))
+            parsed = float(value.replace(" ", "").replace(",", "."))
         except (ValueError, TypeError):
-            return 0.0
+            return None
+        return parsed if math.isfinite(parsed) else None
 
-    last = number(field("top5_issue_size primary"))
+    last_text = field("top5_issue_size primary")
+    last = number(last_text)
+    if last is None or last <= 0:
+        raise ValueError("BSE Sofia index value unavailable")
     pct_text = field("change green") or field("change red") or field("change")
-    pct = 0.0
+    pct = None
     if pct_text:
         try:
             pct = float(pct_text.replace("%", "").replace("+", "").replace(",", "."))
         except (ValueError, TypeError):
-            pct = 0.0
+            pct = None
     # The widget encodes direction via colour, not sign.
-    if "change red" in block and "change green" not in block:
+    if pct is not None and "change red" in block and "change green" not in block:
         pct = -abs(pct)
     change = number(field("top5_price_change_abs"))
-    if pct < 0:
+    if pct is not None and pct < 0 and change is not None:
         change = -abs(change)
-    # The widget's ask side bounds the low, its bid side the high.
-    low_parts = field("top5_price_ask").split()
-    low = number(low_parts[-1]) if low_parts else 0.0
-    high_parts = field("top5_price_bid").split()
-    high = number(high_parts[-1]) if high_parts else 0.0
 
     row = {
         "symbol": "^SOFIX",
@@ -234,11 +255,12 @@ def _bse_sofix_row() -> dict:
         "last": last,
         "change": change,
         "pct": pct,
-        "low": low,
-        "high": high,
+        # The widget exposes bid/ask quotes, not session extrema.
+        "low": None,
+        "high": None,
         "series": [],
         "currency": "EUR",
-        "asof": source_time,
+        "asof": estimated_quote_time,
         "source": "BSE SOFIA · 3 MIN DELAY",
         "group": "INDICES",
     }

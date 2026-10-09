@@ -909,6 +909,8 @@
   font: 17px/18px Arial, sans-serif;
   cursor: pointer;
 }
+.debug-panel-actions { display: flex !important; align-items: center; gap: 6px; }
+.debug-panel > header > .debug-panel-actions > .debug-copy { width: auto; padding: 0 8px; color: #f2bd53; font: 8px Roboto Mono, monospace; }
 .debug-services-wrap { overflow: auto; border-bottom: 1px solid #3b4346; }
 .debug-services { width: 100%; border-collapse: collapse; white-space: nowrap; }
 .debug-services th,

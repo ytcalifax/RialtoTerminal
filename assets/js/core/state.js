@@ -42,7 +42,7 @@ const state = {
     aircraftMinAltitude: 0,
     marketMovePct: 2,
   },
-  alertBaselines: { news: null, conflict: null, diseaseOutbreaks: null, markets: null, vessels: null, aircraft: null },
+  alertBaselines: { news: null, conflict: null, worldMonitor: null, diseaseOutbreaks: null, markets: null, vessels: null, aircraft: null },
   marketplace: [],        // latest marketplace listings
   marketplaceQuery: '',   // latest marketplace search
 

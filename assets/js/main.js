@@ -6,9 +6,9 @@
  * the initial loads and arms the polling intervals.
  *
  * Poll schedule (matches the source data rhythms):
- *   news 3 min · vessels 60 s · aircraft 15 min while visible ·
+ *   news 5 min · vessels 60 s · aircraft 15 min while visible ·
  *   markets 5 min (STOCKS group 10 min: 150-symbol Yahoo bursts) ·
- *   marketplace 15 min while visible · conflict and disease alerts 10 min
+ *   marketplace 15 min while visible · conflict and disease data 15 min
  */
 import { $ } from './core/dom.js';
 import { on } from './core/hooks.js';
@@ -76,18 +76,12 @@ loadWar();
 loadDiseaseOutbreaks();
 loadMarketplace();
 
-setInterval(() => loadNews(state.feed, state.newsQuery), 180000);
+setInterval(() => loadNews(state.feed, state.newsQuery), 300000);
 setInterval(loadShips, 60000);
 setInterval(loadAir, 900000);
-setInterval(loadWar, 600000);
-setInterval(loadDiseaseOutbreaks, 600000);
+setInterval(loadWar, 900000);
+setInterval(loadDiseaseOutbreaks, 900000);
 setInterval(() => loadMarketplace(state.marketplaceQuery), 900000);
-setInterval(() => {
-  if (state.page === 'air') loadAir();
-}, 900000);
-setInterval(() => {
-  if (state.page === 'war') loadWar();
-}, 600000);
 // Yahoo's chart URL accepts one symbol per request. Keep the useful intraday
 // snapshot while limiting each symbol to one upstream refresh per 5 min;
 // the much larger STOCKS tab refreshes every 10 min.

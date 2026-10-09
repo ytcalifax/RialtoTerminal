@@ -8,6 +8,7 @@ Google News index, then deduplicates and sorts the merged timeline.
 from __future__ import annotations
 
 import re
+import threading
 import time
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
@@ -20,6 +21,11 @@ from .feeds import BALKAN_COUNTRIES, BALKAN_RSS_FEEDS, NEWS_FEEDS
 
 # Per-feed cache: on upstream failure the last good rows are served stale.
 _feed_cache: TTLCache[list[dict]] = TTLCache(NEWS_TTL_S)
+# Multiple browser tabs can request the same feed at once. Serialize cache
+# misses per feed so only the first caller reaches the publisher.
+_feed_locks: dict[str, threading.Lock] = {}
+_feed_locks_lock = threading.Lock()
+_google_query_cache: TTLCache[list[dict]] = TTLCache(300, max_entries=128)
 
 # Google News result rows that came from an explicit search are tagged so the
 # term filter below cannot discard them even when the term is absent from the
@@ -54,52 +60,55 @@ def _cached_feed(config: dict) -> tuple[list[dict], dict]:
     whole news request down.
     """
     feed_id = config["id"]
-    now = time.time()
-    cached = _feed_cache.get_entry(feed_id)
+    with _feed_locks_lock:
+        lock = _feed_locks.setdefault(feed_id, threading.Lock())
+    with lock:
+        now = time.time()
+        cached = _feed_cache.get_entry(feed_id)
 
-    if cached and now - cached.checked_at < NEWS_TTL_S:
-        return cached.value, {
-            "id": feed_id,
-            "source": config["source"],
-            "ok": True,
-            "count": len(cached.value),
-            "stale": False,
-        }
-    try:
-        rows = rss_items(
-            config["url"],
-            config["source"],
-            config["category"],
-            config["region"],
-            config.get("language", ""),
-            config.get("country", ""),
-        )
-        _feed_cache.store(feed_id, rows)
-        return rows, {
-            "id": feed_id,
-            "source": config["source"],
-            "ok": True,
-            "count": len(rows),
-            "stale": False,
-        }
-    except Exception as exc:
-        if cached:
+        if cached and now - cached.checked_at < NEWS_TTL_S:
             return cached.value, {
                 "id": feed_id,
                 "source": config["source"],
-                "ok": False,
+                "ok": True,
                 "count": len(cached.value),
-                "stale": True,
+                "stale": False,
+            }
+        try:
+            rows = rss_items(
+                config["url"],
+                config["source"],
+                config["category"],
+                config["region"],
+                config.get("language", ""),
+                config.get("country", ""),
+            )
+            _feed_cache.store(feed_id, rows)
+            return rows, {
+                "id": feed_id,
+                "source": config["source"],
+                "ok": True,
+                "count": len(rows),
+                "stale": False,
+            }
+        except Exception as exc:
+            if cached:
+                return cached.value, {
+                    "id": feed_id,
+                    "source": config["source"],
+                    "ok": False,
+                    "count": len(cached.value),
+                    "stale": True,
+                    "error": str(exc)[:120],
+                }
+            return [], {
+                "id": feed_id,
+                "source": config["source"],
+                "ok": False,
+                "count": 0,
+                "stale": False,
                 "error": str(exc)[:120],
             }
-        return [], {
-            "id": feed_id,
-            "source": config["source"],
-            "ok": False,
-            "count": 0,
-            "stale": False,
-            "error": str(exc)[:120],
-        }
 
 
 def _deduplicate(rows: list[dict]) -> list[dict]:
@@ -247,6 +256,13 @@ def _google_balkan_config(code: str) -> dict[str, str]:
 
 def _google_bulgaria(term: str) -> tuple[list[dict], dict]:
     """English-language Google News slice for Bulgarian news."""
+    cache_key = f"bulgaria:{term.casefold()}"
+    cached = _google_query_cache.get(cache_key)
+    if cached is not None:
+        return [dict(row) for row in cached], {
+            "id": "google-bg", "source": "GOOGLE NEWS INDEX", "ok": True,
+            "count": len(cached), "stale": False,
+        }
     local_query = (
         term or "site:novinite.com OR site:sofiaglobe.com OR site:balkaninsight.com"
     )
@@ -257,6 +273,7 @@ def _google_bulgaria(term: str) -> tuple[list[dict], dict]:
                 row["source"] = "BULGARIA · GOOGLE NEWS INDEX"
             if term:
                 row[_DIRECT_QUERY_TAG] = True
+        _google_query_cache.store(cache_key, [dict(row) for row in rows])
         return rows, {
             "id": "google-bg",
             "source": "GOOGLE NEWS INDEX",
@@ -277,8 +294,16 @@ def _google_bulgaria(term: str) -> tuple[list[dict], dict]:
 
 def _google_search(term: str) -> tuple[list[dict], dict]:
     """Global Google News search for the current headline query."""
+    cache_key = f"search:{term.casefold()}"
+    cached = _google_query_cache.get(cache_key)
+    if cached is not None:
+        return [dict(row) for row in cached], {
+            "id": "google-search", "source": "GOOGLE NEWS SEARCH", "ok": True,
+            "count": len(cached), "stale": False,
+        }
     try:
         rows = google_news(term, "en", "US", "US:en")
+        _google_query_cache.store(cache_key, [dict(row) for row in rows])
         return rows, {
             "id": "google-search",
             "source": "GOOGLE NEWS SEARCH",

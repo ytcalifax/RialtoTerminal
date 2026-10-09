@@ -13,6 +13,7 @@ from __future__ import annotations
 import html
 import json
 import re
+import threading
 import time
 from email.utils import parsedate_to_datetime
 from urllib.parse import quote
@@ -37,6 +38,7 @@ from .symbols import CORE_MARKETS, MARKET_GROUPS, SYMBOL_GROUP
 _QUOTE_CACHE: TTLCache[dict] = TTLCache(MARKET_TTL_S)
 _SOFIX_CACHE: TTLCache[dict] = TTLCache(SOFIX_TTL_S)
 _SEARCH_CACHE: TTLCache[list] = TTLCache(SEARCH_TTL_S)
+_YAHOO_REQUEST_SLOTS = threading.BoundedSemaphore(4)
 
 # Yahoo symbols: letters/digits plus the ^ . = - convention characters.
 _SYMBOL_RE = re.compile(r"^[A-Za-z0-9^.\-=]{1,15}$")
@@ -64,7 +66,10 @@ def _yahoo_quote(symbol: str, name: str | None = None) -> dict | None:
 
     try:
         url = YAHOO_CHART_URL.format(symbol=quote(symbol, safe=""))
-        result = json.loads(fetch(url, "application/json"))["chart"]["result"][0]
+        # Yahoo does not publish a limit for this public chart URL. Bound
+        # parallel quote bursts, especially when the large STOCKS group loads.
+        with _YAHOO_REQUEST_SLOTS:
+            result = json.loads(fetch(url, "application/json"))["chart"]["result"][0]
         meta = result.get("meta") or {}
         resolved_name = name or meta.get("shortName") or meta.get("longName") or symbol
         timestamps = result.get("timestamp") or []
@@ -250,9 +255,10 @@ def search_symbols(query: str) -> dict:
     cached = _SEARCH_CACHE.get(cache_key)
     if cached is not None:
         return {"results": cached, "query": term}
-    data = json.loads(
-        fetch(YAHOO_SEARCH_URL.format(query=quote(term)), "application/json")
-    )
+    with _YAHOO_REQUEST_SLOTS:
+        data = json.loads(
+            fetch(YAHOO_SEARCH_URL.format(query=quote(term)), "application/json")
+        )
     results = []
     for entry in (data.get("quotes") or [])[:8]:
         symbol = entry.get("symbol")

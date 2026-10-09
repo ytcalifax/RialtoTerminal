@@ -41,7 +41,7 @@ MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 USER_AGENT = "Mozilla/5.0 (compatible; RialtoTerminal/1.0)"
 
 # --- Cache lifetimes (seconds) ---------------------------------------------
-NEWS_TTL_S = 120  # publisher feeds are polled every 3 min by the UI
+NEWS_TTL_S = 300  # align publisher feed cache with the 5-minute UI poll
 MARKET_TTL_S = 300  # per-symbol quotes; limits Yahoo refreshes to one per 5 min
 MARKET_STALE_AFTER_S = 86400  # older quotes are retained but explicitly stale
 SOFIX_TTL_S = 180  # BSE labels the index widget 3 min delayed
@@ -60,7 +60,7 @@ DEFAULT_VESSELS_BBOX = ",".join(
 )
 # Open Waters caps one AIS snapshot at ~100 square degrees.
 VESSELS_MAX_SQ_DEG = 100
-VESSELS_TTL_S = 30
+VESSELS_TTL_S = 60  # align AIS snapshots with the UI poll; provider allows 120/min
 
 # --- Upstream endpoints -------------------------------------------------------
 # Every URL the backend talks to, in one reviewable place. The news feed
@@ -84,13 +84,13 @@ OPENSKY_TOKEN_URL = (
 )
 
 
-OPENSKY_CREDENTIALS = tuple(
-    (client_id, client_secret)
+OPENSKY_CREDENTIALS = tuple(dict.fromkeys(
+    (client_id.strip(), client_secret.strip())
     for entry in os.environ.get("OPENSKY_CREDENTIALS", "").split(";")
     if ":" in entry
     for client_id, client_secret in (entry.split(":", 1),)
     if client_id.strip() and client_secret.strip()
-)
+))
 ADSBDB_URL = "https://api.adsbdb.com/v0"
 BAZAR_LISTINGS_URL = "https://bazar.bg/obiavi"
 GOOGLE_NEWS_SEARCH_URL = "https://news.google.com/rss/search"
@@ -100,4 +100,4 @@ GOOGLE_NEWS_SEARCH_URL = "https://news.google.com/rss/search"
 AIRDB_AIRCRAFT_TTL_S = 86400
 AIRDB_ROUTE_TTL_S = 1800
 # ADS-B snapshot cache: coalesces identical concurrent viewport requests.
-AIR_SNAPSHOT_TTL_S = 45
+AIR_SNAPSHOT_TTL_S = 900  # align OpenSky snapshots with the 15-minute UI poll

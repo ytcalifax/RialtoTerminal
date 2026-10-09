@@ -6,7 +6,7 @@ import { observeDiseaseOutbreaks } from '../core/notifications.js';
 let busy = false;
 
 async function loadDiseaseOutbreaks(force = false) {
-  if (busy || (!force && Date.now() - (state.timestamps.diseaseOutbreaks || 0) < 600000)) return;
+  if (busy || (!force && Date.now() - (state.timestamps.diseaseOutbreaks || 0) < 900000)) return;
   busy = true;
   try {
     const data = await req('/api/health/outbreaks');

@@ -7,7 +7,7 @@ import logging
 from threading import Lock
 import sys
 from time import perf_counter, time
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 logger = logging.getLogger("rialto")
 
@@ -32,6 +32,21 @@ _totals = {
 _services: dict[str, dict] = {}
 _events: deque[dict] = deque(maxlen=250)
 _events_by_id: dict[int, dict] = {}
+_SENSITIVE_QUERY_KEYS = {
+    "api_key", "apikey", "token", "access_token", "secret",
+    "password", "authorization",
+}
+
+
+def _request_target(url: str) -> tuple[str, str]:
+    """Return path and query for debug display, redacting credential values."""
+    parsed = urlsplit(url)
+    path = parsed.path or "/"
+    query = urlencode([
+        (key, "[redacted]" if key.casefold() in _SENSITIVE_QUERY_KEYS else value)
+        for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+    ])
+    return path, f"{path}?{query}" if query else path
 
 
 def _debugger_attached() -> bool:
@@ -71,7 +86,7 @@ def _sync_debugger_state() -> None:
 
 
 def begin_request(url: str, method: str = "GET", request_bytes: int = 0) -> dict | None:
-    """Record and announce an outbound request without retaining its query/body."""
+    """Record a target-specific outbound request, redacting credential values."""
     global _next_id
     _sync_debugger_state()
     with _lock:
@@ -79,7 +94,8 @@ def begin_request(url: str, method: str = "GET", request_bytes: int = 0) -> dict
             return None
         parsed = urlsplit(url)
         service = parsed.hostname or "unknown"
-        path = parsed.path or "/"
+        path, target = _request_target(url)
+        service_key = f"{method} {service} {target}"
         _next_id += 1
         request_id = _next_id
         started = perf_counter()
@@ -88,6 +104,7 @@ def begin_request(url: str, method: str = "GET", request_bytes: int = 0) -> dict
             "time": time(),
             "service": service,
             "path": path,
+            "target": target,
             "method": method,
             "status": "IN FLIGHT",
             "duration_ms": None,
@@ -104,8 +121,10 @@ def begin_request(url: str, method: str = "GET", request_bytes: int = 0) -> dict
         _totals["requests"] += 1
         _totals["in_flight"] += 1
         _totals["request_bytes"] += event["request_bytes"]
-        stats = _services.setdefault(service, {
+        stats = _services.setdefault(service_key, {
             "service": service,
+            "method": method,
+            "target": target,
             "requests": 0,
             "completed": 0,
             "failures": 0,
@@ -122,12 +141,14 @@ def begin_request(url: str, method: str = "GET", request_bytes: int = 0) -> dict
         stats["request_bytes"] += event["request_bytes"]
         stats["last_status"] = "IN FLIGHT"
         stats["last_path"] = path
-    logger.info("external_api.start method=%s service=%s path=%s", method, service, path)
+    logger.info("external_api.start method=%s service=%s target=%s", method, service, target)
     return {
         "id": request_id,
         "started": started,
         "service": service,
         "path": path,
+        "target": target,
+        "service_key": service_key,
         "method": method,
         "request_bytes": event["request_bytes"],
     }
@@ -147,7 +168,7 @@ def finish_request(
     failed = error != "" or status is None or status >= 400
     with _lock:
         event = _events_by_id.get(token["id"])
-        service = _services.get(token["service"])
+        service = _services.get(token["service_key"])
         if event is not None:
             event["status"] = status if status is not None else "ERROR"
             event["duration_ms"] = duration_ms
@@ -172,15 +193,15 @@ def finish_request(
                 service["failures"] += 1
         log_status = status if status is not None else "ERROR"
     logger.info(
-        "external_api.done method=%s service=%s path=%s status=%s duration_ms=%s "
+        "external_api.done method=%s service=%s target=%s status=%s duration_ms=%s "
         "request_bytes=%s response_bytes=%s error=%s",
-        token["method"], token["service"], token["path"], log_status,
+        token["method"], token["service"], token["target"], log_status,
         duration_ms, token["request_bytes"], response_bytes, error or "none",
     )
 
 
 def debug_snapshot() -> dict:
-    """Return a safe JSON snapshot without URLs, query strings, or headers."""
+    """Return safe request targets without origins, headers, or credential values."""
     _sync_debugger_state()
     with _lock:
         completed = _totals["completed"]

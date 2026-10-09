@@ -18,7 +18,6 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime, timedelta
 from urllib.parse import urlencode
 
 from ..config import (
@@ -52,16 +51,18 @@ _air_cache: TTLCache[dict] = TTLCache(AIR_SNAPSHOT_TTL_S)
 _vessel_cache: TTLCache[dict] = TTLCache(VESSELS_TTL_S)
 _air_request_lock = threading.Lock()
 _last_air_request = 0.0
+_vessel_request_slots = threading.BoundedSemaphore(3)
 
 
 class _OpenSkyTokenManager:
     """Cache the OAuth2 client-credentials token until shortly before expiry."""
 
-    def __init__(self, client_id: str, client_secret: str) -> None:
+    def __init__(self, client_id: str, client_secret: str, slot: int = 0) -> None:
         self._client_id = client_id
         self._client_secret = client_secret
+        self.slot = slot
         self._token: str | None = None
-        self._expires_at: datetime | None = None
+        self._expires_at: float | None = None
         self._lock = threading.Lock()
 
     def get_token(self, force_refresh: bool = False) -> str | None:
@@ -70,7 +71,7 @@ class _OpenSkyTokenManager:
                 not force_refresh
                 and self._token
                 and self._expires_at
-                and datetime.now() < self._expires_at
+                and time.monotonic() < self._expires_at
             ):
                 return self._token
             if not self._client_id or not self._client_secret:
@@ -102,9 +103,12 @@ class _OpenSkyTokenManager:
             token = data.get("access_token")
             if not token:
                 raise RuntimeError("OpenSky authentication returned no access token")
+            # Keep each configured key's token in memory for almost its full
+            # advertised lifetime. Monotonic time avoids clock changes causing
+            # needless re-authentication; the small margin avoids expiry races.
             expires_in = max(1, int(data.get("expires_in", 1800)) - 30)
             self._token = token
-            self._expires_at = datetime.now() + timedelta(seconds=expires_in)
+            self._expires_at = time.monotonic() + expires_in
             return token
 
     def invalidate(self) -> None:
@@ -114,8 +118,8 @@ class _OpenSkyTokenManager:
 
 
 _air_tokens = [
-    _OpenSkyTokenManager(client_id, client_secret)
-    for client_id, client_secret in OPENSKY_CREDENTIALS
+    _OpenSkyTokenManager(client_id, client_secret, index)
+    for index, (client_id, client_secret) in enumerate(OPENSKY_CREDENTIALS)
 ]
 if not _air_tokens:
     _air_tokens = [_OpenSkyTokenManager("", "")]
@@ -142,8 +146,12 @@ def _fetch_air_source(url: str) -> bytes:
         token_manager = _next_air_token_manager()
         token = token_manager.get_token()
         headers = {"Authorization": f"Bearer {token}"} if token else None
+        endpoint_bucket = urllib.parse.urlsplit(url).path.rstrip("/").split("/")[-2]
+        retry_scope = f"opensky:{token_manager.slot}:{endpoint_bucket}"
         try:
-            return fetch_response(url, _JSON_ACCEPT, headers=headers)[0]
+            return fetch_response(
+                url, _JSON_ACCEPT, headers=headers, retry_scope=retry_scope
+            )[0]
         except urllib.error.HTTPError as exc:
             if exc.code != 401 or not token:
                 raise
@@ -153,6 +161,7 @@ def _fetch_air_source(url: str) -> bytes:
                 url,
                 _JSON_ACCEPT,
                 headers={"Authorization": f"Bearer {refreshed}"},
+                retry_scope=retry_scope,
             )[0]
 
 
@@ -229,10 +238,11 @@ def vessel_snapshot(boxes: str | None = None) -> tuple[int, dict]:
 
         def _fetch_one_box(box: str) -> dict | None:
             try:
-                body = fetch(
-                    OPENWATERS_VESSELS_URL.format(bbox=box),
-                    "application/geo+json, application/json",
-                )
+                with _vessel_request_slots:
+                    body = fetch(
+                        OPENWATERS_VESSELS_URL.format(bbox=box),
+                        "application/geo+json, application/json",
+                    )
                 return json.loads(body)
             except Exception:
                 return None
@@ -289,7 +299,9 @@ def vessel_track(mmsi: str) -> tuple[int, dict]:
 
 def aircraft_snapshot(bbox_raw: str | None = None) -> tuple[int, dict]:
     """Return a live OpenSky state-vector snapshot for the current map box."""
-    bbox = _parse_bbox(bbox_raw, max_area=None)
+    # Keep the query within OpenSky's 100 sq° / 2-credit band. A global
+    # viewport is narrowed around its centre before it reaches the provider.
+    bbox = _parse_bbox(bbox_raw, max_area=100)
     cache_key = bbox
     cached = _air_cache.get(cache_key)
     if cached is not None:

@@ -17,10 +17,11 @@ from ..core.cache import TTLCache
 from ..core.http_client import fetch, fetch_response
 from ..core.pool import shared_pool
 
-_WAR_TTL_S = 600
+_WAR_TTL_S = 900  # GDELT's event exports update every 15 minutes
 _war_cache: TTLCache[dict] = TTLCache(_WAR_TTL_S, max_entries=2)
-_outbreak_cache: TTLCache[dict] = TTLCache(_WAR_TTL_S, max_entries=1)
-_gpsjam_cache: TTLCache[dict] = TTLCache(3600, max_entries=1)
+_outbreak_cache: TTLCache[dict] = TTLCache(900, max_entries=1)
+_frontline_cache: TTLCache[dict] = TTLCache(86400, max_entries=1)
+_gpsjam_cache: TTLCache[dict] = TTLCache(86400, max_entries=1)
 
 _GDELT_MANIFEST_URL = "https://data.gdeltproject.org/gdeltv2/lastupdate.txt"
 _FRONTLINE_URL = (
@@ -228,10 +229,18 @@ def war_snapshot() -> tuple[int, dict]:
     stale = _war_cache.get_entry("global")
 
     def _read_frontline() -> dict | None:
+        cached = _frontline_cache.get("latest")
+        if cached is not None:
+            return cached
+        stale = _frontline_cache.get_entry("latest")
         try:
-            return json.loads(fetch(_FRONTLINE_URL, "application/geo+json, application/json"))
+            payload = json.loads(fetch(_FRONTLINE_URL, "application/geo+json, application/json"))
+            if isinstance(payload, dict) and isinstance(payload.get("features"), list):
+                _frontline_cache.store("latest", payload)
+                return payload
         except Exception:
-            return None
+            pass
+        return stale.value if stale else None
 
     def _read_gpsjam() -> dict | None:
         try:

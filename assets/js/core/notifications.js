@@ -15,6 +15,19 @@ function addNotification(title, detail, link = '') {
   renderNotifications();
 }
 
+function matchesTopics(item) {
+  const topics = state.alertSettings.keywords
+    .split(',')
+    .map((term) => term.trim().toLocaleLowerCase())
+    .filter(Boolean);
+  if (!topics.length) return true;
+  const text = Object.values(item)
+    .filter((value) => typeof value === 'string' || typeof value === 'number')
+    .join(' ')
+    .toLocaleLowerCase();
+  return topics.some((topic) => text.includes(topic));
+}
+
 function observeNews(items) {
   const current = new Set(items.map((x) => x.url));
   if (!state.alertBaselines.news) {
@@ -24,10 +37,8 @@ function observeNews(items) {
   const previous = state.alertBaselines.news;
   state.alertBaselines.news = [...current];
   if (!state.alertSettings.news) return;
-  const keywords = state.alertSettings.keywords.split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
   items.filter((x) => !previous.includes(x.url)).filter((x) => {
-    const text = `${x.title} ${x.region || ''} ${x.category || ''}`.toLowerCase();
-    return !keywords.length || keywords.some((keyword) => text.includes(keyword));
+    return matchesTopics(x);
   }).slice(0, 5).forEach((x) => addNotification('NEW HEADLINE', x.title, x.url));
 }
 
@@ -47,9 +58,38 @@ function observeConflict(reports) {
   if (state.alertSettings.conflict) {
     reports.filter((x) => !state.alertBaselines.conflict.includes(x.id || x.url || `${x.date}-${x.name}`))
       .filter((x) => matchesTerms(x, state.alertSettings.conflictTerms))
+      .filter(matchesTopics)
       .slice(0, 5).forEach((x) => addNotification('NEW CONFLICT REPORT', `${x.name || x.location || 'Reported event'} · ${x.date || ''}`, x.url || ''));
   }
   state.alertBaselines.conflict = ids;
+}
+
+function observeWorldMonitor(layers) {
+  const events = [
+    ...(layers.armed || []).map((item) => ({ ...item, alertKind: 'ARMED CONFLICT EVENT' })),
+    ...(layers.outages || []).map((item) => ({ ...item, alertKind: 'INTERNET DISRUPTION' })),
+  ];
+  const idFor = (item) => `${item.alertKind}:${item.id || item.url || item.sourceUrl || `${item.dateStart || item.occurredAt}-${item.locationName || item.title || item.country}`}`;
+  const previous = state.alertBaselines.worldMonitor;
+  const current = events.map(idFor);
+  if (!previous) {
+    state.alertBaselines.worldMonitor = current;
+    return;
+  }
+  if (state.alertSettings.conflict) {
+    events.filter((item) => !previous.includes(idFor(item)))
+      .filter((item) => matchesTerms(item, state.alertSettings.conflictTerms))
+      .filter(matchesTopics)
+      .slice(0, 5)
+      .forEach((item) => {
+        const title = item.alertKind;
+        const detail = [item.locationName, item.admin1, item.country, item.title, item.provider, item.severity, item.sideA, item.sideB]
+          .filter(Boolean).join(' · ') || 'New World Monitor report';
+        const link = [item.url, item.sourceUrl].find((value) => typeof value === 'string' && value.startsWith('https://')) || '';
+        addNotification(title, detail, link);
+      });
+  }
+  state.alertBaselines.worldMonitor = current;
 }
 
 function observeDiseaseOutbreaks(outbreaks) {
@@ -61,7 +101,7 @@ function observeDiseaseOutbreaks(outbreaks) {
     return;
   }
   if (state.alertSettings.diseaseOutbreaks) {
-    outbreaks.filter((item) => !previous.includes(idFor(item))).slice(0, 5).forEach((item) => {
+    outbreaks.filter((item) => !previous.includes(idFor(item))).filter(matchesTopics).slice(0, 5).forEach((item) => {
       const title = [item.disease, item.location].filter(Boolean).join(' · ') || 'Disease outbreak';
       const detail = [item.alertLevel, item.sourceName, item.countryCode].filter(Boolean).join(' · ');
       const link = typeof item.sourceUrl === 'string' && item.sourceUrl.startsWith('https://') ? item.sourceUrl : '';
@@ -80,6 +120,7 @@ function observeMarkets(items) {
   if (state.alertSettings.markets) {
     const threshold = Number(state.alertSettings.marketMovePct) || 2;
     items.filter((x) => Math.abs(Number(x.pct)) >= threshold && Math.abs(Number(x.pct) - Number(state.alertBaselines.markets[x.symbol] || 0)) >= 0.25)
+      .filter(matchesTopics)
       .slice(0, 5).forEach((x) => addNotification('MARKET MOVE', `${x.name} ${Number(x.pct) >= 0 ? '+' : ''}${Number(x.pct).toFixed(2)}%`));
   }
   state.alertBaselines.markets = snapshot;
@@ -96,6 +137,7 @@ function observeTracks(kind, items) {
   const minimum = Number(state.alertSettings[kind === 'vessels' ? 'vesselMinSpeed' : 'aircraftMinAltitude']) || 0;
   items.filter((x) => !previous.includes(String(x.id)))
     .filter((x) => matchesTerms(x, terms))
+    .filter(matchesTopics)
     .filter((x) => (kind === 'vessels' ? Number(x.speed) : Number(x.alt)) >= minimum)
     .slice(0, 5).forEach((x) => addNotification(kind === 'vessels' ? 'VESSEL DETECTED' : 'AIRCRAFT DETECTED', `${x.name || x.id}${kind === 'vessels' && x.dest ? ` · ${x.dest}` : ''}`));
 }
@@ -314,4 +356,4 @@ function initAlertsPage() {
   };
 }
 
-export { initNotifications, initAlertsPage, observeNews, observeConflict, observeDiseaseOutbreaks, observeMarkets, observeVessels, observeAircraft };
+export { initNotifications, initAlertsPage, observeNews, observeConflict, observeWorldMonitor, observeDiseaseOutbreaks, observeMarkets, observeVessels, observeAircraft };

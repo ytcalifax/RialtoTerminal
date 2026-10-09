@@ -98,8 +98,10 @@ def _disease_outbreaks(params: Params) -> tuple[int, dict]:
 
 
 def _debug_stats(params: Params) -> tuple[int, dict]:
-    snapshot = debug_snapshot()
-    return (200, snapshot) if snapshot["enabled"] else (404, {"error": "Debug mode is disabled."})
+    # The frontend polls this endpoint to detect when a debugger attaches.
+    # Disabled diagnostics are a normal state, so return the snapshot with
+    # enabled=false instead of reporting a missing resource to the browser.
+    return 200, debug_snapshot()
 
 
 API_ROUTES: dict[str, RouteHandler] = {

@@ -1,10 +1,3 @@
-"""A minimal thread-safe TTL cache with bounded size.
-
-The terminal polls the same handful of feeds over and over. Keeping the last
-good payload per key lets the UI degrade to slightly stale data instead of
-showing an error whenever one upstream hiccups.
-"""
-
 from __future__ import annotations
 
 import threading
@@ -14,7 +7,6 @@ from dataclasses import dataclass
 
 @dataclass
 class Entry[V]:
-    """A cached value plus the moment it was stored."""
 
     value: V
     checked_at: float
@@ -36,7 +28,6 @@ class TTLCache[V]:
         self._data: dict[str, Entry[V]] = {}
 
     def get(self, key: str) -> V | None:
-        """Return the value for ``key`` if present *and* fresh, else ``None``."""
         entry = self.get_entry(key)
         if entry is None or time.time() - entry.checked_at >= self._ttl_s:
             return None
@@ -53,7 +44,6 @@ class TTLCache[V]:
         return entry
 
     def store(self, key: str, value: V) -> None:
-        """Insert or replace the entry for ``key``, evicting if over budget."""
         with self._lock:
             self._data[key] = Entry(value=value, checked_at=time.time())
             if len(self._data) > self._max_entries:

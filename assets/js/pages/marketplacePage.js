@@ -1,6 +1,3 @@
-/**
- * Marketplace module page: filter box and listing table shell.
- */
 import { $ } from '../core/dom.js';
 import { loadMarketplace } from '../features/marketplace.js';
 

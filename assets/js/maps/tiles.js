@@ -1,12 +1,4 @@
 /**
- * OSM tile painting with a snapshot fallback.
- *
- * Tiles load asynchronously, so the previous tile set is kept as a frozen
- * fallback layer and swapped out only once the new set has enough images.
- * This keeps panning seamless even when the tile CDN is slow or offline.
- */
-
-/**
  * Replace the tile layer's images, managing the fallback snapshot lifecycle.
  * @param {HTMLElement} stage - `.map-stage` container.
  * @param {HTMLElement} tiles - `.map-tiles` layer (not the fallback clone).

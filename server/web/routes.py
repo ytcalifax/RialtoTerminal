@@ -1,14 +1,3 @@
-"""API route table.
-
-Each entry maps an endpoint path to a handler that receives the parsed query
-parameters and returns a ``(status, payload)`` pair. Routes form the service
-boundary: they validate untrusted query input and shape the response, while
-services assume validated input.
-
-Adding an endpoint means adding an entry here — the HTTP handler itself
-never changes (Open/Closed Principle).
-"""
-
 from __future__ import annotations
 
 import re

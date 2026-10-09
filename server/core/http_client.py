@@ -1,11 +1,3 @@
-"""Boundary-safe HTTP fetching for the fixed upstream data sources.
-
-Every outbound request in the service layer goes through :func:`fetch`, which
-applies the defensive guards that raw ``urllib`` calls would miss:
-scheme whitelisting, response-size capping, uniform timeouts and a single
-exception type for callers to handle.
-"""
-
 from __future__ import annotations
 
 import urllib.error
@@ -25,7 +17,6 @@ _host_cooldowns: dict[str, float] = {}
 
 
 def _wait_for_host(host: str, retry_scope: str | None = None) -> None:
-    """Reject requests during a Retry-After window instead of tying up workers."""
     with _cooldown_lock:
         cooldown_until = max(
             _host_cooldowns.get(host, 0.0),
@@ -55,7 +46,7 @@ def _remember_retry_after(host: str, value: str | None) -> None:
 
 
 class UpstreamError(RuntimeError):
-    """Raised when an upstream source cannot be read within safe limits."""
+    pass
 
 
 def fetch(

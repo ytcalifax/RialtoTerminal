@@ -1,5 +1,3 @@
-"""Debugger-triggered metrics for outbound service requests."""
-
 from __future__ import annotations
 
 from collections import deque
@@ -39,7 +37,6 @@ _SENSITIVE_QUERY_KEYS = {
 
 
 def _request_target(url: str) -> tuple[str, str]:
-    """Return path and query for debug display, redacting credential values."""
     parsed = urlsplit(url)
     path = parsed.path or "/"
     query = urlencode([
@@ -86,7 +83,6 @@ def _sync_debugger_state() -> None:
 
 
 def begin_request(url: str, method: str = "GET", request_bytes: int = 0) -> dict | None:
-    """Record a target-specific outbound request, redacting credential values."""
     global _next_id
     _sync_debugger_state()
     with _lock:
@@ -160,7 +156,6 @@ def finish_request(
     response_bytes: int = 0,
     error: str = "",
 ) -> None:
-    """Complete a measured request and update process/service totals."""
     if token is None:
         return
     duration_ms = round((perf_counter() - token["started"]) * 1000, 1)
@@ -201,7 +196,6 @@ def finish_request(
 
 
 def debug_snapshot() -> dict:
-    """Return safe request targets without origins, headers, or credential values."""
     _sync_debugger_state()
     with _lock:
         completed = _totals["completed"]

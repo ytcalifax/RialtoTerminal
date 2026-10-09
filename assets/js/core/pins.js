@@ -1,15 +1,6 @@
-/**
- * Cookie-backed store for the user's pinned dashboard symbols.
- *
- * Pins persist for a year in a first-party cookie (`rialto_pins_v1`) and
- * are sanitised on every read: shape-checked, deduplicated, capped — a
- * hand-edited cookie can never poison the app.
- */
 import { MAX_PINNED_SYMBOLS, PINNED_COOKIE } from './constants.js';
 
 const SYMBOL_RE = /^[A-Za-z0-9^.\-=]{1,15}$/;
-
-/** Read the pin list from cookies; malformed data yields an empty list. */
 export function loadPins() {
   try {
     const match = document.cookie
@@ -39,8 +30,6 @@ export function loadPins() {
     return [];
   }
 }
-
-/** Persist the pin list (one year, same-site). */
 export function savePins(pins) {
   try {
     const value = encodeURIComponent(JSON.stringify(pins.slice(0, MAX_PINNED_SYMBOLS)));
@@ -49,15 +38,11 @@ export function savePins(pins) {
     /* ignore cookie write errors in restricted or sandboxed environments */
   }
 }
-
-/** Return a new list with the symbol appended (no duplicates, capped). */
 export function withPin(pins, symbol, name) {
   const sym = String(symbol || '').toUpperCase();
   if (!SYMBOL_RE.test(sym) || pins.some((p) => p.symbol === sym)) return pins;
   return [...pins, { symbol: sym, name: String(name || sym).slice(0, 60) }].slice(0, MAX_PINNED_SYMBOLS);
 }
-
-/** Return a new list without the symbol. */
 export function withoutPin(pins, symbol) {
   const sym = String(symbol || '').toUpperCase();
   return pins.filter((p) => p.symbol !== sym);

@@ -1,7 +1,3 @@
-/**
- * Vessel/Aircraft tracking module page: search + refresh controls, the
- * positions table, the map shell, and the detail / trajectory strips.
- */
 import { $, esc } from '../core/dom.js';
 import { fmtTime } from '../core/format.js';
 import { state } from '../core/state.js';

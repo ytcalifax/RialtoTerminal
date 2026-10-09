@@ -1,10 +1,3 @@
-"""Marketplace listing service (Bazar.bg public index).
-
-The broad public index covers all categories; rows are capped to keep the
-response bounded. Listings are metadata plus outbound links only — pricing
-and availability remain with the publisher.
-"""
-
 from __future__ import annotations
 
 import time

@@ -1,11 +1,4 @@
 /**
- * DOM query and escaping primitives.
- *
- * Every module touches the DOM through these helpers so selectors and the
- * escaping policy stay consistent application-wide.
- */
-
-/**
  * `querySelector` with an optional scope root.
  * @param {string} selector
  * @param {ParentNode} [root=document] - element or document to scope the query
@@ -28,8 +21,6 @@ const esc = (value) =>
   String(value ?? '').replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
   ));
-
-/** Return an absolute web URL for untrusted outbound links, or an empty string. */
 const safeExternalUrl = (value) => {
   if (typeof value !== 'string') return '';
   try {

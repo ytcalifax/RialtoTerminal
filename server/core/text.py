@@ -1,5 +1,3 @@
-"""Text and timestamp helpers shared by the parsers."""
-
 from __future__ import annotations
 
 import re
@@ -8,7 +6,6 @@ from email.utils import parsedate_to_datetime
 
 
 def clean(value: str | None) -> str:
-    """Collapse all whitespace runs to single spaces and trim the ends."""
     return re.sub(r"\s+", " ", value or "").strip()
 
 

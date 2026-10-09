@@ -1,12 +1,3 @@
-/**
- * Page navigation.
- *
- * `openPage` is the single entry point for switching workspaces. It handles
- * the chrome updates (nav highlighting, session label, visibility) and then
- * emits 'page:changed' so the composition root can render the module shell
- * and trigger page-specific data loads — navigation itself knows nothing
- * about individual features.
- */
 import { $, $$ } from '../core/dom.js';
 import { emit } from '../core/hooks.js';
 import { state } from '../core/state.js';

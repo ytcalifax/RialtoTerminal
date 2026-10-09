@@ -1,12 +1,3 @@
-/**
- * Map view rendering: tiles + plotted positions + track route, driven by the
- * per-surface viewport in `state.mapViews`.
- *
- * Note: the currently visible rows are stashed on the map element itself
- * (`map._tracks`, `map._visibleTracks`, `map._air`, `map._routeCoords`) — the
- * original app's convention, kept so point ↔ table focus restoration keeps
- * working. Only this module reads or writes those fields.
- */
 import { $, $$, esc } from '../core/dom.js';
 import { emit } from '../core/hooks.js';
 import { state } from '../core/state.js';

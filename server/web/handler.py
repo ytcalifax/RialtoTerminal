@@ -1,10 +1,3 @@
-"""The HTTP request handler: JSON API dispatch plus public frontend serving.
-
-``SimpleHTTPRequestHandler`` is development-grade (no TLS, no auth — see the
-Python docs warning), so the server binds to loopback only and serves files
-from the project root regardless of the process working directory.
-"""
-
 from __future__ import annotations
 
 import json
@@ -23,7 +16,6 @@ NOT_PUBLIC_PATH = PROJECT_ROOT / "__not_public__"
 
 
 class TerminalRequestHandler(SimpleHTTPRequestHandler):
-    """Serve API routes and the frontend entry point plus assets only."""
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, directory=str(PROJECT_ROOT), **kwargs)
@@ -61,11 +53,9 @@ class TerminalRequestHandler(SimpleHTTPRequestHandler):
         super().end_headers()
 
     def log_message(self, format: str, *args) -> None:
-        """Keep stdlib HTTP access logs in the shared application format."""
         logger.info("http.client=%s %s", self.address_string(), format % args)
 
     def send_json(self, payload: dict, status: int = 200) -> None:
-        """Serialize ``payload`` as UTF-8 JSON with explicit length."""
         try:
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
             self.send_response(status)

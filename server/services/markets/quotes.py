@@ -1,13 +1,3 @@
-"""Market quote service.
-
-Quotes come from Yahoo Finance's public chart endpoint (1-minute bars plus
-the live consolidated last price); SOFIX, the Bulgarian blue-chip index, is
-scraped from BSE Sofia's public widget because no free JSON endpoint exists.
-Per-symbol failures return ``None`` so one dead symbol never breaks the
-whole snapshot, and successful quotes are cached so repeated polls stay
-within upstream courtesy limits.
-"""
-
 from __future__ import annotations
 
 import html
@@ -286,7 +276,6 @@ def market_snapshot(group: str = "CORE") -> dict:
 
 
 def _quoted_pair(pair: tuple[str, str]) -> dict | None:
-    """Map a ``(symbol, name)`` pair through :func:`_yahoo_quote`."""
     return _yahoo_quote(*pair)
 
 

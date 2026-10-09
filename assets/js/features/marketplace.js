@@ -1,8 +1,3 @@
-/**
- * Marketplace feature: load and render listings from Bazar.bg search.
- * Results are metadata + outbound links; failures retain the last table and
- * surface a retry path instead of blanking the module.
- */
 import { $, esc, safeExternalUrl } from '../core/dom.js';
 import { fmtTime } from '../core/format.js';
 import { req } from '../core/net.js';

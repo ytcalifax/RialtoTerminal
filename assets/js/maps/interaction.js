@@ -1,18 +1,9 @@
-/**
- * Map interaction: pointer drag panning, wheel/dblclick/buttons zooming,
- * and viewport bookkeeping. Pan/zoom writes back into `state.mapViews` and
- * repaints through renderMapView, so all maps share one code path.
- */
 import { $, $$ } from '../core/dom.js';
 import { emit } from '../core/hooks.js';
 import { state } from '../core/state.js';
 import { clampMapZoom, mapProject, mapUnproject } from './projection.js';
 import { focusPositionView, renderMapView } from './view.js';
-
-/** The map kind a given map element serves ('home' | 'ship' | 'air'). */
 const mapKindOf = (map) => (map.id === 'miniMap' ? 'home' : map.dataset.mapKind || 'ship');
-
-/** In-flight drag descriptor, or null when no drag is active. */
 let mapDrag = null;
 
 window.addEventListener('pointermove', (e) => {
@@ -23,8 +14,6 @@ window.addEventListener('pointermove', (e) => {
   if (Math.abs(d.dx) + Math.abs(d.dy) > 3) d.moved = true;
   if (d.moved) d.stage.style.transform = `translate3d(${d.dx}px,${d.dy}px,0)`;
 });
-
-/** Commit a finished drag: convert the pixel delta into a new map center. */
 function finishMapDrag() {
   if (!mapDrag) return;
   const d = mapDrag;

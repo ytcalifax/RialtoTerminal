@@ -1,17 +1,3 @@
-"""Aircraft enrichment service (adsbdb.com public API).
-
-For a selected aircraft this looks up, keylessly:
-
-* the airframe registry entry — manufacturer (brand), model, registration,
-  registered owner (the airline/operator) and a photo of the actual
-  airframe, by ICAO24 hex;
-* the flight route — airline plus origin/destination airports, by callsign.
-
-Registry entries are near-static (24 h cache); routes rotate with schedule
-seasons (30 min cache). Unknown hex/callsigns are a normal outcome, not an
-error: the payload carries ``null`` sections and the UI renders dashes.
-"""
-
 from __future__ import annotations
 
 import json
@@ -26,7 +12,6 @@ _route_cache: TTLCache[dict] = TTLCache(AIRDB_ROUTE_TTL_S)
 
 
 def _get_json(url: str) -> tuple[dict | None, str | None]:
-    """GET a JSON document; ``(None, None)`` means a clean 404 not-found."""
     try:
         return json.loads(fetch(url, "application/json")), None
     except urllib.error.HTTPError as exc:
@@ -38,7 +23,6 @@ def _get_json(url: str) -> tuple[dict | None, str | None]:
 
 
 def _aircraft(hex_id: str) -> dict | None:
-    """Registry entry for one airframe, or None when unknown/unavailable."""
     cached = _aircraft_cache.get(hex_id)
     if cached is not None:
         return cached or None
@@ -61,7 +45,6 @@ def _aircraft(hex_id: str) -> dict | None:
 
 
 def _route(callsign: str) -> dict | None:
-    """Route + airline for one callsign, or None when unknown/unavailable."""
     cached = _route_cache.get(callsign)
     if cached is not None:
         return cached or None

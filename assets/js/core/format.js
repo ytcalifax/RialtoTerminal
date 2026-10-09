@@ -1,10 +1,3 @@
-/**
- * Formatting helpers: timestamps, relative ages, display time.
- * All helpers tolerate missing or malformed input and fall back to a
- * placeholder rather than throwing — bad data degrades one cell, not the UI.
- */
-
-/** Locale time (HH:MM) for a Date-like value; '—' when empty/invalid. */
 const fmtTime = (d) => {
   if (!d) return '—';
   const date = new Date(d);
@@ -24,8 +17,6 @@ function newsTimestamp(raw) {
   const m = String(raw).match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z?$/);
   return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : 0;
 }
-
-/** Compact relative age ("4m", "3h") for headline timestamps. */
 function timeAgo(raw) {
   if (!raw) return 'TIME N/A';
   let d = new Date(raw);
@@ -37,8 +28,6 @@ function timeAgo(raw) {
   const min = Math.max(0, Math.floor((Date.now() - d) / 60000));
   return min < 60 ? `${min}m` : `${Math.floor(min / 60)}h`;
 }
-
-/** Position age in seconds → "12m" / "5h" / "2d"; '—' when unknown. */
 function ageLabel(sec) {
   if (sec == null || !Number.isFinite(Number(sec))) return '—';
   const s = Math.max(0, Number(sec));

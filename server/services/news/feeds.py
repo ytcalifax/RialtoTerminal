@@ -1,15 +1,3 @@
-"""Declarative registry of public news feeds.
-
-Data only — no logic. Each entry drives one parallel fetch:
-
-    id        cache key
-    url       public RSS/Atom endpoint
-    source    display name for the terminal UI
-    category  UI filter bucket (WORLD, MARKETS, BULGARIA, ...)
-    region    UI filter bucket; BULGARIA/BALKANS activate the local feed set
-    language  ISO code for non-English feeds (empty means English)
-"""
-
 NEWS_FEEDS: list[dict[str, str]] = [
     {
         "id": "google-global",

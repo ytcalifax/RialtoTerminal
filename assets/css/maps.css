@@ -1,10 +1,3 @@
-/* maps.css — hand-rolled OpenStreetMap surfaces: tile stage, position
-   markers, route overlay, zoom controls, credits.
-   Order matters: later blocks intentionally override earlier ones.
-   (Rules for the retired SVG background map have been removed.) */
-
-/* --- Containers --------------------------------------------------------------- */
-
 .mini-map {
   position: relative;
   overflow: hidden;
@@ -38,8 +31,6 @@
   cursor: grabbing;
 }
 
-/* --- Tile layers ------------------------------------------------------------------ */
-
 .map-tiles {
   position: absolute;
   inset: 0;
@@ -51,7 +42,6 @@
   background: transparent;
 }
 
-/* Frozen snapshot of the previous tile set, shown while new tiles load. */
 .map-tiles-fallback {
   z-index: 0;
   pointer-events: none;
@@ -64,8 +54,6 @@
   opacity: .91;
 }
 
-/* --- Position markers ------------------------------------------------------------------ */
-
 .map-point-layer {
   position: absolute;
   inset: 0;
@@ -76,12 +64,10 @@
   pointer-events: auto;
 }
 
-/* Keep markers above the route overlay inside the module map stage. */
 .map-stage .map-point-layer {
   z-index: 2;
 }
 
-/* Early rule kept minimal: markers are <button>s styled below. */
 .map-point {
   cursor: pointer;
 }
@@ -158,8 +144,6 @@
   outline: 1px solid #fff;
 }
 
-/* --- Overlays, controls, credits ------------------------------------------------------------ */
-
 .map-overlay {
   position: absolute;
   right: 8px;
@@ -216,8 +200,6 @@
   color: #ffc14a;
 }
 
-/* --- Route (track history) overlay -------------------------------------------------------------- */
-
 .route-layer {
   z-index: 1;
   pointer-events: none;
@@ -255,8 +237,6 @@
   filter: drop-shadow(0 0 3px #64b9e8);
 }
 
-/* --- Module-map sizing refinements (later overrides) ----------------------------------------------- */
-
 .module-map {
   height: 100%;
   max-height: 100%;
@@ -281,8 +261,6 @@
 .module-map .map-point.air {
   box-shadow: 0 0 6px #6db8e7;
 }
-
-/* --- Mini-map (dashboard) refinements ----------------------------------------------------------------- */
 
 .mini-map .map-stage {
   inset: 0;
@@ -319,7 +297,6 @@
   height: 9px;
 }
 
-/* Drag performance hints (no effect on layout). */
 .map-stage {
   will-change: transform;
   user-select: none;

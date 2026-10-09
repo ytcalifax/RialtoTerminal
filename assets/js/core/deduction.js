@@ -1,39 +1,12 @@
-/**
- * Cross-feed deduction engine (ALERTS & TRENDS → CAUSE & EFFECT).
- *
- * Correlates every public feed the terminal already carries — conflict
- * reports (GDELT), World Monitor armed events / internet outages / disease
- * outbreaks, news headlines, AIS tanker positions, GPS-jam coverage and
- * live quotes — into named cause→effect deductions, e.g. "Middle East
- * conflict escalating + Strait of Hormuz disruption → crude, gasoline and
- * heating-oil prices under upward pressure".
- *
- * The engine never polls on its own: it is re-evaluated whenever any feed
- * refreshes (via observeDerivedSignals) and whenever its quote watchlist
- * ticks (5 min). Quotes for effect instruments are fetched directly so the
- * engine sees energy/risk instruments even when the user is browsing another
- * market group. Rules are declarative; each rule names the signals it
- * corroborates, and a fired deduction lands in ACTIVITY as a core alert
- * with its cause→effect chain spelled out.
- */
-
 import { req } from './net.js';
 import { state } from './state.js';
-
-/** How long a fired deduction stays quiet before it may alert again (6h). */
 const DEDUCTION_COOLDOWN_MS = 6 * 3600000;
-
-/** Ring-buffer sizes for stored deductions and notification fingerprints. */
 const DEDUCTION_LIMIT = 30;
-
-/** Quotes the engine tracks for effect verification, regardless of view. */
 const DEDUCTION_WATCHLIST = [
   'BZ=F', 'CL=F', 'RB=F', 'HO=F', 'NG=F', 'GC=F', 'ZW=F',
   '^VIX', '^GSPC', 'XLE', 'USO', 'UNG', 'XOM', 'SHEL', 'TTE',
   'RTX', 'LMT', 'DAL', 'TSM', 'SMH',
 ];
-
-/** Short display names for alert copy (Yahoo names truncate at 24 chars). */
 const EFFECT_NAMES = {
   'BZ=F': 'Brent', 'CL=F': 'WTI Crude', 'RB=F': 'RBOB Gasoline', 'HO=F': 'Heating Oil',
   'NG=F': 'Natural Gas', 'GC=F': 'Gold', 'SI=F': 'Silver', 'ZW=F': 'Wheat',
@@ -41,13 +14,9 @@ const EFFECT_NAMES = {
   'UNG': 'NatGas Fund', 'XOM': 'Exxon', 'SHEL': 'Shell', 'TTE': 'TotalEnergies',
   'RTX': 'RTX', 'LMT': 'Lockheed', 'DAL': 'Delta', 'TSM': 'TSMC', 'SMH': 'Semis ETF',
 };
-
-/** Ignore sub-1% moves and quotes older than this. */
 const MOVE_FLOOR_PCT = 1;
 const QUOTE_MAX_AGE_MS = 30 * 60 * 1000;
 const SIGNAL_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-
-/** Maritime chokepoints with coarse bounding boxes for GPS-jam/tanker checks. */
 const CHOKEPOINTS = [
   { id: 'hormuz', name: 'Strait of Hormuz', keywords: ['hormuz'], minLat: 25.5, maxLat: 27.5, minLon: 55, maxLon: 58 },
   { id: 'redsea', name: 'Red Sea / Bab el-Mandeb', keywords: ['red sea', 'bab el-mandeb', 'bab al-mandeb', 'mandeb'], minLat: 11, maxLat: 21, minLon: 32, maxLon: 44 },
@@ -127,16 +96,10 @@ const THEATERS = {
     },
   },
 };
-
-/** Disease terms for the travel-risk theater (matched in outbreak + news text). */
 const DISEASE_TERMS = /\b(outbreak|epidemic|pandemic|virus|influenza|cholera|ebola|marburg|mpox|monkeypox|dengue|plague)\b/i;
-
-/** Producer-country keywords for outage corroboration. */
 const OUTAGE_COUNTRY_TERMS = /\b(iran|iraq|saudi|russia|ukraine|venezuela|libya|nigeria|kuwait|qatar|uae|yemen|egypt|taiwan|china|kazakhstan)\b/i;
 
 let quoteTimer = null;
-
-// --- small helpers -----------------------------------------------------------
 
 function ageMs(item) {
   const properties = item?.properties || {};
@@ -148,8 +111,6 @@ function ageMs(item) {
   if (Number.isNaN(timestamp) || timestamp > Date.now() + 5 * 60 * 1000) return Infinity;
   return Date.now() - timestamp;
 }
-
-/** Text of a feed row: every string value, lower-cased once. */
 function rowText(item) {
   const values = [];
   const walk = (value) => {
@@ -173,8 +134,6 @@ function fmtPct(value) {
 function quoteRow(symbol) {
   return state.deductionQuotes.find((x) => x.symbol === symbol) || null;
 }
-
-/** Absolute move for a symbol: day change or session move since first tick. */
 function moveOf(symbol) {
   const row = quoteRow(symbol);
   if (!row || row.stale === true) return null;
@@ -186,8 +145,6 @@ function moveOf(symbol) {
   const pct = Number(row.pct);
   return Number.isFinite(pct) ? pct : null;
 }
-
-/** Short label for an effect instrument ('Brent', 'S&P 500', …). */
 function effectName(symbol) {
   return EFFECT_NAMES[symbol] || quoteRow(symbol)?.name || symbol;
 }
@@ -198,8 +155,6 @@ function moveInDirection(symbol, direction) {
   if ((direction === 'up' && move <= 0) || (direction === 'down' && move >= 0)) return null;
   return `${effectName(symbol)} ${fmtPct(move)}`;
 }
-
-// --- signal collectors ---------------------------------------------------------
 
 function conflictSignals(texts, theater) {
   const count = texts.filter((text) => theater.keywords.test(text)).length;
@@ -222,8 +177,6 @@ function newsSignals(rows, theater) {
     detail: hits ? `${hits} headlines reference ${theater.label}${hits > previous ? ' · coverage accelerating' : ''}` : '',
   };
 }
-
-/** Chokepoint stress: keyword hits + GPS-jam coverage + tankers holding station. */
 function chokepointSignals(rows) {
   const newsTexts = rows.filter((x) => ageMs(x) <= SIGNAL_MAX_AGE_MS).map(rowText);
   const reportTexts = [...state.warReports, ...(state.warWorldMonitor?.armed || [])]
@@ -267,8 +220,6 @@ function outageSignals(producers = null) {
   return filtered.slice(0, 3)
     .map((x) => `Internet disruption in ${x.country || x.region || x.title || 'producer region'}`);
 }
-
-// --- rules ----------------------------------------------------------------------
 
 function theaterRequires(theater, choke) {
   const coreEffects = theater.rule.effects.filter((effect) => ['BZ=F', 'CL=F', 'RB=F', 'HO=F', 'NG=F'].includes(effect.symbol));
@@ -326,8 +277,6 @@ const RULES = [
   },
 ];
 
-// --- evaluation -------------------------------------------------------------------
-
 /**
  * Build the cross-feed context snapshot and run every rule. Records new
  * deductions in state and raises an ACTIVITY alert through `notify` whenever
@@ -379,8 +328,6 @@ function evaluateDeductions(notify = null) {
   fired.push(...runRule(RULES.find((r) => r.id === 'outbreak-travel'), ctx));
   commitDeductions(fired, notify);
 }
-
-/** Score one rule against the context; returns [deduction] when it fires. */
 function runRule(rule, ctx) {
   if (!rule) return [];
   if (rule.gate && !rule.gate(ctx)) return [];
@@ -420,8 +367,6 @@ function runRule(rule, ctx) {
     at: Date.now(),
   }];
 }
-
-/** Merge candidates into state.deductions with cooldown-based de-duplication. */
 function commitDeductions(candidates, notify) {
   candidates.forEach((candidate) => {
     const existing = state.deductions.find((x) => x.fingerprint === candidate.fingerprint);
@@ -460,8 +405,6 @@ function emitNotification(deduction, notify) {
   notify(`DEDUCTION · ${deduction.title}`, effects ? `${causes} → Observed: ${effects}` : causes, '');
 }
 
-// --- quotes -----------------------------------------------------------------------
-
 async function refreshQuotes() {
   try {
     const r = await req(`/api/quotes?symbols=${encodeURIComponent(DEDUCTION_WATCHLIST.join(','))}`);
@@ -470,8 +413,6 @@ async function refreshQuotes() {
     state.deductionQuotes = fresh;
   } catch { /* deduction quotes are corroboration, not a primary feed */ }
 }
-
-/** Boot the quote watchlist and its 5-minute refresh + re-evaluation tick. */
 function initDeductions() {
   if (quoteTimer) return;
   refreshQuotes();

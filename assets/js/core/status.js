@@ -1,23 +1,10 @@
-/**
- * Status-bar and feed-health indicators.
- *
- * `setHealth` is the single writer of the header connection state: it folds
- * the four feed statuses into one indicator (`loading` / `partial` / `ok` /
- * `error`) and derives the caption text. A poll that finishes faster than
- * the pulse animation holds the "UPDATING" state for a minimum dwell so the
- * updating signal stays visible.
- */
 import { $ } from './dom.js';
 import { state } from './state.js';
 import { MIN_UPDATE_PULSE_MS } from './constants.js';
-
-/** Write a message to the bottom status bar (plain text, not HTML). */
 const setStatus = (message) => {
   const el = $('#statusText');
   if (el) el.textContent = message;
 };
-
-/** Fold the current feed states into the header indicator + caption. */
 function renderConnection() {
   const reported = Object.values(state.health).filter((v) => v !== 'idle');
   const pending = reported.some((v) => v === 'loading');

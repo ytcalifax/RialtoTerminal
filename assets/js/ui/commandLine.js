@@ -1,10 +1,3 @@
-/**
- * Terminal-style command line: GO button, autocomplete suggestions,
- * history navigation, function menu and the F2 help panel.
- *
- * The command line is UI-layer, so it may import `openPage` directly;
- * feature data calls (news search) go through the feature module.
- */
 import { $, $$ } from '../core/dom.js';
 import { state } from '../core/state.js';
 import { setStatus } from '../core/status.js';
@@ -13,15 +6,11 @@ import { openPage } from './navigation.js';
 import { loadNews } from '../features/news.js';
 
 const getCmd = () => $('#command');
-
-/** Activate the handler embedded in a suggestion/menu row. */
 function bindPopupCommands(box) {
   $$('[data-command]', box).forEach((el) => {
     el.onclick = () => goCommand(el.dataset.command);
   });
 }
-
-/** Open the function menu popup. */
 function openTerminalMenu() {
   const box = $('#suggestions');
   box.dataset.mode = 'menu';
@@ -31,8 +20,6 @@ function openTerminalMenu() {
   bindPopupCommands(box);
   setStatus('MENU · SELECT A FUNCTION');
 }
-
-/** Open the keyboard-reference + function directory panel (F2). */
 function runHelp() {
   const box = $('#suggestions');
   box.dataset.mode = 'help';
@@ -79,8 +66,6 @@ function goCommand(value) {
   $('#command').value = '';
   $('#suggestions').classList.remove('open');
 }
-
-/** Show prefix-matched command suggestions for the current input. */
 function showSuggestions(value) {
   const cmd = getCmd();
   const raw = value !== undefined ? value : (cmd?.value || '');
@@ -93,8 +78,6 @@ function showSuggestions(value) {
   box.classList.toggle('open', (cmd && document.activeElement === cmd) || !v);
   bindPopupCommands(box);
 }
-
-/** Wire all command-line and global keyboard behaviour (call once at boot). */
 function initCommandLine() {
   const cmd = getCmd();
   if (!cmd) return;

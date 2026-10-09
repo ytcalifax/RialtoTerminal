@@ -1,15 +1,3 @@
-/**
- * Composition root and boot sequence.
- *
- * This is the only module allowed to know every layer. It registers the
- * hooks that keep the rest of the graph acyclic, binds the chrome, performs
- * the initial loads and arms the polling intervals.
- *
- * Poll schedule (matches the source data rhythms):
- *   news 5 min · vessels 60 s · aircraft 15 min while visible ·
- *   markets 5 min (STOCKS group 10 min: 150-symbol Yahoo bursts) ·
- *   marketplace 15 min while visible · conflict and disease data 15 min
- */
 import { $ } from './core/dom.js';
 import { on } from './core/hooks.js';
 import { state } from './core/state.js';
@@ -31,20 +19,14 @@ import { loadMarketplace } from './features/marketplace.js';
 import { loadWar } from './features/conflict.js';
 import { loadDiseaseOutbreaks } from './features/health.js';
 
-// --- Hook wiring (the seams described in core/hooks.js) ---------------------
-
-// Features ask for navigation; the UI layer owns how navigation happens.
 on('navigate', (page) => openPage(page));
 
-// Map marker clicks select a track; the tracking feature owns that flow.
 on('track:selected', (x, air) => selectTrack(x, air));
 
 // Panning/zooming a tracking map retargets that feed's region: the map is
 // the driver, so traffic is fetched wherever in the world the user looks.
 on('map:view-changed', (kind) => trackingViewChanged(kind));
 
-// After openPage flips the chrome, render the module shell and load any
-// data the page needs (mirrors the original inline sequencing exactly).
 on('page:changed', (page) => {
   const home = page === 'top';
   if (!home) renderModule();
@@ -55,15 +37,12 @@ on('page:changed', (page) => {
   if (page === 'war') loadWar();
 });
 
-// Feature flows that rebuild the module shell after changing selection state.
 on('module:rerender', () => renderModule());
 on('geospatial:updated', () => renderModule());
 
-// --- Boot -------------------------------------------------------------------
-
 initChrome();
 initNotifications();
-initDeductions(); // quote watchlist for cause→effect deductions; ticks every 5 min
+initDeductions();
 initDebugPanel();
 initCommandLine();
 initNewsChrome();
@@ -71,7 +50,7 @@ initMarketsChrome();
 
 loadNews();
 loadMarket();
-if (state.pins.length) loadMarket(CUSTOM_GROUP); // pin quotes feed the ticker
+if (state.pins.length) loadMarket(CUSTOM_GROUP);
 loadShips();
 loadAir();
 loadWar();

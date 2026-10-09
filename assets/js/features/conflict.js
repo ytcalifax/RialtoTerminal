@@ -1,4 +1,3 @@
-/** Public conflict data loading. */
 import { req } from '../core/net.js';
 import { emit } from '../core/hooks.js';
 import { state } from '../core/state.js';

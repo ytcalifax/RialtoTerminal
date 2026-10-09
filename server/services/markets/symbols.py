@@ -1,16 +1,7 @@
-"""The tradable symbol universe, as ``symbol -> display name`` mappings.
-
-Data only. The strings use Yahoo Finance conventions; ``^SOFIX`` is fetched
-from the BSE Sofia site instead, so the quote service special-cases it.
-``market_map`` fails fast at import time if a pair is malformed — a config
-error must surface at startup, not per request.
-"""
-
 from __future__ import annotations
 
 
 def market_map(raw: str) -> dict[str, str]:
-    """Parse ``SYMBOL|Name;SYMBOL|Name;...`` into an ordered dict."""
     return dict(pair.split("|", 1) for pair in raw.split(";"))
 
 

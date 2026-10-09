@@ -1,4 +1,3 @@
-/** Conflict-report map workspace. */
 import { $, $$, esc, safeExternalUrl } from '../core/dom.js';
 import { state } from '../core/state.js';
 import { CONFLICT_TYPE_OPTIONS, saveConflictTypes, saveConflictDateRange } from '../core/conflictFilters.js';

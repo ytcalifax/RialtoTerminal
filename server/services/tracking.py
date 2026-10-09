@@ -1,14 +1,3 @@
-"""Vessel (AIS) and aircraft (ADS-B) position services.
-
-Vessels proxy the public AIS snapshot API; aircraft use OpenSky live state
-vectors and tracks.
-
-Aircraft rows are normalised to the conventions the UI already expects
-(altitudes in metres, speeds in m/s, matching OpenSky's units) so both
-surfaces share one rendering path. Caller-supplied parts (MMSI, ICAO24) are
-validated by the HTTP boundary before they reach here.
-"""
-
 from __future__ import annotations
 
 import json
@@ -55,7 +44,6 @@ _vessel_request_slots = threading.BoundedSemaphore(3)
 
 
 class _OpenSkyTokenManager:
-    """Cache the OAuth2 client-credentials token until shortly before expiry."""
 
     def __init__(self, client_id: str, client_secret: str, slot: int = 0) -> None:
         self._client_id = client_id
@@ -136,7 +124,6 @@ def _next_air_token_manager() -> _OpenSkyTokenManager:
 
 
 def _fetch_air_source(url: str) -> bytes:
-    """Serialize OpenSky calls and keep them at or below one request/second."""
     global _last_air_request
     with _air_request_lock:
         wait = 1.0 - (time.monotonic() - _last_air_request)
@@ -212,7 +199,6 @@ def _parse_bbox(raw: str | None, max_area: float | None = VESSELS_MAX_SQ_DEG) ->
 
 
 def _parse_boxes(raw: str | None) -> list[str]:
-    """Parse a ``;``-separated box list into up to nine clamped query boxes."""
     if not raw:
         return [DEFAULT_VESSELS_BBOX]
     boxes = [_parse_bbox(part) for part in raw.split(";") if part.strip()]
@@ -286,7 +272,6 @@ def vessel_snapshot(boxes: str | None = None) -> tuple[int, dict]:
 
 
 def vessel_track(mmsi: str) -> tuple[int, dict]:
-    """Return the movement history for one vessel MMSI as ``(status, payload)``."""
     try:
         data = json.loads(
             fetch(
@@ -300,7 +285,6 @@ def vessel_track(mmsi: str) -> tuple[int, dict]:
 
 
 def aircraft_snapshot(bbox_raw: str | None = None) -> tuple[int, dict]:
-    """Return a live OpenSky state-vector snapshot for the current map box."""
     # Keep the query within OpenSky's 100 sq° / 2-credit band. A global
     # viewport is narrowed around its centre before it reaches the provider.
     bbox = _parse_bbox(bbox_raw, max_area=100)

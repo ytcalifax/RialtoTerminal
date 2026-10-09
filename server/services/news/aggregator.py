@@ -1,10 +1,3 @@
-"""News aggregation service.
-
-Fans a configurable feed list out in parallel, falls back to cached items
-per feed when an upstream fails, optionally narrows by search term via the
-Google News index, then deduplicates and sorts the merged timeline.
-"""
-
 from __future__ import annotations
 
 import re
@@ -39,7 +32,6 @@ def google_news(
     country: str = "US",
     edition: str = "US:en",
 ) -> list[dict]:
-    """Query the Google News RSS index and normalise its rows."""
     params = urlencode({"q": query, "hl": language, "gl": country, "ceid": edition})
     is_bulgarian = country == "BG"
     return rss_items(
@@ -233,7 +225,6 @@ def aggregate_news(feed: str = "global", query: str = "", country: str = "") -> 
 
 
 def _google_balkan_config(code: str) -> dict[str, str]:
-    """Make a locale-specific Google News RSS config for one country."""
     details = BALKAN_COUNTRIES[code]
     params = urlencode(
         {
@@ -255,7 +246,6 @@ def _google_balkan_config(code: str) -> dict[str, str]:
 
 
 def _google_bulgaria(term: str) -> tuple[list[dict], dict]:
-    """English-language Google News slice for Bulgarian news."""
     cache_key = f"bulgaria:{term.casefold()}"
     cached = _google_query_cache.get(cache_key)
     if cached is not None:
@@ -293,7 +283,6 @@ def _google_bulgaria(term: str) -> tuple[list[dict], dict]:
 
 
 def _google_search(term: str) -> tuple[list[dict], dict]:
-    """Global Google News search for the current headline query."""
     cache_key = f"search:{term.casefold()}"
     cached = _google_query_cache.get(cache_key)
     if cached is not None:

@@ -1,17 +1,4 @@
-/**
- * Application-wide constants — the single place where every knob, list and
- * fixed label lives. If it is a value someone might tweak or break, it
- * belongs here, not beside the logic that consumes it. Feature-specific
- * *data* (the news feed list equivalent: the symbol universe) stays in its
- * domain module only when it is genuinely domain data; UI knobs do not.
- */
-
-// --- Networking -------------------------------------------------------------
-
-/** Client-side abort timeout for API calls (ms). */
 const REQUEST_TIMEOUT_MS = 30000;
-
-/** Command-line history length. */
 const HISTORY_LIMIT = 30;
 
 /**
@@ -34,13 +21,7 @@ const TRACK_REFETCH_DEBOUNCE_MS = 600;
  * budget small enough for the sources' ~1 request/second courtesy limits.
  */
 const MAX_COVERAGE_CELLS = 4;
-
-// --- Navigation ---------------------------------------------------------------
-
-/** Screen number (1-4) → default page shown when the tab is clicked. */
 const SCREEN_BY_PAGE = { '1': 'top', '2': 'news', '3': 'markets', '4': 'ships' };
-
-/** Header session label per page (falls back to the page name upper-cased). */
 const SESSION_LABELS = {
   top: 'TOP NEWS',
   news: 'NEWS & RESEARCH',
@@ -51,10 +32,6 @@ const SESSION_LABELS = {
   alerts: 'ALERTS & TRENDS',
   marketplace: 'MARKETPLACE',
 };
-
-// --- Command line ---------------------------------------------------------------
-
-/** Command word → page. */
 const COMMAND_PAGES = {
   TOP: 'top',
   NEWS: 'news', N: 'news', NI: 'news',
@@ -65,8 +42,6 @@ const COMMAND_PAGES = {
   MPL: 'marketplace', MARKETPLACE: 'marketplace',
   CON: 'war', CONFLICT: 'war',
 };
-
-/** Command word → description, used for autocomplete suggestions. */
 const COMMAND_NAMES = {
   TOP: 'Top News',
   NEWS: 'News Search', N: 'News Search',
@@ -77,8 +52,6 @@ const COMMAND_NAMES = {
   ALT: 'Alert Settings',
   MPL: 'Marketplace',
 };
-
-/** Function menu entries, in their own display order: [command, description]. */
 const MENU_ITEMS = [
   ['TOP', 'Top News'],
   ['NEWS', 'News Search'],
@@ -89,8 +62,6 @@ const MENU_ITEMS = [
   ['ALT', 'Alert Settings'],
   ['MPL', 'Marketplace'],
 ];
-
-/** Help-panel function directory, in its own display order. */
 const HELP_ITEMS = [
   ['TOP', 'Top News'],
   ['NEWS', 'News Search'],
@@ -101,19 +72,11 @@ const HELP_ITEMS = [
   ['ALT', 'Alert Settings'],
   ['MPL', 'Marketplace'],
 ];
-
-// --- News --------------------------------------------------------------------------
-
-/** Keyword regexes powering the topic filter chips. */
 const TOPIC_TERMS = {
   business: /business|company|market|econom|finance|trade|bank|oil|stock/i,
   politics: /politic|government|minister|election|parliament|president|war|policy/i,
   technology: /technology|tech|ai |artificial intelligence|chip|software|cyber/i,
 };
-
-// --- Markets --------------------------------------------------------------------------
-
-/** Dashboard market group tabs, in display order. */
 const MARKET_GROUPS = [
   ['INDICES', 'Indices'],
   ['FX', 'FX'],
@@ -123,34 +86,14 @@ const MARKET_GROUPS = [
   ['ETFS', 'ETFs'],
   ['STOCKS', 'Stocks'],
 ];
-
-/** Symbols shown in the dashboard ticker strip, in order. */
 const TICKER_SYMBOLS = ['^GSPC', '^IXIC', '^FTSE', '^SOFIX', 'EURUSD=X', 'GC=F', 'BZ=F', 'BTC-USD', 'ETH-USD', 'SOL-USD'];
-
-/** Coinbase slug lookup for crypto trade links; everything else → Yahoo. */
 const COINBASE_SLUGS = { 'BTC-USD': 'bitcoin', 'ETH-USD': 'ethereum', 'SOL-USD': 'solana' };
-
-/** Cookie name and cap for the pinned dashboard symbols. */
 const PINNED_COOKIE = 'rialto_pins_v1';
 const MAX_PINNED_SYMBOLS = 24;
-
-/** Market-group id of the user's pinned set (tab appears when pins exist). */
 const CUSTOM_GROUP = 'CUSTOM';
-
-// --- Maps -------------------------------------------------------------------------------
-
-/** OSM tile URL for one tile at zoom z / column x / row y. */
 const osmTileUrl = (z, x, y) => `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
-
-/** OpenStreetMap credit anchor shared by every map shell. */
 const OSM_CREDIT = '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OPENSTREETMAP</a>';
-
-// --- Vessels ------------------------------------------------------------------------------
-
-/** Vessel lookup page: photos, current voyage and operator details. */
 const VESSEL_LOOKUP_URL = 'https://www.vesselfinder.com/vessels?name=';
-
-/** AIS ship-type codes → readable labels (standard ITU-R M.1371 ranges). */
 const VESSEL_TYPE_BANDS = [
   [20, 29, 'Wing in ground'],
   [30, 30, 'Fishing'],
@@ -173,8 +116,6 @@ const VESSEL_TYPE_BANDS = [
   [80, 89, 'Tanker'],
   [90, 99, 'Other'],
 ];
-
-/** Decode a numeric AIS ship-type code into a label; capitalize text values. */
 const vesselTypeLabel = (code) => {
   const n = Number(code);
   if (!Number.isFinite(n)) {

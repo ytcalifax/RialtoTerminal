@@ -1,5 +1,3 @@
-"""Public conflict reporting and GPSJam coverage feeds."""
-
 from __future__ import annotations
 
 import csv
@@ -34,7 +32,6 @@ _WORLDMONITOR_API = "https://api.worldmonitor.app"
 
 
 def _worldmonitor_json(path: str, params: dict[str, str] | None = None) -> dict:
-    """Read one World Monitor API resource with the locally configured key."""
     key = os.environ.get("WORLDMONITOR_API_KEY", "").strip()
     if not key:
         raise ValueError("WORLDMONITOR_API_KEY is not configured")
@@ -51,7 +48,6 @@ def _worldmonitor_json(path: str, params: dict[str, str] | None = None) -> dict:
 
 
 def _worldmonitor_layers() -> dict:
-    """Fetch the conflict-map layers independently so one tier failure degrades gracefully."""
     def read(name: str, path: str, key: str, params: dict[str, str] | None = None) -> tuple[str, list]:
         try:
             payload = _worldmonitor_json(path, params)
@@ -83,7 +79,6 @@ def _worldmonitor_layers() -> dict:
 
 
 def disease_outbreak_snapshot() -> tuple[int, dict]:
-    """Return recent World Monitor disease alerts, with a stale fallback."""
     cached = _outbreak_cache.get("latest")
     if cached is not None:
         return 200, cached
@@ -113,7 +108,6 @@ def _features(data: object) -> list[dict]:
 
 
 def _conflict_events() -> list[dict]:
-    """Read recent violent events from GDELT's public 15-minute export."""
     manifest = fetch(_GDELT_MANIFEST_URL, "text/plain").decode("utf-8", "replace")
     first_line = next((line for line in manifest.splitlines() if line.strip()), "")
     parts = first_line.split()
@@ -163,7 +157,6 @@ def _conflict_events() -> list[dict]:
 
 
 def _gpsjam_coverage() -> dict:
-    """Return GPSJam's latest daily aircraft-reported interference hexes."""
     cached = _gpsjam_cache.get("latest")
     if cached is not None:
         return cached
@@ -222,7 +215,6 @@ def _gpsjam_coverage() -> dict:
 
 
 def war_snapshot() -> tuple[int, dict]:
-    """Return news-derived conflict references and the public Ukraine front line."""
     cached = _war_cache.get("global")
     if cached is not None:
         return 200, cached

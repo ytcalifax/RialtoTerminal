@@ -1,4 +1,3 @@
-/** Optional browser panel for server-side external API request metrics. */
 import { $, esc } from './dom.js';
 
 const bytes = (value) => {

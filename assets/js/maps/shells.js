@@ -1,7 +1,3 @@
-/**
- * Static HTML shells for the two map surfaces. Templates only — behaviour
- * lives in view.js / interaction.js.
- */
 import { state } from '../core/state.js';
 import { OSM_CREDIT } from '../core/constants.js';
 

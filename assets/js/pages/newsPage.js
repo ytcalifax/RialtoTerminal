@@ -1,6 +1,3 @@
-/**
- * News & Research module page: search controls and the article grid shell.
- */
 import { $, esc } from '../core/dom.js';
 import { state } from '../core/state.js';
 import { loadNews, renderNewsModuleRows } from '../features/news.js';

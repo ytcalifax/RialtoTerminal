@@ -1,4 +1,3 @@
-/** World Monitor public health alerts. */
 import { req } from '../core/net.js';
 import { state } from '../core/state.js';
 import { observeDiseaseOutbreaks, observeDerivedSignals } from '../core/notifications.js';

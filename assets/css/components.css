@@ -1,9 +1,3 @@
-/* components.css — shared interactive widgets and data rows: buttons,
-   badges, tables, story/ship rows, popups, feed-health states.
-   Order matters: later blocks intentionally override earlier ones. */
-
-/* --- Connection / feed-health indicator ------------------------------------ */
-
 .connection {
   color: #7e8e7d;
 }
@@ -26,8 +20,6 @@
   font-weight: 700;
   padding: 0;
 }
-
-/* --- Suggestions / menu / help popup ---------------------------------------- */
 
 .suggestions {
   display: none;
@@ -108,8 +100,6 @@
   font: 9px Roboto Mono, monospace;
 }
 
-/* --- Nav keys + status dots --------------------------------------------------- */
-
 .key {
   display: inline-block;
   margin-right: 5px;
@@ -142,8 +132,6 @@
 .dot.green { background: #7ab64b; }
 .dot.blue { background: #54a9d6; }
 .dot.cyan { background: #39b5bd; }
-
-/* --- Panel header actions ------------------------------------------------------- */
 
 .head-actions {
   height: 100%;
@@ -181,8 +169,6 @@
   color: #8c989d;
   font-size: 8px;
 }
-
-/* --- Top news: stories ----------------------------------------------------------- */
 
 .story-column {
   overflow: auto;
@@ -245,8 +231,6 @@
   font-weight: 700;
   font-size: 12px;
 }
-
-/* --- Spotlight rail (S&P chart + briefings) ----------------------------------------- */
 
 .spotlight {
   border-left: 1px solid #3a4144;
@@ -353,8 +337,6 @@
   line-height: 1.4;
 }
 
-/* --- Mini tabs (market groups) --------------------------------------------------------- */
-
 .mini-tabs {
   height: 24px;
   flex: none;
@@ -404,8 +386,6 @@
   color: #f0b344;
   border-bottom-color: #f0b344;
 }
-
-/* --- Data tables (dashboard market table) ------------------------------------------------ */
 
 .market-table-wrap {
   overflow: auto;
@@ -466,8 +446,6 @@
   stroke-width: 1.4;
 }
 
-/* --- Panel footer ---------------------------------------------------------------------- */
-
 .panel-foot {
   min-height: 22px;
   display: flex;
@@ -485,8 +463,6 @@
   color: #78aad0;
   font: 9px Roboto Mono, monospace;
 }
-
-/* --- World news toolbar + compact rows ---------------------------------------------------- */
 
 .news-toolbar {
   height: 24px;
@@ -550,8 +526,6 @@
   color: #7b8589;
   font: 8px Roboto Mono, monospace;
 }
-
-/* --- Dashboard vessel peek -------------------------------------------------------------------- */
 
 .ship-peek {
   min-width: 0;
@@ -619,8 +593,6 @@
   font: 9px Roboto Mono, monospace;
 }
 
-/* --- Empty / placeholder states ---------------------------------------------------------------- */
-
 .empty-state {
   padding: 20px;
   color: #9ba6aa;
@@ -632,7 +604,6 @@
   color: #f0b54a;
 }
 
-/* Compact variant wins over the base padding above. */
 .empty-state {
   padding: 9px 8px;
   color: #96a2a6;
@@ -641,8 +612,6 @@
   font-size: 9px;
   line-height: 1.45;
 }
-
-/* --- Ticker quotes ------------------------------------------------------------------------------- */
 
 .ticker-quotes {
   display: flex;
@@ -693,8 +662,6 @@
   color: #ffc14a;
   text-decoration: underline;
 }
-
-/* --- Selection, focus and interaction states (intentional overrides) ----------------------------- */
 
 .connection i {
   background: #7ab943;
@@ -775,7 +742,6 @@ select:focus-visible {
   outline-offset: 1px;
 }
 
-/* Chips: interactive reset over the base .filter-chip above. */
 .filter-chip {
   user-select: none;
   border: 0;

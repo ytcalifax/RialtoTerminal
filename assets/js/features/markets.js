@@ -1,11 +1,3 @@
-/**
- * Markets feature: quote loading, dashboard table, full monitor rendering,
- * instrument selection, and the market group tabs.
- *
- * Stale-quote policy: rows missing from a fresh snapshot are carried
- * forward (flagged `stale`) instead of vanishing, so a flaky upstream never
- * blanks the monitor.
- */
 import { $, $$, esc } from '../core/dom.js';
 import { fmtTime } from '../core/format.js';
 import { req } from '../core/net.js';
@@ -15,10 +7,6 @@ import { state } from '../core/state.js';
 import { MARKET_GROUPS, TICKER_SYMBOLS, COINBASE_SLUGS, CUSTOM_GROUP } from '../core/constants.js';
 import { savePins, withPin, withoutPin } from '../core/pins.js';
 import { observeMarkets, observeDerivedSignals } from '../core/notifications.js';
-
-// --- Pinned symbols (cookie-backed dashboard favourites) --------------------
-
-/** Mini-tabs markup: universe groups + the ★ CUSTOM tab when pins exist. */
 function marketGroupTabsHTML() {
   const tabs = MARKET_GROUPS
     .map(([id, label]) => `<button data-market-group="${id}" class="${state.marketGroup === id ? 'active' : ''}">${label} <small data-market-delay="${id}">AVG —</small></button>`)
@@ -28,8 +16,6 @@ function marketGroupTabsHTML() {
     : '';
   return tabs + custom;
 }
-
-/** Show the average age of each group's latest quote beside its tab. */
 function updateMarketTabDelays() {
   $$('[data-market-group]').forEach((button) => {
     const group = button.dataset.marketGroup;
@@ -62,8 +48,6 @@ let lastSearchResults = null;
 let lastSearchQuotes = {};
 let lastSearchQuery = '';
 let searchTimer = null;
-
-/** Persist pins; keep tabs, ticker and the custom group in step. */
 function setPins(next) {
   state.pins = next;
   savePins(next);
@@ -85,8 +69,6 @@ function setPins(next) {
   renderMarkets(); // ticker strip picks up the new pins
   rerenderSymbolResults();
 }
-
-/** Show/hide the dashboard ★ CUSTOM tab as pins come and go. */
 function syncDashboardCustomTab() {
   const tabs = document.querySelector('#marketPanel .mini-tabs');
   if (!tabs) return;
@@ -102,8 +84,6 @@ function syncDashboardCustomTab() {
   }
   if (btn) btn.classList.toggle('active', state.marketGroup === CUSTOM_GROUP);
 }
-
-/** Debounced symbol lookup; prices are fetched for the matches as decoration. */
 function queueSymbolSearch(query) {
   clearTimeout(searchTimer);
   lastSearchQuery = query.trim();
@@ -132,8 +112,6 @@ function queueSymbolSearch(query) {
     }
   }, 400);
 }
-
-/** Repaint the search results from the last lookup (kept for pin toggles). */
 function rerenderSymbolResults() {
   if (lastSearchResults) renderSymbolResults(lastSearchResults, lastSearchQuotes);
 }
@@ -167,16 +145,10 @@ function renderSymbolResults(results, quotes = {}, error = '') {
   }).join('');
   box.classList.remove('hidden');
 }
-
-/** Label for the outbound quote-page link column. */
 const tradeLabel = () => 'OPEN QUOTE ↗';
-
-/** Public quote page for an instrument (Coinbase for crypto, else Yahoo). */
 const tradeUrl = (symbol) => COINBASE_SLUGS[symbol]
   ? `https://www.coinbase.com/price/${COINBASE_SLUGS[symbol]}`
   : `https://finance.yahoo.com/quote/${encodeURIComponent(symbol)}/`;
-
-/** Inline SVG sparkline of intraday closes; '' when no series. */
 function sparkline(series) {
   const valid = (series || []).filter((v) => Number.isFinite(v));
   if (valid.length < 2) return '';
@@ -186,8 +158,6 @@ function sparkline(series) {
   const p = valid.map((v, i) => `${i ? 'L' : 'M'} ${(i / (valid.length - 1 || 1)) * 54} ${13 - (v - lo) / span * 11}`).join(' ');
   return `<svg class="spark" viewBox="0 0 54 14"><path d="${p}"/></svg>`;
 }
-
-/** Bind the market-group tab row (dashboard mini-tabs and module tabs). */
 function bindMarketGroups() {
   $$('[data-market-group]').forEach((button) => {
     button.onclick = () => {
@@ -263,8 +233,6 @@ async function loadMarket(group = 'CORE') {
     if (state.page === 'markets') renderFullMarketRows();
   }
 }
-
-/** Repaint the dashboard market table, ticker strip and spot chart. */
 function renderMarkets() {
   updateMarketTabDelays();
   const scroller = $('.market-table-wrap');
@@ -314,8 +282,6 @@ function renderMarkets() {
     target?.focus({ preventScroll: true });
   }
 }
-
-/** Repaint the full market monitor table (module page). */
 function renderFullMarketRows() {
   const body = $('#fullMarketRows');
   if (!body) return;
@@ -349,8 +315,6 @@ function renderFullMarketRows() {
     row?.focus({ preventScroll: true });
   }
 }
-
-/** Bind activation (click + Enter/Space) on market rows in both tables. */
 function bindMarketRows() {
   $$('#marketTable [data-market-symbol],#fullMarketRows [data-market-symbol]').forEach((el) => {
     el.onclick = () => selectInstrument(el.dataset.marketSymbol);
@@ -395,8 +359,6 @@ function selectInstrument(symbol) {
   const pct = x.pct == null ? 'CHANGE UNAVAILABLE' : `${x.pct >= 0 ? '+' : ''}${Number(x.pct).toFixed(2)}%`;
   setStatus(`${x.name.toUpperCase()} · ${x.symbol} · ${Number(x.last).toLocaleString('en-US')} · ${pct}`);
 }
-
-/** Bind static market chrome: the dashboard ticker strip + pin actions. */
 function initMarketsChrome() {
   bindMarketGroups();
   syncDashboardCustomTab();

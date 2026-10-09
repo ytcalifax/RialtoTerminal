@@ -1,11 +1,3 @@
-"""HTML listing extraction for the Bazar.bg public marketplace index.
-
-The site has no API, so a forgiving ``HTMLParser`` subclass pulls listing
-links and splits the visible text into title / location / posted / price
-fields. Bulgarian date words ("днес", "вчера", month names) are part of the
-grammar — keep them intact.
-"""
-
 from __future__ import annotations
 
 import re
@@ -27,7 +19,6 @@ _LOCATION_RE = re.compile(r"\s((?:гр\.|с\.|к\.к\.|обл\.)\s*.+)$", re.I)
 
 
 class ListingParser(HTMLParser):
-    """Collect ``/obiava-`` links and their visible text into structured rows."""
 
     def __init__(self) -> None:
         super().__init__()

@@ -1,13 +1,8 @@
-/**
- * Chrome bindings: function navigation buttons, screen tabs, Sofia clock.
- */
 import { $, $$ } from '../core/dom.js';
 import { state } from '../core/state.js';
 import { SCREEN_BY_PAGE } from '../core/constants.js';
 import { openPage } from './navigation.js';
 import { copyCurrentData } from '../core/exportData.js';
-
-/** Sofia-local wall clock into the header; runs every second. */
 function startClock() {
   const clock = () => {
     const d = new Date();
@@ -21,8 +16,6 @@ function startClock() {
   clock();
   setInterval(clock, 1000);
 }
-
-/** Bind the static chrome: function nav, screen tabs, clock. */
 function initChrome() {
   $$('.function-nav button[data-page],.text-action,.panel-foot button[data-page],.spot-head button[data-page]')
     .forEach((b) => b.addEventListener('click', () => openPage(b.dataset.page)));

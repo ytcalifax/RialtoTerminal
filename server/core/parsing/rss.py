@@ -1,9 +1,3 @@
-"""RSS / Atom feed parsing.
-
-Only the standard library parser is used; feeds are fetched exclusively from
-the fixed endpoints listed in :mod:`server.services.news_feeds`.
-"""
-
 from __future__ import annotations
 
 # noinspection PyPep8Naming — `ET` is the universal stdlib idiom
@@ -30,12 +24,10 @@ _EUROPE_TERMS = re.compile(
 
 
 def _tag_name(element: ET.Element) -> str:
-    """Return an element's tag without its ``{namespace}`` prefix."""
     return element.tag.rsplit("}", 1)[-1].lower()
 
 
 def local_text(element: ET.Element, names: set[str]) -> str:
-    """Return the cleaned text of the first direct child matching ``names``."""
     for child in element:
         if _tag_name(child) in names and child.text:
             return clean(child.text)

@@ -1,7 +1,3 @@
-/**
- * Market Monitor module page: group tabs, filter box and the full quote
- * table shell.
- */
 import { $, esc } from '../core/dom.js';
 import { state } from '../core/state.js';
 import { loadMarket, bindMarketGroups, renderFullMarketRows, bindMarketRows, marketGroupTabsHTML, queueSymbolSearch } from '../features/markets.js';

@@ -7,8 +7,6 @@ let initialized = false;
 let alertSound;
 const HEADLINE_STOP_WORDS = new Set('a an and are as at be by for from has have in into is it its of on or our over says said the their this to up was were will with after amid new first more near'.split(' '));
 const DEDUCTION_STOP_WORDS = new Set([...HEADLINE_STOP_WORDS, 'event', 'report', 'reports', 'news', 'latest', 'update', 'updates']);
-
-/** Normalise alert copy so punctuation/case drift cannot defeat de-duplication. */
 const fingerprintOf = (title, detail) => `${title}|${detail}`
   .toLowerCase()
   .replace(/[^\p{L}\p{N}]+/gu, ' ')

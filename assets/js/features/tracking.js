@@ -1,13 +1,3 @@
-/**
- * Tracking feature: AIS vessels and ADS-B aircraft.
- *
- * Responsibilities: normalising two very different upstream payloads into
- * one position-row shape, polling, the tracking module view (table + map +
- * filters), track history, the dashboard vessel peek, and the detail strip.
- *
- * Both payloads degrade the same way: on fetch failure the last positions
- * stay on screen and the health indicator shows the error.
- */
 import { $, $$, esc, safeExternalUrl } from '../core/dom.js';
 import { ageLabel, fmtTime } from '../core/format.js';
 import { req } from '../core/net.js';
@@ -20,10 +10,7 @@ import { clampMapZoom, mapProject, mapUnproject } from '../maps/projection.js';
 import { plotPoints, renderMapView } from '../maps/view.js';
 import { homeMapShell } from '../maps/shells.js';
 import { setupMapInteraction } from '../maps/interaction.js';
-
-/** Fallback vessel region (the home Black Sea box) when no view is known. */
 const HOME_VESSEL_BBOX = '40,25,46,41';
-/** Fallback aircraft region: the home Black Sea bounding box. */
 const HOME_AIR_BBOX = '40,25,46,41';
 
 /**
@@ -82,14 +69,10 @@ function coverageCells(view, mapEl, mode) {
   }
   return cells.slice(0, MAX_COVERAGE_CELLS);
 }
-
-/** Vessel coverage boxes for the current ships map view (or last known). */
 function currentShipBoxes() {
   if (state.page === 'ships') return coverageCells(state.mapViews.ship, $('.module-map'), 'vessel').join(';');
   return state.shipsRegion || HOME_VESSEL_BBOX;
 }
-
-/** Aircraft bounding box for the current air map view (or last known). */
 function currentAirBBox() {
   if (state.page === 'air') {
     const b = viewportBounds(state.mapViews.air, $('.module-map'));
@@ -140,8 +123,6 @@ function featureRows(collection) {
     };
   }).filter((x) => Number.isFinite(x.lon) && Number.isFinite(x.lat));
 }
-
-/** Normalise the OpenSky ADS-B rows (already unit-normalised server-side). */
 function aircraftRows(raw) {
   return (raw.aircraft || []).filter((a) => Number.isFinite(Number(a.lat)) && Number.isFinite(Number(a.lon))).map((a) => ({
     id: a.id,
@@ -189,8 +170,6 @@ function trackSearchText(item) {
   collect(item);
   return values.join(' ').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 }
-
-/** Poll the AIS snapshot for the current coverage boxes and repaint the vessels surfaces. */
 async function loadShips() {
   if (state.refreshingShips) return;
   state.refreshingShips = true;
@@ -214,8 +193,6 @@ async function loadShips() {
     state.refreshingShips = false;
   }
 }
-
-/** Poll the ADS-B snapshot for the current map box and repaint the aircraft surfaces. */
 async function loadAir() {
   if (state.refreshingAir) return;
   state.refreshingAir = true;
@@ -238,13 +215,9 @@ async function loadAir() {
     state.refreshingAir = false;
   }
 }
-
-/** Repaint the aircraft surfaces for the current page. */
 function renderAir() {
   if (state.page === 'air') updateTrackingView();
 }
-
-/** Repaint the vessels surfaces for the current page. */
 function renderShips() {
   if (state.page === 'top') renderDashboardShips();
   else if (state.page === 'ships') updateTrackingView();
@@ -300,8 +273,6 @@ function updateTrackingView() {
     }
   }
 }
-
-/** Repaint the dashboard vessel peek: recent ships list + mini map. */
 function renderDashboardShips() {
   const rows = state.ships.slice(0, 6);
   const map = $('#miniMap');
@@ -360,8 +331,6 @@ function renderDashboardShips() {
     };
   });
 }
-
-/** Repaint the tracking rows table for the module list column. */
 function renderTrackTable(items, air) {
   const tbody = $('#trackRows');
   if (!tbody) return;
@@ -449,8 +418,6 @@ async function selectTrack(x, air = false, centerMap = false) {
     if (reqId === state.request.track) setTrajectoryState(`TRACK HISTORY UNAVAILABLE · ${e.message}`);
   }
 }
-
-/** Write a message into the track-history status strip. */
 function setTrajectoryState(message) {
   const el = $('#trackTrajectoryStatus');
   if (el) el.textContent = message;

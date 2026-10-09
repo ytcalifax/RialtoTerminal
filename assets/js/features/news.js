@@ -1,11 +1,3 @@
-/**
- * News feature: feed loading, filtering, dashboard + module rendering, and
- * the news chrome bindings (feed tabs, topic chips, refresh buttons).
- *
- * All upstream data passes through `esc` before entering template literals.
- * Rendering preserves scroll position and keyboard focus across repaints so
- * the terminal stays keyboard-first.
- */
 import { $, $$, esc, safeExternalUrl } from '../core/dom.js';
 import { fmtTime, newsTimestamp, timeAgo } from '../core/format.js';
 import { req } from '../core/net.js';
@@ -57,14 +49,10 @@ async function loadNews(feed = state.feed, query = state.newsQuery || '', countr
     setStatus(`NEWS FEED ERROR · ${e.message}`);
   }
 }
-
-/** Update the dashboard news status only when that surface is mounted. */
 function updateNewsStatus(message) {
   const element = $('#newsStatus');
   if (element) element.textContent = message;
 }
-
-/** Repaint the dashboard lead stories + compact news column. */
 function renderNews() {
   const rows = state.news;
   const storyColumn = $('.story-column');
@@ -105,8 +93,6 @@ function renderNews() {
   }
   if (state.page === 'news') renderNewsModuleRows();
 }
-
-/** Highlight a headline row and mirror its metadata into the detail strip. */
 function selectNewsRow(row) {
   state.selectedNews = row.dataset.newsUrl;
   $$('[data-news-url]').forEach((x) => x.classList.toggle('selected', x.dataset.newsUrl === state.selectedNews));
@@ -117,8 +103,6 @@ function selectNewsRow(row) {
     if (d) d.innerHTML = `${esc(x.source)} · ${esc(x.region)} · ${esc(x.category)} · ${fmtTime(newsTimestamp(x.published))} · <a href="${esc(safeExternalUrl(x.url) || '#')}" target="_blank" rel="noopener">OPEN PUBLISHER ↗</a>`;
   }
 }
-
-/** Bind click/keyboard activation on every headline row (all surfaces). */
 function bindNewsRows() {
   $$('.story[data-news-url],.compact-row[data-news-url],.article-row[data-news-url]').forEach((row) => {
     row.onclick = () => selectNewsRow(row);
@@ -130,8 +114,6 @@ function bindNewsRows() {
     };
   });
 }
-
-/** Repaint the news module page (article grid, counts, feed footer). */
 function renderNewsModuleRows() {
   const body = $('#articleRows');
   if (!body) return;
@@ -164,8 +146,6 @@ function renderNewsModuleRows() {
     (link || row)?.focus({ preventScroll: true });
   }
 }
-
-/** Bind the static news chrome: refresh buttons, feed tabs, topic chips. */
 function initNewsChrome() {
   $$('[data-refresh="news"]').forEach((b) => {
     b.onclick = () => loadNews(state.feed);

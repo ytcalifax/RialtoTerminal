@@ -1,10 +1,3 @@
-/**
- * JSON fetch wrapper.
- *
- * Every API call goes through here so error handling and timeouts are
- * uniform: non-2xx responses raise with the HTTP status, and a client-side
- * timeout aborts requests that would otherwise hang forever.
- */
 import { REQUEST_TIMEOUT_MS } from './constants.js';
 
 /**

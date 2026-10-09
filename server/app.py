@@ -1,9 +1,3 @@
-"""Application assembly and entry point.
-
-Wires the route table into a threaded HTTP server. Run either as
-``python3 server.py`` (root shim) or ``python3 -m server``.
-"""
-
 from __future__ import annotations
 
 from http.server import ThreadingHTTPServer
@@ -26,7 +20,6 @@ def create_server() -> ThreadingHTTPServer:
 
 
 def main() -> None:
-    """Serve until interrupted, releasing the socket cleanly on Ctrl+C."""
     server = create_server()
     logger.info("server.started url=http://localhost:%s", PORT)
     try:

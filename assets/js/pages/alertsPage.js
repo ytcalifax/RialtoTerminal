@@ -1,4 +1,3 @@
-/** Alert preferences and recent activity workspace. */
 import { state } from '../core/state.js';
 import { initAlertsPage } from '../core/notifications.js';
 

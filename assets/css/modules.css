@@ -1,10 +1,3 @@
-/* modules.css — full-page module workspaces (news & research, market
-   monitor, vessel/aircraft tracking, marketplace): title bars, control
-   rows, article/listing grids, detail strips.
-   Order matters: later blocks intentionally override earlier ones. */
-
-/* --- Module title + controls ------------------------------------------------- */
-
 .module-title {
   height: 31px;
   flex: none;
@@ -38,8 +31,6 @@
   font: 9px Roboto Mono, monospace;
   cursor: pointer;
 }
-
-/* --- Alerts workspace ------------------------------------------------------ */
 
 .alerts-layout {
   flex: 1;
@@ -300,8 +291,6 @@
   color: #fff;
 }
 
-/* --- Tracking module body: list + map split ------------------------------------ */
-
 .module-body {
   display: grid;
   grid-template-columns: minmax(300px, 34%) minmax(0, 1fr);
@@ -343,7 +332,6 @@
   color: #ffc34c;
 }
 
-/* Detail strip under the module (instrument/vessel/aircraft fields). */
 .detail-row {
   display: flex;
   gap: 12px;
@@ -373,7 +361,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Track-history status strip. */
 .track-status {
   height: 20px;
   flex: none;
@@ -385,7 +372,6 @@
   letter-spacing: .04em;
 }
 
-/* Conflict map workspace. */
 .intel-list {
   display: flex;
   flex-direction: column;
@@ -547,7 +533,6 @@
   cursor: pointer;
 }
 
-/* Later refinements of the module body/list sizing. */
 .module-body,
 .module-list {
   min-height: 0;
@@ -566,8 +551,6 @@
   min-height: 0;
   overflow: auto;
 }
-
-/* --- News & research: article grid + detail ----------------------------------------- */
 
 .article-grid {
   overflow: auto;
@@ -638,8 +621,6 @@
   text-decoration: underline;
   color: #ffd16b;
 }
-
-/* --- Marketplace + full market monitor grid -------------------------------------------- */
 
 .marketplace-grid {
   overflow: auto;
@@ -723,7 +704,6 @@
   white-space: nowrap;
 }
 
-/* Market monitor numeric columns right-aligned with tabular figures. */
 .marketplace-grid .market-instruments th:nth-child(n+3):nth-child(-n+8),
 .marketplace-grid .market-instruments td:nth-child(n+3):nth-child(-n+8) {
   text-align: right;
@@ -734,8 +714,6 @@
   color: #e2e7e8;
   font-weight: 600;
 }
-
-/* --- Symbol search & pinning (market monitor) ---------------------------- */
 
 .symbol-results {
   border-bottom: 1px solid #3b4346;
@@ -803,7 +781,6 @@
   border-color: #3f5a33;
 }
 
-/* Unpin control inside custom market rows. */
 .market-instruments .pin-x {
   color: #f07b65;
   text-decoration: none;
@@ -815,8 +792,6 @@
   text-decoration: underline;
 }
 
-/* Alerts use the same flat panels, compact spacing, and square controls as
-   the other terminal workspaces. */
 .alerts-layout {
   grid-template-columns: minmax(320px, .9fr) minmax(320px, 1.1fr);
   gap: 4px;

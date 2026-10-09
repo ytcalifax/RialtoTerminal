@@ -366,6 +366,11 @@ function inputVisibility() {
       topicMatchedSevere: topicOutbreaks.filter(severeOutbreak).length,
       feedStatus: outbreakFeedFresh ? 'CURRENT' : 'STALE / NO FRESH UPDATE',
     },
+    outbreakNewsSignal: {
+      enabled: Boolean(state.alertSettings.news && state.alertSettings.diseaseOutbreaks),
+      diseaseHeadlines: rawHeadlines.filter((item) => DISEASE_TERMS.test(item.title || '')).length,
+      outbreaks: rawOutbreaks.length,
+    },
     topicFilter: topics.length ? 'ACTIVE (OR MATCH)' : 'OFF · ALL TOPICS',
   };
 }

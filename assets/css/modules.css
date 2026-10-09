@@ -935,6 +935,9 @@
 .debug-request small { grid-column: 2 / -1; color: #879398; font-size: 8px; }
 .debug-empty { padding: 14px 9px; color: #879398; }
 .debug-decision-summary { padding: 7px 9px; border-bottom: 1px solid #30383b; color: #96a3a8; font-size: 8px; }
+.debug-decision-inputs { display: flex; flex-wrap: wrap; gap: 5px 10px; padding: 7px 9px; border-bottom: 1px solid #30383b; color: #87969b; font-size: 8px; line-height: 1.4; }
+.debug-decision-inputs b { color: #d1a346; }
+.debug-decision-inputs span { white-space: nowrap; }
 .debug-decisions { display: grid; gap: 6px; padding: 7px; }
 .debug-rule { padding: 7px; border: 1px solid #30383b; background: #12181a; }
 .debug-rule-head { display: flex; justify-content: space-between; gap: 8px; color: #e2e7e9; }
@@ -947,6 +950,8 @@
 .debug-rule-evidence > div { display: grid; grid-template-columns: 12px minmax(0, 1fr); gap: 5px; color: #a8b2b6; font-size: 8px; line-height: 1.35; }
 .debug-rule-evidence .pass { color: #92c76a; }
 .debug-rule-evidence .fail { color: #68777d; }
+.debug-gate-checks { display: grid; gap: 3px; margin: 5px 0 0 12px; }
+.debug-gate-checks > div { display: grid; grid-template-columns: 12px minmax(0, 1fr); gap: 4px; }
 .debug-rule-effects { margin-top: 7px; color: #aab4b8; font-size: 8px; line-height: 1.4; }
 .debug-rule-effects span { display: block; }
 

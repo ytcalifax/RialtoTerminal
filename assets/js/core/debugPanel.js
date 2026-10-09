@@ -12,19 +12,26 @@ let latestSnapshot = null;
 
 function renderDecisionDiagnostics(data) {
   const summary = $('#debugDecisionSummary');
+  const inputs = $('#debugDecisionInputs');
   const list = $('#debugDecisions');
   if (!data?.evaluatedAt || !Array.isArray(data.rules)) {
     summary.textContent = 'Waiting for the first engine evaluation…';
+    inputs.textContent = '';
     list.innerHTML = '<div class="debug-empty">NO DECISION DIAGNOSTICS AVAILABLE</div>';
     return;
   }
   const topics = data.selectedTopics?.length ? data.selectedTopics.join(' · ') : 'ALL TOPICS (NO TERMS SELECTED)';
   summary.textContent = `EVALUATED ${new Date(data.evaluatedAt).toLocaleTimeString()} · TOPIC FILTER: ${topics}`;
+  const sourceCounts = data.inputs;
+  inputs.innerHTML = sourceCounts
+    ? `<b>INPUT VISIBILITY · ${esc(sourceCounts.topicFilter)}</b><span>HEADLINES ${sourceCounts.headlines.fresh}/${sourceCounts.headlines.considered} FRESH → ${sourceCounts.headlines.topicMatched} TOPIC MATCHED</span><span>CONFLICT REPORTS ${sourceCounts.conflictReports.fresh} FRESH → ${sourceCounts.conflictReports.topicMatched} TOPIC MATCHED → ${sourceCounts.conflictReports.uniqueTopicMatched} UNIQUE</span><span>OUTAGES ${sourceCounts.outages.fresh} FRESH → ${sourceCounts.outages.topicMatched} TOPIC MATCHED</span><span>OUTBREAKS ${esc(sourceCounts.outbreaks.feedStatus)} · ${sourceCounts.outbreaks.fresh} FRESH → ${sourceCounts.outbreaks.topicMatched} TOPIC MATCHED → ${sourceCounts.outbreaks.topicMatchedSevere} MATCHED SEVERE</span>`
+    : '<b>INPUT VISIBILITY UNAVAILABLE</b>';
   list.innerHTML = data.rules.map((rule) => {
     const statusClass = rule.status === 'FIRED' ? 'fired' : rule.status === 'GATE CLOSED' ? 'closed' : 'below';
     const requirements = (rule.requirements || []).map((item) => `<div><b class="${item.passed ? 'pass' : 'fail'}">${item.passed ? '✓' : '·'}</b><span>${esc(item.label)} <small>+${item.weight}</small>${item.detail ? ` — ${esc(item.detail)}` : ' — no matching evidence'}</span></div>`).join('');
-    const effects = (rule.effects || []).map((effect) => `<span>${esc(effect.symbol)} ${esc(effect.name)} · expected ${esc(effect.dir)}${effect.observed ? ` · observed ${esc(effect.observed)}` : ' · NOT CONFIRMED'}</span>`).join('');
-    return `<article class="debug-rule"><div class="debug-rule-head"><b>${esc(rule.title)}</b><span class="debug-rule-status ${statusClass}">${esc(rule.status)}</span></div><div class="debug-rule-meta">SCORE ${rule.score}/${rule.maxScore} · MINIMUM ${rule.minScore}</div><div class="debug-rule-summary">${esc(rule.summary)}</div><div class="debug-rule-gate">GATE ${rule.gatePassed ? 'OPEN' : 'CLOSED'} · ${esc(rule.gateDescription)}</div><div class="debug-rule-evidence">${requirements}</div><div class="debug-rule-effects">${effects}</div></article>`;
+    const gates = (rule.gateChecks || []).map((check) => `<div><b class="${check.passed ? 'pass' : 'fail'}">${check.passed ? '✓' : '·'}</b>${esc(check.detail)}</div>`).join('');
+    const effects = (rule.effects || []).map((effect) => `<span>${esc(effect.symbol)} ${esc(effect.name)} · expected ${esc(effect.dir)}${effect.observed ? ` · observed ${esc(effect.observed)}` : ` · ${esc(effect.quoteStatus || 'NO MATCHING QUOTE')}`}</span>`).join('');
+    return `<article class="debug-rule"><div class="debug-rule-head"><b>${esc(rule.title)}</b><span class="debug-rule-status ${statusClass}">${esc(rule.status)}</span></div><div class="debug-rule-meta">SCORE ${rule.score}/${rule.maxScore} · MINIMUM ${rule.minScore}</div><div class="debug-rule-summary">${esc(rule.summary)}</div><div class="debug-rule-gate">GATE ${rule.gatePassed ? 'OPEN' : 'CLOSED'} · ${esc(rule.gateDescription)}${gates ? `<div class="debug-gate-checks">${gates}</div>` : ''}</div><div class="debug-rule-evidence">${requirements}</div><div class="debug-rule-effects">${effects}</div></article>`;
   }).join('') || '<div class="debug-empty">NO RULES EVALUATED</div>';
 }
 

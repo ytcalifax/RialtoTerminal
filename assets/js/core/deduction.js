@@ -160,6 +160,25 @@ function moveInDirection(symbol, direction) {
   return `${effectName(symbol)} ${fmtPct(move)}`;
 }
 
+function quoteDiagnostic(symbol, direction) {
+  const row = quoteRow(symbol);
+  if (!row) return 'NO QUOTE';
+  if (row.stale === true) return 'SOURCE MARKED STALE';
+  const asof = Number(row.asof);
+  const quoteAt = asof * 1000;
+  if (!Number.isFinite(asof) || asof <= 0 || quoteAt > Date.now() + 5 * 60 * 1000) return 'INVALID QUOTE TIMESTAMP';
+  const ageMinutes = Math.max(0, Math.round((Date.now() - quoteAt) / 60000));
+  if (Date.now() - quoteAt > QUOTE_MAX_AGE_MS) return `STALE QUOTE · ${ageMinutes}M OLD`;
+  if (row.pct == null || row.pct === '' || !Number.isFinite(Number(row.pct))) return 'NO VALID CHANGE VALUE';
+  const move = Number(row.pct);
+  if (move === 0) return `FLAT · ${fmtPct(move)} · BELOW ${MOVE_FLOOR_PCT}% FLOOR`;
+  const directionMatches = direction === 'up' ? move > 0 : move < 0;
+  if (Math.abs(move) < MOVE_FLOOR_PCT) {
+    return `${directionMatches ? 'ALIGNED' : 'OPPOSITE'} · ${fmtPct(move)} · BELOW ${MOVE_FLOOR_PCT}% FLOOR`;
+  }
+  return `${directionMatches ? 'ALIGNED' : 'OPPOSITE'} · ${fmtPct(move)}`;
+}
+
 function conflictSignals(texts, theater) {
   const count = texts.filter((text) => theater.keywords.test(text)).length;
   const previous = state.deductionBaseline.conflict[theater.label] ?? count;
@@ -223,6 +242,50 @@ function outageSignals(producers = null) {
   }) : outages;
   return filtered.slice(0, 3)
     .map((x) => `Internet disruption in ${x.country || x.region || x.title || 'producer region'}`);
+}
+
+function inputVisibility() {
+  const topics = String(state.alertSettings.keywords || '').split(',').map((term) => term.trim()).filter(Boolean);
+  const rawHeadlines = state.news.slice(0, 120).filter((x) => ageMs(x) <= SIGNAL_MAX_AGE_MS);
+  const rawReports = [...state.warReports, ...(state.warWorldMonitor?.armed || [])]
+    .filter((x) => ageMs(x) <= 7 * 86400000);
+  const topicReports = topics.length ? rawReports.filter(matchesSelectedTopics) : rawReports;
+  const rawOutages = (state.warWorldMonitor?.outages || []).filter((x) => ageMs(x) <= SIGNAL_MAX_AGE_MS);
+  const outbreakFeedFresh = !state.diseaseOutbreaksStale
+    && Number.isFinite(state.diseaseOutbreaksUpdatedAt)
+    && Date.now() - state.diseaseOutbreaksUpdatedAt <= SIGNAL_MAX_AGE_MS;
+  const rawOutbreaks = outbreakFeedFresh ? state.diseaseOutbreaks || [] : [];
+  const topicMatched = (rows) => topics.length ? rows.filter(matchesSelectedTopics).length : rows.length;
+  const severeOutbreak = (x) => /^(high|severe|emergency|(?:who\s+)?grade\s*[34])\b/i.test(String(x.alertLevel || '').trim());
+  const topicOutbreaks = topics.length ? rawOutbreaks.filter(matchesSelectedTopics) : rawOutbreaks;
+  return {
+    headlines: { considered: Math.min(state.news.length, 120), fresh: rawHeadlines.length, topicMatched: topicMatched(rawHeadlines) },
+    conflictReports: {
+      fresh: rawReports.length,
+      topicMatched: topicReports.length,
+      uniqueTopicMatched: new Set(topicReports.map((x) => String(x.id || x.url || x.sourceUrl || `${x.date || x.dateStart || x.occurredAt || ''}-${x.name || x.title || x.location || ''}`))).size,
+    },
+    outages: { fresh: rawOutages.length, topicMatched: topicMatched(rawOutages) },
+    outbreaks: {
+      fresh: rawOutbreaks.length,
+      topicMatched: topicMatched(rawOutbreaks),
+      severe: rawOutbreaks.filter(severeOutbreak).length,
+      topicMatchedSevere: topicOutbreaks.filter(severeOutbreak).length,
+      feedStatus: outbreakFeedFresh ? 'CURRENT' : 'STALE / NO FRESH UPDATE',
+    },
+    topicFilter: topics.length ? 'ACTIVE (OR MATCH)' : 'OFF · ALL TOPICS',
+  };
+}
+
+function theaterGateChecks(context) {
+  const conflictPass = context.conflict.count >= 2;
+  const headlinesPass = context.news.hits >= 4 && context.news.rising;
+  const chokepointPass = context.choke.signals.length > 0;
+  const outagePass = context.outages.length > 0;
+  return [
+    { passed: conflictPass || headlinesPass, detail: `Conflict ≥2 (${context.conflict.count}) OR rising headlines ≥4 (${context.news.hits}${context.news.rising ? ', rising' : ', not rising'})` },
+    { passed: chokepointPass || outagePass, detail: `Chokepoint signals ≥1 (${context.choke.signals.length}) OR producer outages ≥1 (${context.outages.length})` },
+  ];
 }
 
 function theaterRequires(theater, choke) {
@@ -323,6 +386,7 @@ function evaluateDeductions(notify = null) {
       title: theater.rule.title,
       summary: theater.rule.summary,
       gateDescription: 'At least 2 conflict reports or 4+ rising theater headlines; and a chokepoint signal or producer-region outage.',
+      gateChecks: theaterGateChecks,
       effects: theater.rule.effects,
       minScore: theater.rule.minScore,
       gate: (c) => (c.conflict.count >= 2 || (c.news.hits >= 4 && c.news.rising))
@@ -336,6 +400,7 @@ function evaluateDeductions(notify = null) {
   state.deductionDiagnostics = {
     evaluatedAt: Date.now(),
     selectedTopics: String(state.alertSettings.keywords || '').split(',').map((term) => term.trim()).filter(Boolean),
+    inputs: inputVisibility(),
     rules: diagnostics,
   };
   commitDeductions(fired, notify);
@@ -344,6 +409,7 @@ function runRule(rule, ctx, diagnostics = null) {
   if (!rule) return [];
   let gatePassed = true;
   try { gatePassed = rule.gate ? Boolean(rule.gate(ctx)) : true; } catch { gatePassed = false; }
+  const gateChecks = rule.gateChecks ? rule.gateChecks(ctx) : [];
   const causes = [];
   const requirements = [];
   let score = 0;
@@ -369,6 +435,7 @@ function runRule(rule, ctx, diagnostics = null) {
         name: effectName(effect.symbol),
         dir: effect.dir,
         observed: label || '',
+        quoteStatus: quoteDiagnostic(effect.symbol, effect.dir),
       };
     });
   const status = !gatePassed ? 'GATE CLOSED' : score < rule.minScore ? 'BELOW THRESHOLD' : 'FIRED';
@@ -378,6 +445,7 @@ function runRule(rule, ctx, diagnostics = null) {
     summary: rule.summary,
     gateDescription: rule.gateDescription || 'No separate gate.',
     gatePassed,
+    gateChecks,
     score,
     maxScore,
     minScore: rule.minScore,

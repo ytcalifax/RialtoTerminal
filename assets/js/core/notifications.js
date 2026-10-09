@@ -95,12 +95,33 @@ function observeNews(items) {
   return newItems;
 }
 
+function splitFilterTerms(terms) {
+  const parsed = String(terms || '').split(',').map((value) => value.trim().toLocaleLowerCase()).filter(Boolean)
+    .map((value) => ({ exclude: value.startsWith('!'), term: value.replace(/^!\s*/, '') }))
+    .filter((item) => item.term);
+  return { include: parsed.filter((item) => !item.exclude).map((item) => item.term), exclude: parsed.filter((item) => item.exclude).map((item) => item.term) };
+}
+
+function matchesTermList(text, terms) {
+  const { include, exclude } = splitFilterTerms(terms);
+  const normalized = String(text || '').toLocaleLowerCase();
+  if (exclude.some((term) => normalized.includes(term))) return false;
+  return !include.length || include.some((term) => normalized.includes(term));
+}
+
 function matchesTerms(item, terms) {
-  const needles = String(terms || '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
-  if (!needles.length) return true;
+  if (!String(terms || '').trim()) return true;
   const text = Object.values(item).flatMap((value) => Array.isArray(value) ? value : [value])
-    .filter((x) => typeof x === 'string' || typeof x === 'number').join(' ').toLowerCase();
-  return needles.some((term) => text.includes(term));
+    .filter((x) => typeof x === 'string' || typeof x === 'number').join(' ');
+  return matchesTermList(text, terms);
+}
+
+function matchesSquawk(squawk, terms) {
+  if (!String(terms || '').trim()) return true;
+  const { include, exclude } = splitFilterTerms(terms);
+  const code = String(squawk || '').trim().toLocaleLowerCase();
+  if (exclude.includes(code)) return false;
+  return !include.length || include.includes(code);
 }
 
 function itemId(item, fallback) {
@@ -303,8 +324,9 @@ function observeTracks(kind, items) {
   newItems
     .filter((x) => matchesTerms(x, terms))
     .filter(matchesTopics)
+    .filter((x) => kind !== 'aircraft' || matchesSquawk(x.squawk, state.alertSettings.aircraftExcludedSquawks))
     .filter((x) => (kind === 'vessels' ? Number(x.speed) : Number(x.alt)) >= minimum)
-    .slice(0, 5).forEach((x) => addNotification(kind === 'vessels' ? 'VESSEL DETECTED' : 'AIRCRAFT DETECTED', `${x.name || x.id}${kind === 'vessels' && x.dest ? ` · ${x.dest}` : ''}`));
+    .slice(0, 5).forEach((x) => addNotification(kind === 'vessels' ? 'VESSEL DETECTED' : 'AIRCRAFT DETECTED', `${x.name || x.id}${kind === 'vessels' && x.dest ? ` · ${x.dest}` : kind === 'aircraft' && x.squawk ? ` · SQUAWK ${x.squawk}` : ''}`));
   return newItems;
 }
 
@@ -334,6 +356,7 @@ function renderAlertSettings() {
   $('#alertVesselTerms').value = state.alertSettings.vesselTerms;
   $('#alertVesselSpeed').value = state.alertSettings.vesselMinSpeed;
   $('#alertAircraftTerms').value = state.alertSettings.aircraftTerms;
+  $('#alertAircraftSquawks').value = state.alertSettings.aircraftExcludedSquawks || '';
   $('#alertAircraftAltitude').value = state.alertSettings.aircraftMinAltitude;
   renderDeliveryControls();
   const chips = $('#alertKeywordChips');
@@ -536,6 +559,7 @@ function initAlertsPage() {
   const fields = {
     alertConflictTerms: ['conflictTerms', null], alertVesselTerms: ['vesselTerms', null],
     alertVesselSpeed: ['vesselMinSpeed', 0], alertAircraftTerms: ['aircraftTerms', null],
+    alertAircraftSquawks: ['aircraftExcludedSquawks', null],
     alertAircraftAltitude: ['aircraftMinAltitude', 0],
   };
   Object.entries(fields).forEach(([id, [key, minimum]]) => {

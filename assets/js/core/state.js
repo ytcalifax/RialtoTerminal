@@ -29,6 +29,7 @@ const state = {
     vesselTerms: '',
     vesselMinSpeed: 0,
     aircraftTerms: '',
+    aircraftExcludedSquawks: '',
     aircraftMinAltitude: 0,
     marketMovePct: 2,
   },

@@ -27,7 +27,18 @@ function displayCode(value) {
 function day(value) {
   if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
   const timestamp = Number(value);
-  return Number.isFinite(timestamp) && timestamp > 0 ? new Date(timestamp).toISOString().slice(0, 10) : '';
+  if (Number.isFinite(timestamp) && timestamp > 0) return new Date(timestamp).toISOString().slice(0, 10);
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) return new Date(parsed).toISOString().slice(0, 10);
+  }
+  return '';
+}
+
+function inConflictDateRange(value) {
+  const date = day(value);
+  const { from, to } = state.conflictDateRange;
+  return !date || ((!from || date >= from) && (!to || date <= to));
 }
 
 function reportRows() {
@@ -81,11 +92,9 @@ function linesFromGeoJSON(features) {
 function filterReports(reports) {
   const query = state.conflictQuery.trim().toLocaleLowerCase();
   const selectedTypes = new Set(state.conflictTypes);
-  const { from, to } = state.conflictDateRange;
   return reports.filter((report) => {
     const haystack = `${report.name} ${report.domain} ${report.date} ${report.names} ${report.themes}`.toLocaleLowerCase();
-    const inDateRange = !report.date || ((!from || report.date >= from) && (!to || report.date <= to));
-    return selectedTypes.has(report.type) && inDateRange && (!query || haystack.includes(query));
+    return selectedTypes.has(report.type) && inConflictDateRange(report.date) && (!query || haystack.includes(query));
   });
 }
 
@@ -120,8 +129,8 @@ function renderWarPage(root) {
   map._air = false;
   map._noSelect = true;
   map._mapLabel = `FRONT LINE ${frontlineDate} · GPSJAM ${gpsDate} · CLICK A HEX OR DOT`;
-  map._routeSegments = state.warShowFrontline ? linesFromGeoJSON(state.warFrontline) : [];
-  map._coverageCells = state.warShowGpsJam ? (state.warGpsJam?.features || []) : [];
+  map._routeSegments = state.warShowFrontline ? linesFromGeoJSON(state.warFrontline.filter((feature) => inConflictDateRange(feature.properties?.date))) : [];
+  map._coverageCells = state.warShowGpsJam ? (state.warGpsJam?.features || []).filter((feature) => inConflictDateRange(feature.properties?.date)) : [];
   map._selectedPointId = state.warSelectedId;
   const popup = document.createElement('aside');
   popup.className = 'map-point-popup';
@@ -152,8 +161,8 @@ function renderWarPage(root) {
     control.onchange = () => {
       if (control.dataset.mapLayer === 'frontline') state.warShowFrontline = control.checked;
       if (control.dataset.mapLayer === 'gpsjam') state.warShowGpsJam = control.checked;
-      map._routeSegments = state.warShowFrontline ? linesFromGeoJSON(state.warFrontline) : [];
-      map._coverageCells = state.warShowGpsJam ? (state.warGpsJam?.features || []) : [];
+      map._routeSegments = state.warShowFrontline ? linesFromGeoJSON(state.warFrontline.filter((feature) => inConflictDateRange(feature.properties?.date))) : [];
+      map._coverageCells = state.warShowGpsJam ? (state.warGpsJam?.features || []).filter((feature) => inConflictDateRange(feature.properties?.date)) : [];
       renderMapView(map);
     };
   });
@@ -168,6 +177,8 @@ function renderWarPage(root) {
     summary.textContent = `EVENT TYPES · ${state.conflictTypes.length}/${CONFLICT_TYPE_OPTIONS.length}`;
     $('#conflictCount').textContent = `${matches.length}/${data.length} ITEMS · ${state.warGpsJam?.features?.length || 0} GPS HEXES${state.errors.war ? ` · ${state.errors.war}` : ''}`;
     map._tracks = matches.filter(hasMapPoint).map((item) => ({ ...item, id: item.id || item.name }));
+    map._routeSegments = state.warShowFrontline ? linesFromGeoJSON(state.warFrontline.filter((feature) => inConflictDateRange(feature.properties?.date))) : [];
+    map._coverageCells = state.warShowGpsJam ? (state.warGpsJam?.features || []).filter((feature) => inConflictDateRange(feature.properties?.date)) : [];
     renderMapView(map);
   };
   $('#conflictQuery').oninput = updateFilters;

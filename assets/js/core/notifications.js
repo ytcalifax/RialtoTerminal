@@ -3,6 +3,7 @@ import { state } from './state.js';
 
 const STORAGE_KEY = 'rialto_alert_settings_v1';
 let initialized = false;
+let alertSound;
 const HEADLINE_STOP_WORDS = new Set('a an and are as at be by for from has have in into is it its of on or our over says said the their this to up was were will with after amid new first more near'.split(' '));
 
 function saveSettings() {
@@ -10,9 +11,44 @@ function saveSettings() {
 }
 
 function addNotification(title, detail, link = '') {
-  state.notifications.unshift({ id: `${Date.now()}-${Math.random()}`, title, detail, link, at: Date.now() });
+  const item = { id: `${Date.now()}-${Math.random()}`, title, detail, link, at: Date.now() };
+  state.notifications.unshift(item);
   state.notifications = state.notifications.slice(0, 100);
   renderNotifications();
+  playAlertSound();
+  if (state.alertSettings.browserNotifications && 'Notification' in window && Notification.permission === 'granted') {
+    const notification = new Notification(title, {
+      body: detail,
+      icon: '/assets/favicon.svg',
+    });
+    notification.onclick = () => {
+      window.focus();
+      if (link) window.open(link, '_blank', 'noopener');
+      notification.close();
+    };
+  }
+}
+
+function playAlertSound() {
+  if (state.alertSettings.soundMuted) return;
+  alertSound ||= new Audio('/assets/audio/alert-chime.ogg');
+  alertSound.currentTime = 0;
+  alertSound.play().catch(() => {});
+}
+
+function renderDeliveryControls() {
+  const permission = 'Notification' in window ? Notification.permission : 'unsupported';
+  $('#alertBrowserNotifications').checked = state.alertSettings.browserNotifications && permission === 'granted';
+  $('#alertSoundMute').textContent = state.alertSettings.soundMuted ? 'SOUND MUTED' : 'SOUND ON';
+  $('#alertSoundMute').setAttribute('aria-pressed', String(state.alertSettings.soundMuted));
+  const status = permission === 'unsupported'
+    ? 'Browser notifications are not supported here'
+    : permission === 'denied'
+      ? 'Browser permission is blocked · allow it in site settings'
+      : permission === 'granted' && state.alertSettings.browserNotifications
+        ? 'Browser notifications enabled'
+        : 'Browser notifications off · sound starts muted';
+  $('#alertDeliveryStatus').textContent = `${status} · ${state.alertSettings.soundMuted ? 'MUTED' : 'SOUND ON'}`;
 }
 
 function matchesTopics(item) {
@@ -169,6 +205,7 @@ function renderAlertSettings() {
   $('#alertVesselSpeed').value = state.alertSettings.vesselMinSpeed;
   $('#alertAircraftTerms').value = state.alertSettings.aircraftTerms;
   $('#alertAircraftAltitude').value = state.alertSettings.aircraftMinAltitude;
+  renderDeliveryControls();
   const chips = $('#alertKeywordChips');
   const terms = state.alertSettings.keywords.split(',').map((term) => term.trim()).filter(Boolean);
   chips.innerHTML = terms.length
@@ -266,6 +303,40 @@ function initAlertsPage() {
       saveSettings();
     };
   });
+  $('#alertBrowserNotifications').onchange = async (event) => {
+    if (!event.target.checked) {
+      state.alertSettings.browserNotifications = false;
+      saveSettings();
+      renderDeliveryControls();
+      return;
+    }
+    try {
+      if (!('Notification' in window)) {
+        state.alertSettings.browserNotifications = false;
+      } else {
+        const permission = Notification.permission === 'default'
+          ? await Notification.requestPermission()
+          : Notification.permission;
+        state.alertSettings.browserNotifications = permission === 'granted';
+      }
+    } catch {
+      state.alertSettings.browserNotifications = false;
+    }
+    saveSettings();
+    renderDeliveryControls();
+  };
+  $('#alertSoundMute').onclick = () => {
+    state.alertSettings.soundMuted = !state.alertSettings.soundMuted;
+    saveSettings();
+    renderDeliveryControls();
+  };
+  $('#alertSoundTest').onclick = () => {
+    if (state.alertSettings.soundMuted) {
+      $('#alertDeliveryStatus').textContent = 'Unmute sound before testing';
+      return;
+    }
+    playAlertSound();
+  };
   $('#alertKeywordChips').onclick = (event) => {
     const button = event.target.closest('[data-remove-keyword]');
     if (!button) return;

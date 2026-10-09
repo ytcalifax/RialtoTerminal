@@ -34,6 +34,8 @@ const state = {
     markets: false,
     vessels: false,
     aircraft: false,
+    browserNotifications: false,
+    soundMuted: true,
     keywords: '',
     conflictTerms: '',
     vesselTerms: '',

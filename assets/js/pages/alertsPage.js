@@ -3,7 +3,7 @@ import { state } from '../core/state.js';
 import { initAlertsPage } from '../core/notifications.js';
 
 export function renderAlertsPage(root) {
-  root.innerHTML = `<div class="module-title"><span>ALERTS &amp; TRENDS <small>ALT &lt;GO&gt; · PERSONAL SIGNALS · LOCAL PREFERENCES</small></span><span class="module-title-actions"><span class="source-badge" id="alertRecentCount">${state.notifications.length} RECENT</span></span></div>
+  root.innerHTML = `<div class="module-title"><span>ALERTS &amp; TRENDS <small>ALT &lt;GO&gt; · PERSONAL SIGNALS · LOCAL PREFERENCES</small></span><span class="module-title-actions"><span class="source-badge" id="alertRecentCount">${state.notifications.length} RECENT</span><details class="alert-tools-menu"><summary aria-label="Alert delivery settings" title="Alert delivery settings">⚙ ALERTS</summary><div class="alert-tools-popover"><label class="alert-delivery-toggle"><input id="alertBrowserNotifications" type="checkbox"><span><b>Enable browser notifications</b><small>Click to ask your browser for permission</small></span></label><div id="alertDeliveryStatus" class="alert-delivery-status">Browser notifications are off · alert sound starts muted</div><div class="alert-audio-controls"><button id="alertSoundMute" type="button" aria-pressed="true">SOUND MUTED</button><button id="alertSoundTest" type="button">TEST SOUND</button></div></div></details></span></div>
     <div class="alerts-layout">
       <div class="alerts-settings">
         <section class="alert-card alert-subscriptions">

@@ -136,6 +136,22 @@
 .alert-option input:checked + .switch { border-color: #8c672e; background: #6e5128; }
 .alert-option input:checked + .switch::after { left: 18px; background: #ffd178; box-shadow: 0 0 8px #ffd17888; }
 .alert-option input:focus-visible + .switch { outline: 2px solid #f0b54a; outline-offset: 3px; }
+.alert-tools-menu { position: relative; }
+.alert-tools-menu summary { list-style: none; border: 1px solid #657078; padding: 4px 7px; background: #29343a; color: #e3e9eb; cursor: pointer; font: 9px Roboto Mono, monospace; }
+.alert-tools-menu summary::-webkit-details-marker { display: none; }
+.alert-tools-menu summary:hover,
+.alert-tools-menu[open] summary { border-color: #d1a346; color: #f2bd53; }
+.alert-tools-popover { position: absolute; z-index: 80; top: calc(100% + 4px); right: 0; width: min(310px, calc(100vw - 24px)); padding: 10px; border: 1px solid #657078; background: #111719; box-shadow: 0 8px 24px #000b; color: #dce2e4; white-space: normal; }
+.alert-delivery-toggle { display: flex; align-items: flex-start; gap: 8px; padding: 5px 2px 9px; cursor: pointer; }
+.alert-delivery-toggle input { accent-color: #e1ad49; margin-top: 2px; }
+.alert-delivery-toggle span { display: grid; gap: 4px; }
+.alert-delivery-toggle b { font: 500 10px Roboto, Arial, sans-serif; }
+.alert-delivery-toggle small,
+.alert-delivery-status { color: #89969a; font: 8px/1.4 Roboto Mono, monospace; }
+.alert-delivery-status { padding: 6px 2px 9px; border-top: 1px solid #2b3235; }
+.alert-audio-controls { display: flex; gap: 6px; }
+.alert-audio-controls button { min-height: 26px; flex: 1; padding: 0 8px; border: 1px solid #49565b; background: #20282c; color: #cdd5d8; font: 8px Roboto Mono, monospace; cursor: pointer; }
+.alert-audio-controls button:hover { border-color: #d1a346; color: #f2bd53; }
 
 .alert-keywords { padding: 17px 18px 16px; border-bottom: 1px solid #2c3639; }
 .alert-section-title { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 12px; color: #aeb9bc; font: 9px Roboto Mono, monospace; letter-spacing: .06em; }

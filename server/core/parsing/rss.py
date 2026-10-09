@@ -21,6 +21,26 @@ _EUROPE_TERMS = re.compile(
     r"uk|britain|poland|sweden|norway|finland)\b",
     re.I,
 )
+_HEADLINE_CATEGORIES = (
+    ("LIFESTYLE", re.compile(r"\b(dating|relationship|marriage|wedding|family|parenting|fashion|beauty|food|recipe|travel|horoscope)\b", re.I)),
+    ("HEALTH", re.compile(r"\b(health|hospital|patient|doctor|disease|virus|vaccine|medical|medicine|mental health)\b", re.I)),
+    ("SPORTS", re.compile(r"\b(sport|football|soccer|tennis|basketball|olympic|championship|match|league)\b", re.I)),
+    ("TECH", re.compile(r"\b(technology|tech|artificial intelligence|\bAI\b|software|cyber|chip| smartphone|social media)\b", re.I)),
+    ("CLIMATE", re.compile(r"\b(climate|global warming|emissions|renewable|wildfire|heatwave|flood|drought)\b", re.I)),
+    ("SCIENCE", re.compile(r"\b(science|scientist|research|study|space|NASA|discovery|experiment)\b", re.I)),
+    ("CONFLICT", re.compile(r"\b(war|conflict|airstrike|missile|troops|military|ceasefire|invasion|shelling|battle)\b", re.I)),
+    ("POLITICS", re.compile(r"\b(election|president|prime minister|parliament|government|congress|campaign|political|minister)\b", re.I)),
+    ("MARKETS", re.compile(r"\b(stock market|shares|stocks|investor|investing|bond yields|forex|commodity prices|wall street|Nasdaq|S&P 500)\b", re.I)),
+    ("BUSINESS", re.compile(r"\b(company|companies|business|CEO|earnings|salary|layoffs|workplace|jobs|employment|trade deal)\b", re.I)),
+)
+
+
+def _headline_category(title: str, fallback: str) -> str:
+    """Prefer clear headline subject over a broad publisher feed label."""
+    for category, pattern in _HEADLINE_CATEGORIES:
+        if pattern.search(title):
+            return category
+    return fallback
 
 
 def _tag_name(element: ET.Element) -> str:
@@ -95,7 +115,7 @@ def rss_items(
                 "url": link,
                 "published": local_text(item, _DATE_TAGS),
                 "source": source_override or "NEWSWIRE",
-                "category": category,
+                "category": _headline_category(title, category),
                 "region": item_region,
                 "language": language,
                 "country": country,

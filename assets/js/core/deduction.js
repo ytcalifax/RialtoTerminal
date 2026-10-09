@@ -121,6 +121,10 @@ function rowText(item) {
   walk(item);
   return values.join(' ').toLowerCase();
 }
+function matchesSelectedTopics(item) {
+  const terms = String(state.alertSettings.keywords || '').split(',').map((term) => term.trim().toLocaleLowerCase()).filter(Boolean);
+  return !terms.length || terms.some((term) => rowText(item).includes(term));
+}
 
 function pointIn(box, lat, lon) {
   return Number.isFinite(lat) && Number.isFinite(lon)
@@ -180,7 +184,7 @@ function newsSignals(rows, theater) {
 function chokepointSignals(rows) {
   const newsTexts = rows.filter((x) => ageMs(x) <= SIGNAL_MAX_AGE_MS).map(rowText);
   const reportTexts = [...state.warReports, ...(state.warWorldMonitor?.armed || [])]
-    .filter((x) => ageMs(x) <= SIGNAL_MAX_AGE_MS).map(rowText);
+    .filter((x) => ageMs(x) <= SIGNAL_MAX_AGE_MS && matchesSelectedTopics(x)).map(rowText);
   const threatVerbs = /\b(closed|closure|blocked|attack(?:s|ed)?|struck|mined|seized|disrupt(?:ed|ion)?|halted|suspended)\b/i;
   return CHOKEPOINTS.map((choke) => {
     const signals = [];
@@ -212,7 +216,7 @@ function chokepointSignals(rows) {
 
 function outageSignals(producers = null) {
   const outages = (state.warWorldMonitor?.outages || [])
-    .filter((x) => ageMs(x) <= SIGNAL_MAX_AGE_MS && OUTAGE_COUNTRY_TERMS.test(rowText(x)));
+    .filter((x) => ageMs(x) <= SIGNAL_MAX_AGE_MS && matchesSelectedTopics(x) && OUTAGE_COUNTRY_TERMS.test(rowText(x)));
   const filtered = producers ? outages.filter((x) => {
     const text = rowText(x);
     return producers.some((country) => text.includes(country.toLowerCase()));
@@ -283,9 +287,9 @@ const RULES = [
  * a deduction fires fresh or re-fires after its cooldown.
  */
 function evaluateDeductions(notify = null) {
-  const headlineRows = state.news.slice(0, 120).filter((x) => ageMs(x) <= SIGNAL_MAX_AGE_MS);
+  const headlineRows = state.news.slice(0, 120).filter((x) => ageMs(x) <= SIGNAL_MAX_AGE_MS && matchesSelectedTopics(x));
   const reportCandidates = [...state.warReports, ...(state.warWorldMonitor?.armed || [])]
-    .filter((x) => ageMs(x) <= 7 * 86400000);
+    .filter((x) => ageMs(x) <= 7 * 86400000 && matchesSelectedTopics(x));
   const reportRows = [...new Map(reportCandidates.map((x) => [
     String(x.id || x.url || x.sourceUrl || `${x.date || x.dateStart || x.occurredAt || ''}-${x.name || x.title || x.location || ''}`), x,
   ])).values()];
@@ -299,6 +303,7 @@ function evaluateDeductions(notify = null) {
       && Number.isFinite(state.diseaseOutbreaksUpdatedAt)
       && Date.now() - state.diseaseOutbreaksUpdatedAt <= SIGNAL_MAX_AGE_MS
       ? state.diseaseOutbreaks || [] : [])
+      .filter(matchesSelectedTopics)
       .filter((x) => /^(high|severe|emergency|(?:who\s+)?grade\s*[34])\b/i.test(String(x.alertLevel || '').trim()))
       .slice(0, 2)
       .map((x) => `${x.disease || 'Outbreak'} alert · ${x.location || x.countryCode || ''}`.trim()),

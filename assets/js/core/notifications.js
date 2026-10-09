@@ -6,7 +6,7 @@ const STORAGE_KEY = 'rialto_alert_settings_v1';
 let initialized = false;
 let alertSound;
 const HEADLINE_STOP_WORDS = new Set('a an and are as at be by for from has have in into is it its of on or our over says said the their this to up was were will with after amid new first more near'.split(' '));
-const DEDUCTION_STOP_WORDS = new Set([...HEADLINE_STOP_WORDS, 'event', 'report', 'reports', 'news', 'latest', 'update', 'updates']);
+const DEDUCTION_STOP_WORDS = new Set([...HEADLINE_STOP_WORDS, 'event', 'report', 'reports', 'news', 'latest', 'update', 'updates', 'world', 'global', 'breaking', 'source', 'public', 'official', 'according', 'people', 'country', 'government', 'officials', 'should', 'would', 'could', 'your', 'you', 'how', 'soon']);
 const fingerprintOf = (title, detail) => `${title}|${detail}`
   .toLowerCase()
   .replace(/[^\p{L}\p{N}]+/gu, ' ')
@@ -108,15 +108,17 @@ function itemId(item, fallback) {
   return String(item.id || properties.event_id || item.url || properties.url || item.sourceUrl || `${item.date || properties.event_date || item.published || item.occurredAt || ''}-${item.name || properties.name || item.title || item.location || item.country || fallback}`);
 }
 
-function textValues(value) {
-  if (Array.isArray(value)) return value.flatMap(textValues);
-  if (value && typeof value === 'object') return Object.values(value).flatMap(textValues);
-  return typeof value === 'string' ? [value] : [];
-}
-
 function termsFor(item) {
-  const text = textValues(item).join(' ')
-    .toLocaleLowerCase();
+  const values = [];
+  const metadata = new Set(['category', 'source', 'domain', 'region', 'language', 'countrycode', 'timetype', 'url', 'sourceurl', 'published', 'date', 'id']);
+  const walk = (value, key = '') => {
+    if (metadata.has(key.toLocaleLowerCase())) return;
+    if (Array.isArray(value)) value.forEach((entry) => walk(entry));
+    else if (value && typeof value === 'object') Object.entries(value).forEach(([childKey, child]) => walk(child, childKey));
+    else if (typeof value === 'string') values.push(value);
+  };
+  walk(item);
+  const text = values.join(' ').toLocaleLowerCase();
   return new Set((text.match(/[\p{L}\p{N}]{4,}/gu) || []).filter((term) => !DEDUCTION_STOP_WORDS.has(term)));
 }
 
@@ -128,11 +130,16 @@ function recent(item) {
 }
 
 function correlate(sourceName, item, targetName, targetItems, title) {
-  if (!item || !recent(item)) return;
+  if (!item || !recent(item) || !matchesTopics(item)) return;
   const sourceTerms = termsFor(item);
   if (sourceTerms.size === 0) return;
   const match = targetItems.find((target) => {
-    if (!recent(target)) return false;
+    if (!recent(target) || !matchesTopics(target)) return false;
+    if ([sourceName, targetName].includes('conflict') && [sourceName, targetName].includes('news')) {
+      const headline = sourceName === 'news' ? item : target;
+      const subject = `${headline.category || ''} ${headline.title || ''} ${headline.description || ''}`;
+      if (!/\b(conflict|war|armed|troops|military|airstrike|missile|invasion|ceasefire|shelling|battle|attack|strike|bombing|drone strike)\b/i.test(subject)) return false;
+    }
     const overlap = [...sourceTerms].filter((term) => termsFor(target).has(term));
     // Two shared terms distinguish a real link from a stop-word-shaped one.
     return overlap.length >= 2;

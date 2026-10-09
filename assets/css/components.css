@@ -269,22 +269,32 @@
   text-decoration: underline;
 }
 
-.spot-chart {
+.fear-greed-panel {
   flex: 1;
   height: auto;
-  min-height: 105px;
+  min-height: 0;
   margin: 5px 0;
+  padding: 20px 8px 21px;
   border: 1px solid #30383b;
   background: #0e1316;
   position: relative;
-  padding: 17px 5px 12px;
+  display: flex;
+  flex-direction: column;
 }
-
-.spot-chart svg {
-  width: 100%;
-  height: calc(100% - 20px);
-  min-height: 67px;
-}
+.fear-greed-readout { display: flex; align-items: baseline; gap: 10px; margin: 4px 0 8px; }
+.fear-greed-readout strong { color: #e7ecee; font: 34px Roboto Mono, monospace; }
+.fear-greed-readout span { color: #e0b258; font: 10px Roboto Mono, monospace; text-transform: uppercase; }
+.fear-greed-scale { height: 9px; position: relative; border: 1px solid #41494d; background: linear-gradient(90deg, #c44943 0%, #e58d48 25%, #d5b44e 50%, #8eaf59 75%, #4c9d68 100%); }
+.fear-greed-marker { position: absolute; top: -5px; width: 3px; height: 17px; border: 1px solid #f4f3e8; background: #14191b; transform: translateX(-2px); box-shadow: 0 0 4px #000; }
+.fear-greed-marker[hidden] { display: none; }
+.fear-greed-axis { display: flex; justify-content: space-between; margin-top: 3px; color: #78848a; font: 7px Roboto Mono, monospace; }
+.fear-greed-subline { display: flex; justify-content: space-between; gap: 6px; margin-top: 8px; color: #9da8ac; font: 8px Roboto Mono, monospace; }
+.fear-greed-subline b { color: #e1e6e8; font-weight: 400; }
+.fear-greed-factors { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: space-evenly; gap: 3px; margin: 8px 0 12px; border-top: 1px solid #293135; padding-top: 6px; }
+.fear-greed-factor { display: grid; grid-template-columns: 64px minmax(20px, 1fr) 20px; align-items: center; gap: 5px; color: #89959a; font: 7px Roboto Mono, monospace; }
+.fear-greed-factor > i { height: 4px; background: #252d30; }
+.fear-greed-factor > i b { display: block; height: 100%; background: linear-gradient(90deg, #ce5946, #d2b04c, #66a75b); }
+.fear-greed-factor > strong { color: #bdc6c9; font-weight: 400; text-align: right; }
 
 .chart-label {
   position: absolute;
@@ -292,17 +302,6 @@
   left: 6px;
   color: #919ba0;
   font: 8px Roboto Mono, monospace;
-}
-
-.chart-grid {
-  stroke: #283135;
-  stroke-width: 1;
-}
-
-.chart-line {
-  fill: none;
-  stroke: #f1ab31;
-  stroke-width: 2;
 }
 
 .chart-foot {
@@ -314,19 +313,6 @@
   justify-content: space-between;
   color: #68747a;
   font: 7px Roboto Mono, monospace;
-}
-
-.chart-empty {
-  position: absolute;
-  inset: 17px 5px 12px;
-  display: grid;
-  place-items: center;
-  color: #78848a;
-  font: 8px Roboto Mono, monospace;
-}
-
-.chart-empty[hidden] {
-  display: none;
 }
 
 .source-note {

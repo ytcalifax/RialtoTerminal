@@ -16,6 +16,7 @@ import { loadMarket, initMarketsChrome } from './features/markets.js';
 import { CUSTOM_GROUP } from './core/constants.js';
 import { loadShips, loadAir, renderDashboardShips, selectTrack, trackingViewChanged } from './features/tracking.js';
 import { loadMarketplace } from './features/marketplace.js';
+import { loadMarketSentiment } from './features/marketSentiment.js';
 import { loadWar } from './features/conflict.js';
 import { loadDiseaseOutbreaks } from './features/health.js';
 
@@ -50,6 +51,7 @@ initMarketsChrome();
 
 loadNews();
 loadMarket();
+loadMarketSentiment();
 if (state.pins.length) loadMarket(CUSTOM_GROUP);
 loadShips();
 loadAir();
@@ -58,6 +60,7 @@ loadDiseaseOutbreaks();
 loadMarketplace();
 
 setInterval(() => loadNews(state.feed, state.newsQuery), 300000);
+setInterval(loadMarketSentiment, 900000);
 setInterval(loadShips, 60000);
 setInterval(loadAir, 900000);
 setInterval(loadWar, 900000);

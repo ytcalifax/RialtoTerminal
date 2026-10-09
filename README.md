@@ -37,10 +37,9 @@ credential values are redacted; headers and request bodies are omitted. Metrics
 stay in memory for the current server process and reset when the debugger
 attaches or disconnects.
 
-The World Monitor layers use its API from the local Python server. Set
-`WORLDMONITOR_API_KEY` in `.env` to enable them; the key is never sent to the
-browser. Some World Monitor endpoints require a paid entitlement, so those
-individual layers may remain empty if the key's account does not include access.
+The World Monitor layers use a short-lived anonymous session minted by the API
+and refreshed by the local Python server. No World Monitor API key is required
+in `.env`; endpoints with subscription-only access may still return no data.
 
 To install the optional `rialto` command in the current Python environment:
 
@@ -108,7 +107,7 @@ Keyboard shortcuts: `/` focuses the command line, `F2` opens help, `↑` and `�
 
 ## 🔌 Data Sources
 
-Rialto reads public data from Yahoo Finance, the Bulgarian Stock Exchange, publisher RSS feeds and Google News, OpenSky, Open Waters AIS, ADSBDB aircraft enrichment, Bazar.bg, GDELT, UN OCHA, and GPSJam. With `WORLDMONITOR_API_KEY`, it also reads World Monitor's UCDP/ACLED and Cloudflare Radar outage feeds. Coverage, update timing, access tier, and available fields depend on each provider. The app does not place orders.
+Rialto reads public data from Yahoo Finance, the Bulgarian Stock Exchange, publisher RSS feeds and Google News, OpenSky, Open Waters AIS, ADSBDB aircraft enrichment, Bazar.bg, GDELT, UN OCHA, and GPSJam. It also reads World Monitor's fear/greed index, UCDP/ACLED and internet outage feeds using a periodically refreshed anonymous API session. Coverage, update timing, access tier, and available fields depend on each provider. The app does not place orders.
 
 Publisher news feeds and Google News searches refresh every five minutes. Other
 sources use their own polling and cache intervals to match provider update rates

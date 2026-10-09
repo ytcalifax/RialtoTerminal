@@ -5,7 +5,7 @@ from collections.abc import Callable
 
 from ..core.external_metrics import debug_snapshot
 from ..services.airinfo import aircraft_info
-from ..services.conflict import disease_outbreak_snapshot, war_snapshot
+from ..services.conflict import disease_outbreak_snapshot, market_sentiment_snapshot, war_snapshot
 from ..services.marketplace import listing_search
 from ..services.markets.quotes import (
     market_snapshot,
@@ -39,6 +39,10 @@ def _news(params: Params) -> tuple[int, dict]:
 
 def _market(params: Params) -> tuple[int, dict]:
     return 200, market_snapshot(_first(params, "group", "CORE").upper())
+
+
+def _market_sentiment(params: Params) -> tuple[int, dict]:
+    return 200, market_sentiment_snapshot()
 
 
 def _symbol_search(params: Params) -> tuple[int, dict]:
@@ -101,6 +105,7 @@ def _debug_stats(params: Params) -> tuple[int, dict]:
 API_ROUTES: dict[str, RouteHandler] = {
     "/api/news": _news,
     "/api/market": _market,
+    "/api/market-sentiment": _market_sentiment,
     "/api/symbol-search": _symbol_search,
     "/api/quotes": _quotes,
     "/api/marketplace": _marketplace,

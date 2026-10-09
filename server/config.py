@@ -54,7 +54,7 @@ YAHOO_CHART_URL = (
 YAHOO_SEARCH_URL = "https://query1.finance.yahoo.com/v1/finance/search?q={query}&quotesCount=8&newsCount=0"
 SEARCH_TTL_S = 3600
 QUOTES_MAX_SYMBOLS = 12
-BSE_SOFIX_URL = "https://www.bse-sofia.bg/en/indices/sofix"
+BSE_SOFIX_URL = "https://www.bse-sofia.bg/en/widgets/TopIndexTurnover/"
 OPENWATERS_VESSELS_URL = "https://ais.openwaters.io/v1/vessels?bbox={bbox}"
 OPENWATERS_TRACK_URL = "https://ais.openwaters.io/v1/vessels/{mmsi}/track"
 OPENSKY_TRACKS_URL = "https://opensky-network.org/api/tracks/all"

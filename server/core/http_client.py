@@ -76,6 +76,8 @@ def fetch_response(
     timeout: float = UPSTREAM_TIMEOUT_S,
     headers: dict[str, str] | None = None,
     retry_scope: str | None = None,
+    data: bytes | None = None,
+    method: str | None = None,
 ) -> tuple[bytes, HTTPMessage]:
     """Like :func:`fetch` but also returns the response headers.
 
@@ -88,6 +90,8 @@ def fetch_response(
 
     request = urllib.request.Request(
         url,
+        data=data,
+        method=method,
         headers={
             "User-Agent": USER_AGENT,
             "Accept": accept,

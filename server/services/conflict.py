@@ -3,13 +3,14 @@ from __future__ import annotations
 import csv
 import io
 import json
-import os
 import re
+import threading
 import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from urllib.parse import urlencode, urlsplit
+from urllib.error import HTTPError
 
 from ..core.cache import TTLCache
 from ..core.http_client import fetch, fetch_response
@@ -18,6 +19,7 @@ from ..core.pool import shared_pool
 _WAR_TTL_S = 900  # GDELT's event exports update every 15 minutes
 _war_cache: TTLCache[dict] = TTLCache(_WAR_TTL_S, max_entries=2)
 _outbreak_cache: TTLCache[dict] = TTLCache(900, max_entries=1)
+_market_sentiment_cache: TTLCache[dict] = TTLCache(900, max_entries=1)
 _frontline_cache: TTLCache[dict] = TTLCache(86400, max_entries=1)
 _gpsjam_cache: TTLCache[dict] = TTLCache(86400, max_entries=1)
 
@@ -29,22 +31,96 @@ _FRONTLINE_URL = (
 )
 _GPSJAM_MANIFEST_URL = "https://gpsjam.org/data/manifest.csv"
 _WORLDMONITOR_API = "https://api.worldmonitor.app"
+_WM_SESSION_REFRESH_S = 30 * 60
+_wm_session_lock = threading.Lock()
+_wm_session: dict[str, float | str] = {"token": "", "expires": 0, "refreshed": 0}
+
+
+def _worldmonitor_key(force_refresh: bool = False) -> str:
+    now = time.time()
+    with _wm_session_lock:
+        token = str(_wm_session["token"])
+        expires = float(_wm_session["expires"])
+        refreshed = float(_wm_session["refreshed"])
+        if not force_refresh and token and expires - now > 300 and now - refreshed < _WM_SESSION_REFRESH_S:
+            return token
+        try:
+            body, _ = fetch_response(
+                f"{_WORLDMONITOR_API}/api/wm-session",
+                "application/json",
+                headers={"Content-Type": "application/json", "Origin": "https://worldmonitor.app"},
+                data=b"{}",
+                method="POST",
+            )
+            session = json.loads(body)
+            token = session.get("token", "")
+            expires = float(session.get("exp", 0)) / 1000
+            if not isinstance(token, str) or not token.startswith("wms_") or expires <= now:
+                raise ValueError("World Monitor session response was invalid")
+            _wm_session.update(token=token, expires=expires, refreshed=now)
+            return token
+        except Exception:
+            if token and expires > now:
+                return token
+            raise
+
+
+def _worldmonitor_request(path: str, data: bytes | None = None) -> bytes:
+    for attempt in range(2):
+        key = _worldmonitor_key(force_refresh=attempt > 0)
+        try:
+            body, _ = fetch_response(
+                f"{_WORLDMONITOR_API}{path}",
+                "application/json",
+                headers={"X-WorldMonitor-Key": key, **({"Content-Type": "application/json"} if data else {})},
+                data=data,
+                method="POST" if data else None,
+            )
+            return body
+        except HTTPError as error:
+            if error.code != 401 or attempt:
+                raise
+            with _wm_session_lock:
+                _wm_session.update(token="", expires=0, refreshed=0)
+    raise ValueError("World Monitor request failed")
 
 
 def _worldmonitor_json(path: str, params: dict[str, str] | None = None) -> dict:
-    key = os.environ.get("WORLDMONITOR_API_KEY", "").strip()
-    if not key:
-        raise ValueError("WORLDMONITOR_API_KEY is not configured")
     query = f"?{urlencode(params)}" if params else ""
-    body, _ = fetch_response(
-        f"{_WORLDMONITOR_API}{path}{query}",
-        "application/json",
-        headers={"X-WorldMonitor-Key": key},
-    )
-    result = json.loads(body)
+    result = json.loads(_worldmonitor_request(f"{path}{query}"))
     if not isinstance(result, dict):
         raise ValueError("World Monitor returned an invalid payload")
     return result
+
+
+def market_sentiment_snapshot() -> dict:
+    cached = _market_sentiment_cache.get("latest")
+    if cached is not None:
+        return dict(cached)
+    stale = _market_sentiment_cache.get_entry("latest")
+    try:
+        payload = json.loads(_worldmonitor_request(
+            "/api/batch/v1/execute",
+            json.dumps({"operations": [{
+                "id": "fear-greed",
+                "path": "/api/market/v1/get-fear-greed-index",
+            }]}).encode(),
+        ))
+        results = {item.get("id"): item for item in payload.get("results", []) if isinstance(item, dict)}
+        fear = results.get("fear-greed", {})
+        if fear.get("status") != 200 or not isinstance(fear.get("body"), dict):
+            raise ValueError("World Monitor fear/greed data unavailable")
+        result = {
+            "fear_greed": fear["body"],
+            "source": "World Monitor",
+            "fetched": int(time.time()),
+        }
+        _market_sentiment_cache.store("latest", result)
+        return result
+    except Exception:
+        if stale is not None:
+            return {**stale.value, "stale": True}
+        return {"fear_greed": None, "source": "World Monitor", "partial": True}
 
 
 def _worldmonitor_layers() -> dict:
@@ -72,7 +148,7 @@ def _worldmonitor_layers() -> dict:
         {**event, "source": "ACLED"}
         for event in layers["acled"]
     ]
-    layers["configured"] = bool(os.environ.get("WORLDMONITOR_API_KEY", "").strip())
+    layers["configured"] = True
     layers["source"] = "World Monitor API"
     layers["updated_at"] = int(time.time())
     return layers

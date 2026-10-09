@@ -259,21 +259,6 @@ function renderMarkets() {
       || 'QUOTE FEED UNAVAILABLE';
   }
 
-  const sp = state.market.find((x) => x.symbol === '^GSPC');
-  const line = $('#spotLine');
-  if (line) {
-    const valid = (sp?.series || []).filter(Number.isFinite);
-    const hasTrend = valid.length >= 2;
-    line.setAttribute('d', '');
-    $('#spotEmpty')?.toggleAttribute('hidden', hasTrend);
-    if (hasTrend) {
-      const lo = Math.min(...valid);
-      const hi = Math.max(...valid);
-      const span = hi - lo || 1;
-      line.setAttribute('d', valid.map((v, i) => `${i ? 'L' : 'M'} ${(i / (valid.length - 1 || 1)) * 280} ${72 - ((v - lo) / span) * 58}`).join(' '));
-    }
-  }
-
   if (state.page === 'markets') renderFullMarketRows();
   bindMarketRows();
   if (scroller) scroller.scrollTop = scrollTop;

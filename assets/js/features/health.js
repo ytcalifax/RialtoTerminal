@@ -10,7 +10,9 @@ async function loadDiseaseOutbreaks(force = false) {
   busy = true;
   try {
     const data = await req('/api/health/outbreaks');
-    state.diseaseOutbreaks = data.outbreaks || [];
+    state.diseaseOutbreaksStale = data.stale === true || data.partial === true;
+    state.diseaseOutbreaksUpdatedAt = Number(data.updated_at) * 1000 || 0;
+    state.diseaseOutbreaks = state.diseaseOutbreaksStale ? [] : (data.outbreaks || []);
     observeDerivedSignals('disease', observeDiseaseOutbreaks(state.diseaseOutbreaks));
     state.timestamps.diseaseOutbreaks = Date.now();
   } catch {

@@ -47,7 +47,7 @@ const state = {
   alertBaselines: { news: null, conflict: null, worldMonitor: null, diseaseOutbreaks: null, markets: null, vessels: null, aircraft: null, deductions: [], seenAlerts: [] },
   deductions: [],         // cross-feed cause→effect deductions (newest first)
   deductionQuotes: [],    // engine's own quote watchlist rows (effect instruments)
-  deductionBaseline: { conflict: {}, news: {}, quotes: {} }, // per-feed counters + first-seen prices
+  deductionBaseline: { conflict: {}, news: {} }, // per-feed activity counters
   marketplace: [],        // latest marketplace listings
   marketplaceQuery: '',   // latest marketplace search
 
@@ -74,6 +74,8 @@ const state = {
   warShowGpsJam: false,
   warWorldMonitor: { armed: [], outages: [], configured: false },
   diseaseOutbreaks: [],
+  diseaseOutbreaksStale: false,
+  diseaseOutbreaksUpdatedAt: 0,
   warSelectedId: null,
   conflictQuery: '',
   conflictTypes: loadConflictTypes(),

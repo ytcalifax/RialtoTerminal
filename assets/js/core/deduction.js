@@ -42,8 +42,10 @@ const EFFECT_NAMES = {
   'RTX': 'RTX', 'LMT': 'Lockheed', 'DAL': 'Delta', 'TSM': 'TSMC', 'SMH': 'Semis ETF',
 };
 
-/** Session move below this is treated as flat (no effect signal). */
+/** Ignore sub-1% moves and quotes older than this. */
 const MOVE_FLOOR_PCT = 1;
+const QUOTE_MAX_AGE_MS = 30 * 60 * 1000;
+const SIGNAL_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 /** Maritime chokepoints with coarse bounding boxes for GPS-jam/tanker checks. */
 const CHOKEPOINTS = [
@@ -69,8 +71,8 @@ const THEATERS = {
     producers: ['iran', 'iraq', 'saudi', 'kuwait', 'qatar', 'uae', 'united arab emirates', 'bahrain', 'oman'],
     rule: {
       title: 'FUEL PRICE PRESSURE',
-      summary: 'Conflict escalation plus supply-route disruption in the Gulf lifts crude and refined-product prices.',
-      minScore: 5,
+      summary: 'Conflict and supply-route signals coincide with rising fuel prices; this is a risk signal, not proof of causation.',
+      minScore: 7,
       effects: [
         { symbol: 'BZ=F', dir: 'up' }, { symbol: 'CL=F', dir: 'up' }, { symbol: 'RB=F', dir: 'up' },
         { symbol: 'HO=F', dir: 'up' }, { symbol: 'NG=F', dir: 'up' }, { symbol: 'XLE', dir: 'up' },
@@ -85,8 +87,8 @@ const THEATERS = {
     producers: ['yemen', 'saudi', 'egypt', 'sudan', 'eritrea', 'djibouti'],
     rule: {
       title: 'SHIPPING & FUEL PRESSURE',
-      summary: 'Attacks or closures on the Red Sea corridor reroute tankers and lift voyage costs and fuel prices.',
-      minScore: 4,
+      summary: 'Disruption reporting on the Red Sea corridor coincides with rising fuel prices; this is a risk signal, not proof of causation.',
+      minScore: 7,
       effects: [
         { symbol: 'BZ=F', dir: 'up' }, { symbol: 'CL=F', dir: 'up' }, { symbol: 'RB=F', dir: 'up' },
         { symbol: 'HO=F', dir: 'up' }, { symbol: 'XLE', dir: 'up' }, { symbol: 'USO', dir: 'up' },
@@ -101,8 +103,8 @@ const THEATERS = {
     producers: ['russia', 'ukraine', 'kazakhstan'],
     rule: {
       title: 'EUROPEAN GAS & GRAIN PRESSURE',
-      summary: 'Escalation around Europe’s largest gas and grain exporters lifts gas, wheat and safe-haven demand.',
-      minScore: 4,
+      summary: 'Conflict and Black Sea route signals coincide with rising gas or grain prices; this is a risk signal, not proof of causation.',
+      minScore: 7,
       effects: [
         { symbol: 'NG=F', dir: 'up' }, { symbol: 'ZW=F', dir: 'up' }, { symbol: 'BZ=F', dir: 'up' },
         { symbol: 'GC=F', dir: 'up' }, { symbol: 'UNG', dir: 'up' },
@@ -116,8 +118,8 @@ const THEATERS = {
     producers: ['taiwan', 'china'],
     rule: {
       title: 'TECH SUPPLY-CHAIN RISK',
-      summary: 'Escalation near the Taiwan Strait pressures semiconductor supply and lifts risk-off demand.',
-      minScore: 4,
+      summary: 'Taiwan Strait risk signals coincide with falling semiconductor shares; this is a risk signal, not proof of causation.',
+      minScore: 7,
       effects: [
         { symbol: 'TSM', dir: 'down' }, { symbol: 'SMH', dir: 'down' }, { symbol: '^GSPC', dir: 'down' },
         { symbol: '^VIX', dir: 'up' }, { symbol: 'GC=F', dir: 'up' },
@@ -140,8 +142,11 @@ function ageMs(item) {
   const properties = item?.properties || {};
   const raw = item?.published || item?.occurredAt || item?.dateStart || item?.detectedAt
     || item?.publishedAt || item?.date || properties.event_date || '';
-  const timestamp = Date.parse(String(raw));
-  return Number.isNaN(timestamp) ? Infinity : Date.now() - timestamp;
+  const numeric = typeof raw === 'number' || /^\d{10,13}$/.test(String(raw));
+  const value = numeric ? Number(raw) : Date.parse(String(raw));
+  const timestamp = numeric ? (value < 1e12 ? value * 1000 : value) : value;
+  if (Number.isNaN(timestamp) || timestamp > Date.now() + 5 * 60 * 1000) return Infinity;
+  return Date.now() - timestamp;
 }
 
 /** Text of a feed row: every string value, lower-cased once. */
@@ -157,7 +162,8 @@ function rowText(item) {
 }
 
 function pointIn(box, lat, lon) {
-  return lat >= box.minLat && lat <= box.maxLat && lon >= box.minLon && lon <= box.maxLon;
+  return Number.isFinite(lat) && Number.isFinite(lon)
+    && lat >= box.minLat && lat <= box.maxLat && lon >= box.minLon && lon <= box.maxLon;
 }
 
 function fmtPct(value) {
@@ -171,16 +177,14 @@ function quoteRow(symbol) {
 /** Absolute move for a symbol: day change or session move since first tick. */
 function moveOf(symbol) {
   const row = quoteRow(symbol);
-  if (!row) return null;
-  const dayPct = Number(row.pct);
-  const baseline = state.deductionBaseline.quotes[symbol];
-  let sessionPct = null;
-  if (baseline?.last && Number.isFinite(Number(row.last)) && Number(row.last) > 0) {
-    sessionPct = (Number(row.last) - baseline.last) / baseline.last * 100;
-  }
-  const candidates = [dayPct, sessionPct].filter((x) => Number.isFinite(x));
-  if (!candidates.length) return null;
-  return Math.max(...candidates.map(Math.abs)) * Math.sign(candidates.find((x) => Math.abs(x) >= MOVE_FLOOR_PCT) ?? 0);
+  if (!row || row.stale === true) return null;
+  const asof = Number(row.asof);
+  const quoteAt = asof * 1000;
+  if (!Number.isFinite(asof) || asof <= 0 || quoteAt > Date.now() + 5 * 60 * 1000
+    || Date.now() - quoteAt > QUOTE_MAX_AGE_MS) return null;
+  if (row.pct == null || row.pct === '') return null;
+  const pct = Number(row.pct);
+  return Number.isFinite(pct) ? pct : null;
 }
 
 /** Short label for an effect instrument ('Brent', 'S&P 500', …). */
@@ -188,11 +192,10 @@ function effectName(symbol) {
   return EFFECT_NAMES[symbol] || quoteRow(symbol)?.name || symbol;
 }
 
-/** 'Brent +2.4%' style label for an effect instrument, when it is moving. */
-function moveLabel(symbol) {
-  const row = quoteRow(symbol);
+function moveInDirection(symbol, direction) {
   const move = moveOf(symbol);
-  if (!row || move == null || Math.abs(move) < MOVE_FLOOR_PCT) return null;
+  if (move == null || Math.abs(move) < MOVE_FLOOR_PCT) return null;
+  if ((direction === 'up' && move <= 0) || (direction === 'down' && move >= 0)) return null;
   return `${effectName(symbol)} ${fmtPct(move)}`;
 }
 
@@ -222,19 +225,27 @@ function newsSignals(rows, theater) {
 
 /** Chokepoint stress: keyword hits + GPS-jam coverage + tankers holding station. */
 function chokepointSignals(rows) {
-  const newsTexts = rows.map((x) => rowText(x));
-  const reportTexts = [...state.warReports, ...(state.warWorldMonitor?.armed || [])].map(rowText);
-  const threatVerbs = /closed|closure|blocked|attack|attacked|struck|mined|seized|disrupt|halted|suspended|tanker/i;
+  const newsTexts = rows.filter((x) => ageMs(x) <= SIGNAL_MAX_AGE_MS).map(rowText);
+  const reportTexts = [...state.warReports, ...(state.warWorldMonitor?.armed || [])]
+    .filter((x) => ageMs(x) <= SIGNAL_MAX_AGE_MS).map(rowText);
+  const threatVerbs = /\b(closed|closure|blocked|attack(?:s|ed)?|struck|mined|seized|disrupt(?:ed|ion)?|halted|suspended)\b/i;
   return CHOKEPOINTS.map((choke) => {
     const signals = [];
     const keyword = new RegExp(choke.keywords.join('|'), 'i');
     [...newsTexts, ...reportTexts].forEach((text) => {
       if (keyword.test(text) && threatVerbs.test(text)) signals.push('threatening coverage');
     });
-    (state.warGpsJam?.features || []).some((feature) => {
-      const ring = feature.geometry?.coordinates?.[0] || [];
-      const lat = ring.reduce((sum, [, la]) => sum + la, 0) / (ring.length || 1);
-      const lon = ring.reduce((sum, [lo]) => sum + lo, 0) / (ring.length || 1);
+    const jamDate = Date.parse(String(state.warGpsJam?.date || ''));
+    const jamIsRecent = Number.isFinite(jamDate) && Date.now() - jamDate <= 2 * SIGNAL_MAX_AGE_MS;
+    (jamIsRecent ? state.warGpsJam?.features || [] : []).some((feature) => {
+      const geometry = feature.geometry || {};
+      const coordinates = geometry.coordinates || [];
+      const points = geometry.type === 'MultiPolygon' ? coordinates.flat(2) : (coordinates[0] || []);
+      const ring = points.filter((point) => Array.isArray(point)
+        && Number.isFinite(Number(point[0])) && Number.isFinite(Number(point[1])));
+      if (!ring.length) return false;
+      const lat = ring.reduce((sum, [, la]) => sum + Number(la), 0) / ring.length;
+      const lon = ring.reduce((sum, [lo]) => sum + Number(lo), 0) / ring.length;
       const percent = Number(feature.properties?.percent) || 0;
       if (percent >= 25 && pointIn(choke, lat, lon)) {
         signals.push(`GPS interference ${percent.toFixed(0)}% of traffic`);
@@ -242,31 +253,40 @@ function chokepointSignals(rows) {
       }
       return false;
     });
-    const tankers = state.ships.filter((x) => x.type === 'Tanker'
-      && Number(x.speed ?? 99) < 3
-      && pointIn(choke, Number(x.lat), Number(x.lon)));
-    if (tankers.length >= 3) signals.push(`${tankers.length} tankers holding station`);
     return { ...choke, signals: [...new Set(signals)].slice(0, 3) };
   });
 }
 
-function outageSignals() {
-  return (state.warWorldMonitor?.outages || []).filter((x) => OUTAGE_COUNTRY_TERMS.test(rowText(x)))
-    .slice(0, 3)
+function outageSignals(producers = null) {
+  const outages = (state.warWorldMonitor?.outages || [])
+    .filter((x) => ageMs(x) <= SIGNAL_MAX_AGE_MS && OUTAGE_COUNTRY_TERMS.test(rowText(x)));
+  const filtered = producers ? outages.filter((x) => {
+    const text = rowText(x);
+    return producers.some((country) => text.includes(country.toLowerCase()));
+  }) : outages;
+  return filtered.slice(0, 3)
     .map((x) => `Internet disruption in ${x.country || x.region || x.title || 'producer region'}`);
 }
 
 // --- rules ----------------------------------------------------------------------
 
 function theaterRequires(theater, choke) {
-  const energy = ['BZ=F', 'CL=F', 'RB=F', 'HO=F', 'NG=F'];
+  const coreEffects = theater.rule.effects.filter((effect) => ['BZ=F', 'CL=F', 'RB=F', 'HO=F', 'NG=F'].includes(effect.symbol));
+  if (!coreEffects.length && theater.rule.effects.some((effect) => effect.symbol === 'TSM')) {
+    coreEffects.push(...theater.rule.effects.filter((effect) => ['TSM', 'SMH'].includes(effect.symbol)));
+  }
   return [
     { label: 'Conflict reports', weight: 2, test: (c) => c.conflict.count >= 2 && c.conflict.detail },
     { label: 'Headline acceleration', weight: 1, test: (c) => (c.news.hits >= 4 && c.news.rising) && c.news.detail },
-    { label: 'Chokepoint disruption', weight: 2, test: (c) => choke.signals.length >= 2 && choke.signals.join(' · ') },
+    { label: 'Chokepoint disruption signals', weight: 2, test: () => choke.signals.length >= 2 ? choke.signals.join(' · ') : null },
     { label: 'Producer-region outage', weight: 1, test: (c) => c.outages[0] },
-    { label: 'Energy & fuel quotes moving', weight: 2, test: (c) => (theater.rule.effects.some((e) => energy.includes(e.symbol)) && c.moves.filter((x) => /Brent|WTI|Gasoline|Heating|Nat/.test(x)).length) || null },
-    { label: 'Hedge demand moving', weight: 1, test: (c) => c.moves.find((x) => /^(Gold|VIX) /) || null },
+    { label: 'At least two core market quotes moving in the expected direction', weight: 3, test: () => {
+      const matches = coreEffects.map((effect) => moveInDirection(effect.symbol, effect.dir)).filter(Boolean);
+      return matches.length >= 2 ? matches.slice(0, 3).join(' · ') : null;
+    } },
+    { label: 'Hedge demand moving in the expected direction', weight: 1, test: () => theater.rule.effects
+      .filter((effect) => ['GC=F', '^VIX'].includes(effect.symbol))
+      .map((effect) => moveInDirection(effect.symbol, effect.dir)).find(Boolean) || null },
   ];
 }
 
@@ -275,29 +295,33 @@ const RULES = [
     id: 'risk-off',
     title: 'RISK-OFF ROTATION',
     summary: 'Conflict activity rising while volatility and gold lift and equities shed value — broad defensive rotation.',
-    minScore: 3,
+    minScore: 5,
     effects: [
       { symbol: '^VIX', dir: 'up' }, { symbol: 'GC=F', dir: 'up' }, { symbol: 'SI=F', dir: 'up' },
       { symbol: '^GSPC', dir: 'down' },
     ],
     requires: [
-      { label: 'Conflict activity rising', weight: 2, test: (c) => Object.values(c.conflicts).some((x) => x.rising && x.count) && 'Multiple theaters show rising reported activity' },
-      { label: 'Volatility up', weight: 1, test: (c) => moveLabel('^VIX') },
-      { label: 'Gold up · equities down', weight: 2, test: (c) => (moveLabel('GC=F')?.includes('+') && moveLabel('^GSPC')?.includes('-') && `Gold ${moveLabel('GC=F')} · S&P ${moveLabel('^GSPC')}`) || null },
+      { label: 'Conflict activity rising in at least two theaters', weight: 2, test: (c) => Object.values(c.conflicts).filter((x) => x.rising && x.count).length >= 2 && 'Reported activity increased in at least two theaters' },
+      { label: 'Volatility up', weight: 1, test: () => moveInDirection('^VIX', 'up') },
+      { label: 'Gold up · equities down', weight: 2, test: () => {
+        const gold = moveInDirection('GC=F', 'up');
+        const equities = moveInDirection('^GSPC', 'down');
+        return gold && equities ? `${gold} · ${equities}` : null;
+      } },
     ],
   },
   {
     id: 'outbreak-travel',
     title: 'TRAVEL & TRADE RISK',
-    summary: 'Severe outbreak alerts with travel demand and mobility weakening.',
-    minScore: 3,
+    summary: 'Severe outbreak alerts coincide with a falling airline share price; this is a risk signal, not proof of causation.',
+    minScore: 4,
     effects: [
       { symbol: 'DAL', dir: 'down' }, { symbol: '^GSPC', dir: 'down' }, { symbol: 'GC=F', dir: 'up' },
     ],
     requires: [
       { label: 'Outbreak alerts', weight: 2, test: (c) => c.outbreaks[0] },
       { label: 'Disease headlines rising', weight: 1, test: (c) => (c.diseaseNews >= 3 && `${c.diseaseNews} outbreak-related headlines`) || null },
-      { label: 'Travel names selling off', weight: 2, test: (c) => moveLabel('DAL') },
+      { label: 'Travel names selling off', weight: 2, test: () => moveInDirection('DAL', 'down') },
     ],
   },
 ];
@@ -310,29 +334,33 @@ const RULES = [
  * a deduction fires fresh or re-fires after its cooldown.
  */
 function evaluateDeductions(notify = null) {
-  const headlineRows = state.news.slice(0, 120);
-  const reportRows = [...state.warReports, ...(state.warWorldMonitor?.armed || [])]
+  const headlineRows = state.news.slice(0, 120).filter((x) => ageMs(x) <= SIGNAL_MAX_AGE_MS);
+  const reportCandidates = [...state.warReports, ...(state.warWorldMonitor?.armed || [])]
     .filter((x) => ageMs(x) <= 7 * 86400000);
+  const reportRows = [...new Map(reportCandidates.map((x) => [
+    String(x.id || x.url || x.sourceUrl || `${x.date || x.dateStart || x.occurredAt || ''}-${x.name || x.title || x.location || ''}`), x,
+  ])).values()];
   const reportTexts = reportRows.map(rowText);
   const chokepoints = chokepointSignals(headlineRows);
-  const outages = outageSignals();
 
   const ctx = {
     conflicts: {},
-    outages,
     chokepoints,
-    moves: DEDUCTION_WATCHLIST.map(moveLabel).filter(Boolean),
-    outbreaks: (state.diseaseOutbreaks || [])
-      .filter((x) => /high|severe|grade 3|grade 4|emergency/i.test(`${x.alertLevel || ''} ${x.disease || ''}`))
+    outbreaks: (!state.diseaseOutbreaksStale
+      && Number.isFinite(state.diseaseOutbreaksUpdatedAt)
+      && Date.now() - state.diseaseOutbreaksUpdatedAt <= SIGNAL_MAX_AGE_MS
+      ? state.diseaseOutbreaks || [] : [])
+      .filter((x) => /^(high|severe|emergency|(?:who\s+)?grade\s*[34])\b/i.test(String(x.alertLevel || '').trim()))
       .slice(0, 2)
       .map((x) => `${x.disease || 'Outbreak'} alert · ${x.location || x.countryCode || ''}`.trim()),
-    diseaseNews: headlineRows.filter((x) => DISEASE_TERMS.test(x.title || '')).length,
+    diseaseNews: new Set(headlineRows.filter((x) => DISEASE_TERMS.test(x.title || '')).map((x) => x.url || x.title)).size,
   };
 
   const fired = [];
   for (const theater of Object.values(THEATERS)) {
     ctx.conflicts[theater.label] = conflictSignals(reportTexts, theater);
     ctx.news = newsSignals(headlineRows, theater);
+    ctx.outages = outageSignals(theater.producers);
     const choke = chokepoints.find((x) => x.id === theater.choke);
     const context = { ...ctx, conflict: ctx.conflicts[theater.label], choke };
     fired.push(...runRule({
@@ -341,9 +369,12 @@ function evaluateDeductions(notify = null) {
       summary: theater.rule.summary,
       effects: theater.rule.effects,
       minScore: theater.rule.minScore,
+      gate: (c) => (c.conflict.count >= 2 || (c.news.hits >= 4 && c.news.rising))
+        && (c.choke.signals.length > 0 || c.outages.length > 0),
       requires: theaterRequires(theater, choke),
     }, context));
   }
+  ctx.outages = outageSignals();
   fired.push(...runRule(RULES.find((r) => r.id === 'risk-off'), ctx));
   fired.push(...runRule(RULES.find((r) => r.id === 'outbreak-travel'), ctx));
   commitDeductions(fired, notify);
@@ -352,6 +383,7 @@ function evaluateDeductions(notify = null) {
 /** Score one rule against the context; returns [deduction] when it fires. */
 function runRule(rule, ctx) {
   if (!rule) return [];
+  if (rule.gate && !rule.gate(ctx)) return [];
   const causes = [];
   let score = 0;
   let maxScore = 0;
@@ -369,7 +401,7 @@ function runRule(rule, ctx) {
   if (score < rule.minScore) return [];
   const effects = rule.effects
     .map((effect) => {
-      const label = moveLabel(effect.symbol);
+      const label = moveInDirection(effect.symbol, effect.dir);
       return {
         symbol: effect.symbol,
         name: effectName(effect.symbol),
@@ -384,7 +416,7 @@ function runRule(rule, ctx) {
     summary: rule.summary,
     causes,
     effects,
-    confidence: Math.round(100 * score / Math.max(1, maxScore)),
+    evidenceCoveragePct: Math.round(100 * score / Math.max(1, maxScore)),
     at: Date.now(),
   }];
 }
@@ -396,7 +428,7 @@ function commitDeductions(candidates, notify) {
     if (existing) {
       existing.causes = candidate.causes;
       existing.effects = candidate.effects;
-      existing.confidence = candidate.confidence;
+      existing.evidenceCoveragePct = candidate.evidenceCoveragePct;
       existing.lastAt = Date.now();
       if (Date.now() - existing.lastNotified > DEDUCTION_COOLDOWN_MS) {
         existing.hits += 1;
@@ -421,11 +453,11 @@ function emitNotification(deduction, notify) {
   if (!notify) return;
   const causes = deduction.causes.map((x) => x.detail || x.source).slice(0, 3).join(' · ');
   const effects = deduction.effects
-    .filter((x) => x.observed || x.dir)
+    .filter((x) => x.observed)
     .slice(0, 4)
-    .map((x) => `${x.name} ${x.dir === 'up' ? '↑' : '↓'}`)
+    .map((x) => x.observed)
     .join(' · ');
-  notify(`DEDUCTION · ${deduction.title}`, `${causes} → ${effects}`, '');
+  notify(`DEDUCTION · ${deduction.title}`, effects ? `${causes} → Observed: ${effects}` : causes, '');
 }
 
 // --- quotes -----------------------------------------------------------------------
@@ -435,12 +467,6 @@ async function refreshQuotes() {
     const r = await req(`/api/quotes?symbols=${encodeURIComponent(DEDUCTION_WATCHLIST.join(','))}`);
     const fresh = r.items || [];
     if (!fresh.length) return;
-    fresh.forEach((row) => {
-      const baseline = state.deductionBaseline.quotes[row.symbol];
-      if (!baseline && Number.isFinite(Number(row.last))) {
-        state.deductionBaseline.quotes[row.symbol] = { last: Number(row.last), at: Date.now() };
-      }
-    });
     state.deductionQuotes = fresh;
   } catch { /* deduction quotes are corroboration, not a primary feed */ }
 }

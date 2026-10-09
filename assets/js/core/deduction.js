@@ -311,6 +311,7 @@ function evaluateDeductions(notify = null) {
   };
 
   const fired = [];
+  const diagnostics = [];
   for (const theater of Object.values(THEATERS)) {
     ctx.conflicts[theater.label] = conflictSignals(reportTexts, theater);
     ctx.news = newsSignals(headlineRows, theater);
@@ -321,22 +322,30 @@ function evaluateDeductions(notify = null) {
       id: `theater-${theater.choke}`,
       title: theater.rule.title,
       summary: theater.rule.summary,
+      gateDescription: 'At least 2 conflict reports or 4+ rising theater headlines; and a chokepoint signal or producer-region outage.',
       effects: theater.rule.effects,
       minScore: theater.rule.minScore,
       gate: (c) => (c.conflict.count >= 2 || (c.news.hits >= 4 && c.news.rising))
         && (c.choke.signals.length > 0 || c.outages.length > 0),
       requires: theaterRequires(theater, choke),
-    }, context));
+    }, context, diagnostics));
   }
   ctx.outages = outageSignals();
-  fired.push(...runRule(RULES.find((r) => r.id === 'risk-off'), ctx));
-  fired.push(...runRule(RULES.find((r) => r.id === 'outbreak-travel'), ctx));
+  fired.push(...runRule(RULES.find((r) => r.id === 'risk-off'), ctx, diagnostics));
+  fired.push(...runRule(RULES.find((r) => r.id === 'outbreak-travel'), ctx, diagnostics));
+  state.deductionDiagnostics = {
+    evaluatedAt: Date.now(),
+    selectedTopics: String(state.alertSettings.keywords || '').split(',').map((term) => term.trim()).filter(Boolean),
+    rules: diagnostics,
+  };
   commitDeductions(fired, notify);
 }
-function runRule(rule, ctx) {
+function runRule(rule, ctx, diagnostics = null) {
   if (!rule) return [];
-  if (rule.gate && !rule.gate(ctx)) return [];
+  let gatePassed = true;
+  try { gatePassed = rule.gate ? Boolean(rule.gate(ctx)) : true; } catch { gatePassed = false; }
   const causes = [];
+  const requirements = [];
   let score = 0;
   let maxScore = 0;
   for (const requirement of rule.requires) {
@@ -345,12 +354,13 @@ function runRule(rule, ctx) {
     try {
       detail = requirement.test(ctx);
     } catch { /* a broken signal collector must not kill the pass */ }
-    if (detail) {
+    const passed = Boolean(detail);
+    requirements.push({ label: requirement.label, weight: requirement.weight, passed, detail: detail ? String(detail) : '' });
+    if (passed) {
       score += requirement.weight;
       causes.push({ source: requirement.label, detail });
     }
   }
-  if (score < rule.minScore) return [];
   const effects = rule.effects
     .map((effect) => {
       const label = moveInDirection(effect.symbol, effect.dir);
@@ -361,6 +371,21 @@ function runRule(rule, ctx) {
         observed: label || '',
       };
     });
+  const status = !gatePassed ? 'GATE CLOSED' : score < rule.minScore ? 'BELOW THRESHOLD' : 'FIRED';
+  diagnostics?.push({
+    id: rule.id,
+    title: rule.title,
+    summary: rule.summary,
+    gateDescription: rule.gateDescription || 'No separate gate.',
+    gatePassed,
+    score,
+    maxScore,
+    minScore: rule.minScore,
+    status,
+    requirements,
+    effects: effects.map((effect, index) => ({ ...effect, dir: rule.effects[index].dir })),
+  });
+  if (!gatePassed || score < rule.minScore) return [];
   return [{
     fingerprint: rule.id,
     rule: rule.id,

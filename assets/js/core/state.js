@@ -34,6 +34,7 @@ const state = {
   },
   alertBaselines: { news: null, conflict: null, worldMonitor: null, diseaseOutbreaks: null, markets: null, vessels: null, aircraft: null, deductions: [], seenAlerts: [] },
   deductions: [],
+  deductionDiagnostics: null,
   deductionQuotes: [],
   deductionBaseline: { conflict: {}, news: {} },
   marketplace: [],

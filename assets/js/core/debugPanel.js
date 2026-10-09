@@ -1,4 +1,5 @@
 import { $, esc } from './dom.js';
+import { state } from './state.js';
 
 const bytes = (value) => {
   if (value < 1024) return `${value} B`;
@@ -8,6 +9,24 @@ const bytes = (value) => {
 
 const duration = (seconds) => seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 let latestSnapshot = null;
+
+function renderDecisionDiagnostics(data) {
+  const summary = $('#debugDecisionSummary');
+  const list = $('#debugDecisions');
+  if (!data?.evaluatedAt || !Array.isArray(data.rules)) {
+    summary.textContent = 'Waiting for the first engine evaluation…';
+    list.innerHTML = '<div class="debug-empty">NO DECISION DIAGNOSTICS AVAILABLE</div>';
+    return;
+  }
+  const topics = data.selectedTopics?.length ? data.selectedTopics.join(' · ') : 'ALL TOPICS (NO TERMS SELECTED)';
+  summary.textContent = `EVALUATED ${new Date(data.evaluatedAt).toLocaleTimeString()} · TOPIC FILTER: ${topics}`;
+  list.innerHTML = data.rules.map((rule) => {
+    const statusClass = rule.status === 'FIRED' ? 'fired' : rule.status === 'GATE CLOSED' ? 'closed' : 'below';
+    const requirements = (rule.requirements || []).map((item) => `<div><b class="${item.passed ? 'pass' : 'fail'}">${item.passed ? '✓' : '·'}</b><span>${esc(item.label)} <small>+${item.weight}</small>${item.detail ? ` — ${esc(item.detail)}` : ' — no matching evidence'}</span></div>`).join('');
+    const effects = (rule.effects || []).map((effect) => `<span>${esc(effect.symbol)} ${esc(effect.name)} · expected ${esc(effect.dir)}${effect.observed ? ` · observed ${esc(effect.observed)}` : ' · NOT CONFIRMED'}</span>`).join('');
+    return `<article class="debug-rule"><div class="debug-rule-head"><b>${esc(rule.title)}</b><span class="debug-rule-status ${statusClass}">${esc(rule.status)}</span></div><div class="debug-rule-meta">SCORE ${rule.score}/${rule.maxScore} · MINIMUM ${rule.minScore}</div><div class="debug-rule-summary">${esc(rule.summary)}</div><div class="debug-rule-gate">GATE ${rule.gatePassed ? 'OPEN' : 'CLOSED'} · ${esc(rule.gateDescription)}</div><div class="debug-rule-evidence">${requirements}</div><div class="debug-rule-effects">${effects}</div></article>`;
+  }).join('') || '<div class="debug-empty">NO RULES EVALUATED</div>';
+}
 
 function renderDebugStats(data) {
   latestSnapshot = data;
@@ -78,6 +97,7 @@ async function refreshDebugStats() {
     }
     $('#debugButton').hidden = false;
     renderDebugStats(data);
+    renderDecisionDiagnostics(state.deductionDiagnostics);
     return true;
   } catch {
     $('#debugButton').hidden = true;
@@ -100,6 +120,33 @@ function initDebugPanel() {
     button.setAttribute('aria-expanded', 'false');
   };
   $('#debugCopy').onclick = (event) => copyDebugData(event.currentTarget);
+  const handle = panel.querySelector('[data-debug-drag-handle]');
+  let drag = null;
+  handle.addEventListener('pointerdown', (event) => {
+    if (event.target.closest('button')) return;
+    const rect = panel.getBoundingClientRect();
+    drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: rect.left, top: rect.top };
+    panel.style.left = `${rect.left}px`;
+    panel.style.top = `${rect.top}px`;
+    panel.style.right = 'auto';
+    handle.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  });
+  handle.addEventListener('pointermove', (event) => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    const rect = panel.getBoundingClientRect();
+    const left = Math.max(0, Math.min(window.innerWidth - Math.min(rect.width, 100), drag.left + event.clientX - drag.x));
+    const top = Math.max(0, Math.min(window.innerHeight - Math.min(rect.height, 40), drag.top + event.clientY - drag.y));
+    panel.style.left = `${left}px`;
+    panel.style.top = `${top}px`;
+  });
+  const stopDragging = (event) => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    drag = null;
+    if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
+  };
+  handle.addEventListener('pointerup', stopDragging);
+  handle.addEventListener('pointercancel', stopDragging);
 }
 
 export { initDebugPanel };

@@ -19,7 +19,10 @@ function saveSettings() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.alertSettings));
 }
 
-function addNotification(title, detail, link = '') {
+function addNotification(title, detail, link = '', relatedHeadline = '') {
+  const relatedKey = fingerprintOf(title === 'NEW HEADLINE' ? detail : relatedHeadline, '');
+  if (title === 'NEW HEADLINE' && relatedKey && state.notifications.some((item) =>
+    item.title !== 'NEW HEADLINE' && fingerprintOf(item.detail, '').includes(relatedKey))) return;
   // Same title+detail arriving through several feed pipelines is one alert.
   const fingerprint = fingerprintOf(title, detail);
   if (state.alertBaselines.seenAlerts.includes(fingerprint)) return;
@@ -27,6 +30,12 @@ function addNotification(title, detail, link = '') {
   state.alertBaselines.seenAlerts = state.alertBaselines.seenAlerts.slice(-300);
   const safeLink = safeExternalUrl(link);
   const item = { id: `${Date.now()}-${Math.random()}`, title, detail, link: safeLink, at: Date.now() };
+  if (relatedKey && title !== 'NEW HEADLINE') {
+    const generic = state.notifications.find((existing) => existing.title === 'NEW HEADLINE'
+      && fingerprintOf(existing.detail, '') === relatedKey);
+    if (generic && !item.link) item.link = generic.link;
+    state.notifications = state.notifications.filter((existing) => existing !== generic);
+  }
   // Drop an identical copy already sitting in the activity list (e.g. cleared
   // baselines re-observing the same event within one refresh cycle).
   state.notifications = state.notifications.filter((x) => fingerprintOf(x.title, x.detail) !== fingerprint);
@@ -191,6 +200,9 @@ function correlate(sourceName, item, targetName, targetItems, title) {
     if (state.alertBaselines.seenAlerts.includes(signalKey) || matchingSignals.length) {
       state.alertBaselines.seenAlerts.push(signalKey);
       state.alertBaselines.seenAlerts = state.alertBaselines.seenAlerts.slice(-300);
+      const headlineKey = fingerprintOf(headline, '');
+      state.notifications = state.notifications.filter((notification) =>
+        notification.title !== 'NEW HEADLINE' || fingerprintOf(notification.detail, '') !== headlineKey);
       // Clean up duplicates created by earlier feed refreshes while retaining
       // the first signal and its source label.
       state.notifications = state.notifications.filter((notification) =>
@@ -201,7 +213,8 @@ function correlate(sourceName, item, targetName, targetItems, title) {
     state.alertBaselines.seenAlerts.push(signalKey);
     state.alertBaselines.seenAlerts = state.alertBaselines.seenAlerts.slice(-300);
   }
-  addNotification(title, detail || 'Related signals detected');
+  const link = sourceName === 'news' ? item.url : targetName === 'news' ? match.url : '';
+  addNotification(title, detail || 'Related signals detected', link, headline);
 }
 
 function observeDerivedSignals(source, items) {

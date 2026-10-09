@@ -47,7 +47,11 @@ async function copyDebugData(button) {
       field.select();
       const copied = document.execCommand('copy');
       field.remove();
-      if (!copied) throw new Error('Clipboard unavailable');
+      if (!copied) {
+        button.textContent = 'COPY FAILED';
+        setTimeout(() => { button.textContent = 'COPY JSON'; }, 1600);
+        return;
+      }
     }
     button.textContent = 'COPIED JSON';
     button.disabled = true;

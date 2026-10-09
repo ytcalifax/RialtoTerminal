@@ -24,7 +24,7 @@ Install the runtime dependency, then run from the project directory:
 pip install .
 cp .env.example .env
 # Edit .env with provider credentials you want enabled.
-python3 server.py
+python3 run.py
 ```
 
 Then open [http://localhost:8765](http://localhost:8765).

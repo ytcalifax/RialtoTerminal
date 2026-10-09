@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import csv
-from concurrent.futures import ThreadPoolExecutor
 import io
 import json
 import os
 import re
 import time
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from urllib.parse import urlencode, urlsplit
 

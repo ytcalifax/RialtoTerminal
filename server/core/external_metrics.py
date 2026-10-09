@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from collections import deque
 import logging
-from threading import Lock
 import sys
+from collections import deque
+from threading import Lock
 from time import perf_counter, time
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
@@ -50,7 +50,8 @@ def _debugger_attached() -> bool:
     if sys.gettrace() is not None:
         return True
     try:
-        return bool(debugpy and debugpy.is_client_connected())
+        is_client_connected = getattr(debugpy, "is_client_connected", None)
+        return bool(callable(is_client_connected) and is_client_connected())
     except Exception:
         return False
 

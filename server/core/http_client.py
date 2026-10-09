@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
-import threading
-import time
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from http.client import HTTPMessage

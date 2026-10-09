@@ -131,6 +131,47 @@
   text-align: center;
 }
 
+.war-map .traffic-hotspot.wm-chokepoint {
+  gap: 6px;
+  padding: 4px 8px 4px 5px;
+  border-color: #71838a;
+  border-radius: 4px;
+  background: #101719f5;
+  color: #dce6e8;
+  box-shadow: 0 2px 7px #000b;
+}
+
+.war-map .traffic-hotspot.wm-chokepoint b {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 18px;
+  border-radius: 3px;
+  background: #35434a;
+  color: #fff;
+  font-size: 8px;
+}
+
+.war-map .traffic-hotspot.wm-chokepoint span {
+  font-size: 8px;
+  letter-spacing: .04em;
+}
+
+.war-map .traffic-hotspot.wm-chokepoint.wm-red { border-color: #ef6570; }
+.war-map .traffic-hotspot.wm-chokepoint.wm-red b { background: #9c303c; }
+.war-map .traffic-hotspot.wm-chokepoint.wm-yellow { border-color: #e6b84f; }
+.war-map .traffic-hotspot.wm-chokepoint.wm-yellow b { background: #89671d; }
+.war-map .traffic-hotspot.wm-chokepoint.wm-green { border-color: #54bd8c; }
+.war-map .traffic-hotspot.wm-chokepoint.wm-green b { background: #28694c; }
+.war-map .traffic-hotspot.wm-chokepoint.wm-unknown b { background: #46545a; }
+
+.war-map .traffic-hotspot.wm-chokepoint:hover,
+.war-map .traffic-hotspot.wm-chokepoint:focus-visible {
+  border-color: #fff;
+  color: #fff;
+  box-shadow: 0 0 0 2px #fff4, 0 3px 10px #000c;
+}
+
 .traffic-hotspot span {
   font-size: 7px;
   letter-spacing: .02em;
@@ -142,6 +183,20 @@
   border-color: #fff;
   color: #fff;
   outline: 1px solid #fff;
+}
+
+.congestion-layer-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.congestion-layer-toggle input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: #e2b951;
 }
 
 .map-overlay {

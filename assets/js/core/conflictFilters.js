@@ -4,10 +4,12 @@ const CONFLICT_TYPE_OPTIONS = [
   { id: 'MASS VIOLENCE', label: 'MASS VIOLENCE', defaultOn: true },
   { id: 'ARMED CONFLICT', label: 'ARMED CONFLICT', defaultOn: true },
   { id: 'INTERNET DISRUPTION', label: 'INTERNET DISRUPTION', defaultOn: true },
+  { id: 'CHOKEPOINT STATUS', label: 'CHOKEPOINT STATUS', defaultOn: true },
 ];
 
-const COOKIE = 'rialto_conflict_types_v2';
-const LEGACY_COOKIE = 'rialto_conflict_types_v1';
+const COOKIE = 'rialto_conflict_types_v3';
+const LEGACY_COOKIE = 'rialto_conflict_types_v2';
+const OLDER_COOKIE = 'rialto_conflict_types_v1';
 const DATE_RANGE_COOKIE = 'rialto_conflict_dates_v2';
 const DEFAULT_TYPES = CONFLICT_TYPE_OPTIONS.filter((item) => item.defaultOn).map((item) => item.id);
 
@@ -43,19 +45,21 @@ function loadConflictTypes() {
     const cookies = document.cookie.split('; ');
     const entry = cookies.find((value) => value.startsWith(`${COOKIE}=`));
     const legacy = !entry && cookies.find((value) => value.startsWith(`${LEGACY_COOKIE}=`));
-    if (!entry && !legacy) return [...DEFAULT_TYPES];
-    const selectedCookie = entry || legacy;
-    const cookieName = entry ? COOKIE : LEGACY_COOKIE;
+    const older = !entry && !legacy && cookies.find((value) => value.startsWith(`${OLDER_COOKIE}=`));
+    if (!entry && !legacy && !older) return [...DEFAULT_TYPES];
+    const selectedCookie = entry || legacy || older;
+    const cookieName = entry ? COOKIE : legacy ? LEGACY_COOKIE : OLDER_COOKIE;
     const saved = JSON.parse(decodeURIComponent(selectedCookie.slice(cookieName.length + 1)));
     if (!Array.isArray(saved)) return [...DEFAULT_TYPES];
     if (!saved.length) return [];
     const allowed = new Set(CONFLICT_TYPE_OPTIONS.map((item) => item.id));
     const selected = [...new Set(saved.filter((value) => allowed.has(value)))];
-    if (legacy) {
+    if (older) {
       for (const type of ['ARMED CONFLICT', 'INTERNET DISRUPTION']) {
         if (!selected.includes(type)) selected.push(type);
       }
     }
+    if ((legacy || older) && !selected.includes('CHOKEPOINT STATUS')) selected.push('CHOKEPOINT STATUS');
     return selected.length ? selected : [...DEFAULT_TYPES];
   } catch {
     return [...DEFAULT_TYPES];

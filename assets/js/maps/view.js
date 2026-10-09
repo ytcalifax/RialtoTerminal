@@ -95,7 +95,11 @@ function renderMapView(map) {
     const count = (map._hotspotSource || []).filter((vessel) => distanceNm(point, vessel) <= 25).length;
     const currentPoint = { ...point, count, x: px, y: py };
     const index = visibleChokepoints.push(currentPoint) - 1;
-    return `<button class="traffic-hotspot" title="${esc(point.name)} · ${count} AIS vessels within 25 nautical miles" aria-label="${esc(point.name)}: ${count} AIS vessels within 25 nautical miles" data-index="${index}"><b>${count}</b><span>${esc(point.name)}</span></button>`;
+    const observed = point.observed?.length ? point.observed.join(' · ') : 'NO DIRECT AIS/WARNING SIGNAL';
+    const wmStatus = String(point.status || 'unknown').toLowerCase().replace(/[^a-z0-9_-]/g, '');
+    const wmInitial = ({ red: 'R', yellow: 'Y', green: 'G', orange: 'O' })[wmStatus] || '?';
+    const wmLabel = String(point.status || 'UNKNOWN').toUpperCase();
+    return `<button class="traffic-hotspot ${point.category === 'chokepoints' ? `wm-chokepoint wm-${wmStatus}` : ''}" title="${esc(point.name)} · ${point.category === 'chokepoints' ? `WORLD MONITOR ${wmLabel} STATUS · ${esc(observed)}` : `${count} AIS vessels within 25 nautical miles`}" aria-label="${esc(point.name)}: ${point.category === 'chokepoints' ? `World Monitor ${wmLabel} status; ${esc(observed)}` : `${count} AIS vessels within 25 nautical miles`}" data-index="${index}"><b>${point.category === 'chokepoints' ? wmInitial : count}</b><span>${esc(point.category === 'chokepoints' ? `${wmLabel} · ${point.name}` : point.name)}</span></button>`;
   }).join('');
   layer.insertAdjacentHTML('beforeend', chokepointMarkers);
   map._visibleChokepoints = visibleChokepoints;

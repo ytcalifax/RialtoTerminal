@@ -7,7 +7,6 @@ import re
 import threading
 import time
 import zipfile
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from urllib.parse import urlencode, urlsplit
 from urllib.error import HTTPError
@@ -124,25 +123,41 @@ def market_sentiment_snapshot() -> dict:
 
 
 def _worldmonitor_layers() -> dict:
-    def read(name: str, path: str, key: str, params: dict[str, str] | None = None) -> tuple[str, list, bool]:
-        try:
-            payload = _worldmonitor_json(path, params)
-            items = payload.get(key)
-            if not isinstance(items, list):
-                raise ValueError("unexpected response shape")
-            return name, items, True
-        except Exception:
-            return name, [], False
-
-    with ThreadPoolExecutor(max_workers=3, thread_name_prefix="worldmonitor") as pool:
-        jobs = {
-            "ucdp": pool.submit(read, "ucdp", "/api/conflict/v1/list-ucdp-events", "events"),
-            "acled": pool.submit(read, "acled", "/api/conflict/v1/list-acled-events", "events"),
-            "outages": pool.submit(read, "outages", "/api/infrastructure/v1/list-internet-outages", "outages"),
+    operations = [
+        ("ucdp", "/api/conflict/v1/list-ucdp-events", "events"),
+        ("acled", "/api/conflict/v1/list-acled-events", "events"),
+        ("outages", "/api/infrastructure/v1/list-internet-outages", "outages"),
+        ("chokepoints", "/api/supply-chain/v1/get-chokepoint-status", "chokepoints"),
+    ]
+    request = json.dumps({
+        "operations": [{"id": name, "path": path} for name, path, _ in operations],
+    }).encode()
+    try:
+        batch = json.loads(_worldmonitor_request("/api/batch/v1/execute", request))
+        results = {
+            item.get("id"): item
+            for item in batch.get("results", [])
+            if isinstance(item, dict)
         }
-        results = {name: future.result() for name, future in jobs.items()}
-        layers = {name: result[1] for name, result in results.items()}
-        layers["source_status"] = {name: "OK" if result[2] else "UNAVAILABLE" for name, result in results.items()}
+    except Exception:
+        results = {}
+
+    layers: dict = {}
+    statuses = {}
+    for name, _, key in operations:
+        result = results.get(name) or {}
+        body = result.get("body")
+        valid = result.get("status") == 200 and isinstance(body, dict)
+        value = body.get(key) if valid else None
+        if name == "chokepoints":
+            valid = valid and isinstance(value, list) and not body.get("upstreamUnavailable", False)
+            layers["chokepoints"] = value if valid else []
+            layers["chokepoints_fetched_at"] = body.get("fetchedAt") if valid else None
+        else:
+            valid = valid and isinstance(value, list)
+            layers[name] = value if valid else []
+        statuses[name] = "OK" if valid else "UNAVAILABLE"
+    layers["source_status"] = statuses
     layers["armed"] = [
         {**event, "source": "UCDP"}
         for event in layers["ucdp"]
@@ -295,6 +310,25 @@ def _gpsjam_coverage() -> dict:
 def war_snapshot() -> tuple[int, dict]:
     cached = _war_cache.get("global")
     if cached is not None:
+        gpsjam = cached.get("gpsjam") or {}
+        if gpsjam.get("features"):
+            return 200, cached
+        # A transient GPSJam failure should not pin an empty layer in the
+        # broader 15-minute conflict snapshot cache. Retry just that feed on
+        # subsequent requests and repair the cached payload once it recovers.
+        try:
+            recovered_gpsjam = _gpsjam_coverage()
+        except Exception:
+            recovered_gpsjam = None
+        if recovered_gpsjam and recovered_gpsjam.get("features"):
+            payload = {
+                **cached,
+                "gpsjam": recovered_gpsjam,
+                "partial": not cached.get("reports") or not cached.get("frontline")
+                or any(status != "OK" for status in (cached.get("worldmonitor") or {}).get("source_status", {}).values()),
+            }
+            _war_cache.store("global", payload)
+            return 200, payload
         return 200, cached
     stale = _war_cache.get_entry("global")
 

@@ -506,6 +506,35 @@
   font-size: 11px;
 }
 
+.war-map .map-point-popup.wm-chokepoint-popup {
+  border-color: #7b8f96;
+  background: #101719f5;
+}
+
+.war-map .map-point-popup.wm-chokepoint-popup > b {
+  color: #f2c65d;
+  font-size: 13px;
+  letter-spacing: .01em;
+}
+
+.map-point-popup .wm-status-label {
+  display: inline-block;
+  margin-top: 9px;
+  padding: 3px 6px;
+  border: 1px solid #68767b;
+  border-radius: 3px;
+  color: #e4ebed;
+  font-size: 8px;
+  letter-spacing: .06em;
+}
+
+.map-point-popup .wm-status-red { border-color: #e05b66; background: #512329; color: #ffb1b6; }
+.map-point-popup .wm-status-yellow { border-color: #d2a33b; background: #463819; color: #ffe09a; }
+.map-point-popup .wm-status-green { border-color: #42966b; background: #193c2d; color: #9de1ba; }
+.map-point-popup .wm-status-unknown { border-color: #68767b; background: #293338; color: #d0dadd; }
+.map-point-popup.wm-chokepoint-popup p small { color: #78c9c4; font-size: 8px; letter-spacing: .06em; }
+.map-point-popup.wm-chokepoint-popup .wm-popup-note { color: #89979c; font-size: 8px; }
+
 .map-point-popup span,
 .map-point-popup p {
   color: #aab5ba;

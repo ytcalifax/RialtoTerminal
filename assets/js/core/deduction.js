@@ -22,7 +22,7 @@ const CHOKEPOINTS = [
   { id: 'redsea', name: 'Red Sea / Bab el-Mandeb', keywords: ['red sea', 'bab el-mandeb', 'bab al-mandeb', 'mandeb'], minLat: 11, maxLat: 21, minLon: 32, maxLon: 44 },
   { id: 'suez', name: 'Suez Canal', keywords: ['suez'], minLat: 29.5, maxLat: 31.5, minLon: 32, maxLon: 33 },
   { id: 'bosphorus', name: 'Bosphorus / Black Sea', keywords: ['bosphorus', 'bosporus'], minLat: 40.8, maxLat: 41.5, minLon: 28.5, maxLon: 30 },
-  { id: 'blacksea', name: 'Black Sea grain corridor', keywords: ['black sea'], minLat: 41, maxLat: 47, minLon: 28, maxLon: 41 },
+  { id: 'blacksea', name: 'Black Sea grain corridor', keywords: ['black sea', 'bosphorus', 'bosporus'], minLat: 41, maxLat: 47, minLon: 28, maxLon: 41 },
   { id: 'taiwan', name: 'Taiwan Strait', keywords: ['taiwan strait'], minLat: 22.5, maxLat: 26.5, minLon: 118, maxLon: 122 },
   { id: 'malacca', name: 'Strait of Malacca', keywords: ['malacca'], minLat: 1, maxLat: 7, minLon: 97, maxLon: 105 },
 ];
@@ -128,8 +128,11 @@ function rowText(item) {
   return values.join(' ').toLowerCase();
 }
 function matchesSelectedTopics(item) {
+  return matchesTopicText(rowText(item));
+}
+function matchesTopicText(text) {
   const terms = String(state.alertSettings.keywords || '').split(',').map((term) => term.trim().toLocaleLowerCase()).filter(Boolean);
-  return !terms.length || terms.some((term) => rowText(item).includes(term));
+  return !terms.length || terms.some((term) => String(text).toLocaleLowerCase().includes(term));
 }
 
 function pointIn(box, lat, lon) {
@@ -213,10 +216,56 @@ function chokepointSignals(rows) {
   const threatVerbs = /\b(closed|closure|blocked|attack(?:s|ed)?|struck|mined|seized|disrupt(?:ed|ion)?|halted|suspended)\b/i;
   return CHOKEPOINTS.map((choke) => {
     const signals = [];
+    const observations = [];
+    const flowSignals = [];
+    const evidenceFamilies = new Set();
+    const context = [];
     const keyword = new RegExp(choke.keywords.join('|'), 'i');
     [...newsTexts, ...reportTexts].forEach((text) => {
-      if (keyword.test(text) && threatVerbs.test(text)) signals.push('threatening coverage');
+      if (keyword.test(text) && threatVerbs.test(text)) {
+        signals.push('reported route disruption');
+        evidenceFamilies.add('reporting');
+      }
     });
+    const wm = state.warWorldMonitor || {};
+    const sourceAt = Date.parse(String(wm.chokepoints_fetched_at || ''));
+    const sourceFresh = Number.isFinite(sourceAt) && sourceAt <= Date.now() + 5 * 60 * 1000
+      && Date.now() - sourceAt <= 30 * 60 * 1000
+      && wm.source_status?.chokepoints === 'OK';
+    const wmPoint = sourceFresh ? (wm.chokepoints || []).find((point) => {
+      const text = `${point.id || ''} ${point.name || ''}`.toLocaleLowerCase();
+      return choke.keywords.some((term) => text.includes(term));
+    }) : null;
+    const topicMatchedWmPoint = wmPoint && matchesTopicText(`${wmPoint.name || ''} ${(wmPoint.affectedRoutes || []).join(' ')} ${wmPoint.description || ''}`);
+    if (topicMatchedWmPoint) {
+      const ais = Number(wmPoint.aisDisruptions) || 0;
+      const warnings = Number(wmPoint.activeWarnings) || 0;
+      const congestion = String(wmPoint.congestionLevel || '').toLocaleLowerCase();
+      const observed = [];
+      if (ais > 0) observed.push(`${ais} AIS disruption${ais === 1 ? '' : 's'}`);
+      if (warnings > 0) observed.push(`${warnings} active navigation warning${warnings === 1 ? '' : 's'}`);
+      if (['high', 'severe', 'critical'].includes(congestion)) observed.push(`${congestion} congestion`);
+      if (observed.length) {
+        signals.push(`World Monitor observed ${observed.join(' · ')}`);
+        observations.push(...observed);
+        evidenceFamilies.add('maritime observations');
+      }
+      const flow = wmPoint.flowEstimate || {};
+      if (flow.disrupted === true || /^(red|orange|critical|severe)$/i.test(String(flow.hazardAlertLevel || ''))) {
+        const detail = [flow.disrupted === true ? 'flow estimate marked disrupted' : '', flow.hazardAlertLevel ? `${flow.hazardAlertLevel} hazard alert${flow.hazardAlertName ? ` ${flow.hazardAlertName}` : ''}` : ''].filter(Boolean).join(' · ');
+        flowSignals.push(detail);
+        signals.push(`World Monitor supply-flow estimate: ${detail}`);
+      }
+      const transit = wmPoint.transitSummary || {};
+      if (transit.dataAvailable === true) {
+        context.push(`World Monitor 7-day transit context: ${transit.incidentCount7d ?? 'incident count unavailable'} incidents · ${transit.disruptionPct ?? 'disruption unavailable'}% disruption · ${transit.riskLevel || 'risk level unavailable'}`);
+      }
+      // This score includes a static geopolitical threat baseline. Keep it
+      // visible for context, but never count it as an observed disruption.
+      if (Number.isFinite(Number(wmPoint.disruptionScore))) {
+        context.push(`World Monitor baseline-influenced status ${wmPoint.status || 'unknown'} · score ${Number(wmPoint.disruptionScore)}`);
+      }
+    }
     const jamDate = Date.parse(String(state.warGpsJam?.date || ''));
     const jamIsRecent = Number.isFinite(jamDate) && Date.now() - jamDate <= 2 * SIGNAL_MAX_AGE_MS;
     (jamIsRecent ? state.warGpsJam?.features || [] : []).some((feature) => {
@@ -230,12 +279,19 @@ function chokepointSignals(rows) {
       const lon = ring.reduce((sum, [lo]) => sum + Number(lo), 0) / ring.length;
       const percent = Number(feature.properties?.percent) || 0;
       if (percent >= 25 && pointIn(choke, lat, lon)) {
-        signals.push(`GPS interference ${percent.toFixed(0)}% of traffic`);
+        context.push(`GPSJam reports navigation interference affecting ${percent.toFixed(0)}% of aircraft reports nearby`);
         return true;
       }
       return false;
     });
-    return { ...choke, signals: [...new Set(signals)].slice(0, 3) };
+    return {
+      ...choke,
+      signals: [...new Set(signals)].slice(0, 4),
+      observations: [...new Set(observations)],
+      flowSignals: [...new Set(flowSignals)],
+      evidenceFamilies: [...evidenceFamilies],
+      context: [...new Set(context)].slice(0, 3),
+    };
   });
 }
 
@@ -257,6 +313,11 @@ function inputVisibility() {
     .filter((x) => ageMs(x) <= 7 * 86400000);
   const topicReports = topics.length ? rawReports.filter(matchesSelectedTopics) : rawReports;
   const rawOutages = (state.warWorldMonitor?.outages || []).filter((x) => ageMs(x) <= SIGNAL_MAX_AGE_MS);
+  const chokepoints = state.warWorldMonitor?.chokepoints || [];
+  const chokepointAt = Date.parse(String(state.warWorldMonitor?.chokepoints_fetched_at || ''));
+  const chokepointFresh = state.warWorldMonitor?.source_status?.chokepoints === 'OK'
+    && Number.isFinite(chokepointAt) && chokepointAt <= Date.now() + 5 * 60 * 1000
+    && Date.now() - chokepointAt <= 30 * 60 * 1000;
   const outbreakFeedFresh = !state.diseaseOutbreaksStale
     && Number.isFinite(state.diseaseOutbreaksUpdatedAt)
     && Date.now() - state.diseaseOutbreaksUpdatedAt <= SIGNAL_MAX_AGE_MS;
@@ -272,6 +333,14 @@ function inputVisibility() {
       uniqueTopicMatched: new Set(topicReports.map((x) => String(x.id || x.url || x.sourceUrl || `${x.date || x.dateStart || x.occurredAt || ''}-${x.name || x.title || x.location || ''}`))).size,
     },
     outages: { fresh: rawOutages.length, topicMatched: topicMatched(rawOutages) },
+    chokepointStatus: {
+      status: chokepointFresh ? 'CURRENT' : 'STALE / UNAVAILABLE',
+      observedRoutes: chokepointFresh ? chokepoints.filter((point) => matchesTopicText(`${point.name || ''} ${(point.affectedRoutes || []).join(' ')} ${point.description || ''}`)
+        && (Number(point.aisDisruptions) > 0
+        || Number(point.activeWarnings) > 0
+        || ['high', 'severe', 'critical'].includes(String(point.congestionLevel || '').toLocaleLowerCase())
+        || point.flowEstimate?.disrupted === true)).length : 0,
+    },
     outbreaks: {
       fresh: rawOutbreaks.length,
       topicMatched: topicMatched(rawOutbreaks),
@@ -288,9 +357,11 @@ function theaterGateChecks(context) {
   const headlinesPass = context.news.hits >= 4 && context.news.rising;
   const chokepointPass = context.choke.signals.length > 0;
   const outagePass = context.outages.length > 0;
+  const routeContext = context.choke.context.length
+    ? ` · Context only (not scored): ${context.choke.context.join(' · ')}` : '';
   return [
     { passed: conflictPass || headlinesPass, detail: `Conflict ≥2 (${context.conflict.count}) OR rising headlines ≥4 (${context.news.hits}${context.news.rising ? ', rising' : ', not rising'})` },
-    { passed: chokepointPass || outagePass, detail: `Chokepoint signals ≥1 (${context.choke.signals.length}) OR producer outages ≥1 (${context.outages.length})` },
+    { passed: chokepointPass || outagePass, detail: `Route observations ${context.choke.evidenceFamilies.length} source families (${context.choke.signals.length} records) OR producer outages ≥1 (${context.outages.length})${routeContext}` },
   ];
 }
 
@@ -302,7 +373,9 @@ function theaterRequires(theater, choke) {
   return [
     { label: 'Conflict reports', weight: 2, test: (c) => c.conflict.count >= 2 && c.conflict.detail },
     { label: 'Headline acceleration', weight: 1, test: (c) => (c.news.hits >= 4 && c.news.rising) && c.news.detail },
-    { label: 'Chokepoint disruption signals', weight: 2, test: () => choke.signals.length >= 2 ? choke.signals.join(' · ') : null },
+    { label: 'Direct maritime observations', weight: 2, test: () => choke.observations.length >= 2 ? choke.observations.join(' · ') : null },
+    { label: 'World Monitor supply-flow disruption', weight: 1, test: () => choke.flowSignals[0] || null },
+    { label: 'Independent reporting corroborates maritime observations', weight: 2, test: () => choke.evidenceFamilies.includes('reporting') && choke.evidenceFamilies.includes('maritime observations') ? choke.signals.join(' · ') : null },
     { label: 'Producer-region outage', weight: 1, test: (c) => c.outages[0] },
     { label: 'At least two core market quotes moving in the expected direction', weight: 3, test: () => {
       const matches = coreEffects.map((effect) => moveInDirection(effect.symbol, effect.dir)).filter(Boolean);
@@ -391,7 +464,7 @@ function evaluateDeductions(notify = null) {
       id: `theater-${theater.choke}`,
       title: theater.rule.title,
       summary: theater.rule.summary,
-      gateDescription: 'At least 2 conflict reports or 4+ rising theater headlines; and a chokepoint signal or producer-region outage.',
+      gateDescription: 'At least 2 conflict reports or 4+ rising theater headlines; and route evidence or a producer-region outage.',
       gateChecks: theaterGateChecks,
       effects: theater.rule.effects,
       minScore: theater.rule.minScore,

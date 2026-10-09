@@ -77,6 +77,20 @@ function worldMonitorRows() {
     const cause = displayCode(item.cause || item.outageType || 'CAUSE UNKNOWN');
     return { id: `wm-outage-${item.id || i}`, name: item.title || `${item.country || 'INTERNET'} CONNECTIVITY DISRUPTION`, ...point, domain: 'CLOUDFLARE RADAR · WORLD MONITOR', date: day(item.detectedAt), names: [item.country, item.region].filter(Boolean).join(' · '), themes: `${severity} · ${cause}`, url: typeof item.link === 'string' && item.link.startsWith('https://') ? item.link : '' };
   });
+  const chokepointAt = Date.parse(String(wm.chokepoints_fetched_at || ''));
+  const chokepointsFresh = wm.source_status?.chokepoints === 'OK' && Number.isFinite(chokepointAt)
+    && chokepointAt <= Date.now() + 5 * 60 * 1000 && Date.now() - chokepointAt <= 30 * 60 * 1000;
+  if (chokepointsFresh) add('CHOKEPOINT STATUS', 'chokepoints', wm.chokepoints || [], (item, i) => {
+    const ais = Number(item.aisDisruptions) || 0;
+    const warnings = Number(item.activeWarnings) || 0;
+    const congestion = String(item.congestionLevel || 'unknown').toUpperCase();
+    const observed = [ais ? `${ais} AIS DISRUPTIONS` : '', warnings ? `${warnings} ACTIVE WARNINGS` : '', `${congestion} CONGESTION`].filter(Boolean);
+    const score = Number(item.disruptionScore);
+    const baseline = Number.isFinite(score) ? `BASELINE-INFLUENCED SCORE ${score} · ${displayCode(item.status || 'UNKNOWN')}` : '';
+    const transit = item.transitSummary || {};
+    const detail = [item.affectedRoutes?.length ? `AFFECTED ROUTES: ${item.affectedRoutes.join(', ')}` : '', transit.dataAvailable ? `7D INCIDENTS ${transit.incidentCount7d ?? 'UNREPORTED'} · DISRUPTION ${transit.disruptionPct ?? 'UNREPORTED'}%` : 'TRANSIT SUMMARY UNAVAILABLE'].filter(Boolean).join(' · ');
+    return { id: `wm-chokepoint-${item.id || i}`, category: 'chokepoints', name: item.name || 'MARITIME CHOKEPOINT', lat: Number(item.lat), lon: Number(item.lon), domain: 'WORLD MONITOR · CHOKEPOINT STATUS', date: new Date(chokepointAt).toISOString(), names: observed.join(' · ') || 'NO DIRECT AIS OR WARNING SIGNAL REPORTED', themes: baseline, detail, observed, baseline, status: item.status, congestionLevel: item.congestionLevel, fetchedAt: wm.chokepoints_fetched_at };
+  });
   return rows;
 }
 
@@ -94,8 +108,8 @@ function filterReports(reports) {
   const query = state.conflictQuery.trim().toLocaleLowerCase();
   const selectedTypes = new Set(state.conflictTypes);
   return reports.filter((report) => {
-    const haystack = `${report.name} ${report.domain} ${report.date} ${report.names} ${report.themes}`.toLocaleLowerCase();
-    return selectedTypes.has(report.type) && inConflictDateRange(report.date) && (!query || haystack.includes(query));
+    const haystack = `${report.name} ${report.domain} ${report.date} ${report.names} ${report.themes} ${report.detail || ''}`.toLocaleLowerCase();
+    return selectedTypes.has(report.type) && (report.category === 'chokepoints' || inConflictDateRange(report.date)) && (!query || haystack.includes(query));
   });
 }
 
@@ -113,7 +127,7 @@ function reportRowsHTML(reports) {
     const detail = [item.names, detailThemes, item.category === 'reports' ? (item.geores >= 3 ? 'LOCALITY' : 'AREA MENTION') : ''].filter(Boolean).join(' · ');
     const mentionLink = url && !hasMapPoint(item);
     const title = `<div class="intel-row-title"><b>${esc(item.name)}</b>${mentionLink ? '<span class="external-indicator" aria-label="Mention only — open source link" title="Mention only · open source link">↗</span>' : ''}</div>`;
-    return `<${url ? 'a' : 'div'} class="intel-row ${state.warSelectedId === item.id ? 'selected' : ''}" data-intel-id="${esc(item.id)}"${url ? ` href="${esc(url)}" target="_blank" rel="noopener"` : ''}>${title}<span>${esc(metadata)}</span><small>${esc(detail || 'CONFLICT COVERAGE')}</small></${url ? 'a' : 'div'}>`;
+    return `<${url ? 'a' : 'div'} class="intel-row ${item.category === 'chokepoints' ? 'chokepoint-row' : ''} ${state.warSelectedId === item.id ? 'selected' : ''}" data-intel-id="${esc(item.id)}"${url ? ` href="${esc(url)}" target="_blank" rel="noopener"` : ''}>${title}<span>${esc(metadata)}</span><small>${esc(item.category === 'chokepoints' ? `${item.names} · ${item.themes}` : detail || 'CONFLICT COVERAGE')}</small></${url ? 'a' : 'div'}>`;
   }).join('');
 }
 
@@ -126,10 +140,14 @@ function renderWarPage(root) {
   root.innerHTML = `<div class="module-title"><span>CONFLICT MONITOR<small>CON &lt;GO&gt; · CONFLICT · INTERNET DISRUPTIONS</small></span><span class="module-title-actions"><span class="source-badge">GDELT · UN OCHA · GPSJAM · WORLD MONITOR</span><button data-copy-data>COPY DATA</button></span></div><div class="module-controls"><button class="primary" id="intelRefresh">REFRESH LAYERS</button><details class="event-type-filter map-layer-filter"><summary>≡ MAP LAYERS</summary><div class="event-type-options">${[['frontline', 'FRONT LINE', state.warShowFrontline], ['gpsjam', 'GPS HEXES', state.warShowGpsJam]].map(([id, label, enabled]) => `<label><input type="checkbox" data-map-layer="${id}" ${enabled ? 'checked' : ''}><span>${label}</span></label>`).join('')}</div></details><label class="source-badge" for="conflictDateFrom">FROM</label><input type="date" id="conflictDateFrom" value="${esc(state.conflictDateRange.from)}" aria-label="Show conflict events from date"><label class="source-badge" for="conflictDateTo">TO</label><input type="date" id="conflictDateTo" value="${esc(state.conflictDateRange.to)}" aria-label="Show conflict events through date"><input id="conflictQuery" value="${esc(state.conflictQuery)}" placeholder="Filter location, actor, source…" aria-label="Filter conflict reports"><details class="event-type-filter"><summary id="eventTypeSummary">EVENT TYPES · ${activeTypeCount}/${CONFLICT_TYPE_OPTIONS.length}</summary><div class="event-type-options">${CONFLICT_TYPE_OPTIONS.map((option) => `<label><input type="checkbox" data-event-type="${esc(option.id)}" ${state.conflictTypes.includes(option.id) ? 'checked' : ''}><span>${esc(option.label)}</span></label>`).join('')}</div></details><span class="source-badge" id="conflictCount">${filtered.length}/${data.length} ITEMS · ${state.warGpsJam?.features?.length || 0} GPS HEXES${state.errors.war ? ` · ${esc(state.errors.war)}` : ''}</span></div><div class="module-body intel-body"><div class="module-list intel-list">${reportRowsHTML(filtered) || `<div class="empty-state">${data.length ? 'NO REPORTS MATCH THESE FILTERS' : esc(state.errors.war || 'WAITING FOR PUBLIC DATA')}</div>`}</div>${mapShell('war')}</div><div class="detail-row">GPSJAM HEXES: GREEN &lt;2% · YELLOW 2–10% · RED &gt;10%. GPS ANOMALIES ARE NOT VERIFIED JAMMER LOCATIONS. UCDP / ACLED: ARMED EVENTS · INTERNET DISRUPTIONS: CLOUDFLARE RADAR.</div>`;
 
   const map = $('.module-map');
-  map._tracks = filtered.filter(hasMapPoint).map((item) => ({ ...item, id: item.id || item.name }));
+  map._tracks = filtered.filter((item) => item.category !== 'chokepoints' && hasMapPoint(item)).map((item) => ({ ...item, id: item.id || item.name }));
   map._air = false;
   map._noSelect = true;
-  map._mapLabel = `FRONT LINE ${frontlineDate} · GPSJAM ${gpsDate} · CLICK A HEX OR DOT`;
+  map._chokepoints = filtered.filter((item) => item.category === 'chokepoints' && hasMapPoint(item));
+  const wmChokepointAt = Date.parse(String(state.warWorldMonitor?.chokepoints_fetched_at || ''));
+  const wmChokepointsCurrent = state.warWorldMonitor?.source_status?.chokepoints === 'OK'
+    && Number.isFinite(wmChokepointAt) && Date.now() - wmChokepointAt <= 30 * 60 * 1000;
+  map._mapLabel = `FRONT LINE ${frontlineDate} · GPSJAM ${gpsDate} · WORLD MONITOR CHOKEPOINTS ${wmChokepointsCurrent ? 'CURRENT' : 'STALE / UNAVAILABLE'}`;
   map._routeSegments = state.warShowFrontline ? linesFromGeoJSON(state.warFrontline.filter((feature) => inConflictDateRange(feature.properties?.date))) : [];
   map._coverageCells = state.warShowGpsJam ? (state.warGpsJam?.features || []).filter((feature) => inConflictDateRange(feature.properties?.date)) : [];
   map._selectedPointId = state.warSelectedId;
@@ -144,7 +162,15 @@ function renderWarPage(root) {
     $$('.intel-row[data-intel-id]').forEach((row) => row.classList.toggle('selected', row.dataset.intelId === item.id));
     $$('.intel-row.selected').find((row) => row.dataset.intelId === item.id)?.scrollIntoView({ block: 'nearest' });
     const url = safeExternalUrl(item.url);
-    popup.innerHTML = `<button class="map-point-popup-close" type="button" aria-label="Close event details">×</button><b>${esc(item.name)}</b><span>${esc([item.typeLabel, item.date, item.domain].filter(Boolean).join(' · '))}</span><p>${esc(item.themes || 'CONFLICT EVENT')}</p><p>${esc(item.names || 'ACTORS NOT CODED')}</p>${url ? `<a href="${esc(url)}" target="_blank" rel="noopener">OPEN ORIGINAL REPORT ↗</a>` : ''}`;
+    popup.classList.remove('wm-chokepoint-popup');
+    popup.innerHTML = `<button class="map-point-popup-close" type="button" aria-label="Close event details">×</button><b>${esc(item.name)}</b><span>${esc([item.typeLabel, item.date, item.domain].filter(Boolean).join(' · '))}</span><p>${esc(item.themes || 'CONFLICT EVENT')}</p><p>${esc(item.names || 'ACTORS NOT CODED')}</p>${item.detail ? `<p>${esc(item.detail)}</p><p>Observed AIS and warning counts are direct feed fields. The disruption score includes a threat baseline.</p>` : ''}${url ? `<a href="${esc(url)}" target="_blank" rel="noopener">OPEN ORIGINAL REPORT ↗</a>` : ''}`;
+    popup.hidden = false;
+    $('.map-point-popup-close', popup).onclick = () => { popup.hidden = true; };
+  };
+  map._onChokepointClick = (item) => {
+    popup.classList.add('wm-chokepoint-popup');
+    const status = String(item.status || 'UNKNOWN').toUpperCase();
+    popup.innerHTML = `<button class="map-point-popup-close" type="button" aria-label="Close chokepoint details">×</button><b>${esc(item.name)}</b><span>WORLD MONITOR STATUS · FETCHED ${esc(item.fetchedAt || 'UNKNOWN')}</span><strong class="wm-status-label wm-status-${esc(status.toLowerCase())}">${esc(status)} RISK STATUS</strong><p><small>OBSERVED CONDITIONS</small><br>${esc(item.observed?.join(' · ') || 'NO DIRECT AIS OR ACTIVE WARNING SIGNAL REPORTED')}</p><p><small>CONTEXT · NOT A LIVE INCIDENT COUNT</small><br>${esc(item.baseline || 'BASELINE-INFLUENCED SCORE UNAVAILABLE')}</p>${item.detail ? `<p>${esc(item.detail)}</p>` : ''}<p class="wm-popup-note">The score includes a threat baseline; AIS and warning counts are direct feed observations.</p>`;
     popup.hidden = false;
     $('.map-point-popup-close', popup).onclick = () => { popup.hidden = true; };
   };
@@ -177,7 +203,8 @@ function renderWarPage(root) {
     const summary = $('#eventTypeSummary');
     summary.textContent = `EVENT TYPES · ${state.conflictTypes.length}/${CONFLICT_TYPE_OPTIONS.length}`;
     $('#conflictCount').textContent = `${matches.length}/${data.length} ITEMS · ${state.warGpsJam?.features?.length || 0} GPS HEXES${state.errors.war ? ` · ${state.errors.war}` : ''}`;
-    map._tracks = matches.filter(hasMapPoint).map((item) => ({ ...item, id: item.id || item.name }));
+    map._tracks = matches.filter((item) => item.category !== 'chokepoints' && hasMapPoint(item)).map((item) => ({ ...item, id: item.id || item.name }));
+    map._chokepoints = matches.filter((item) => item.category === 'chokepoints' && hasMapPoint(item));
     map._routeSegments = state.warShowFrontline ? linesFromGeoJSON(state.warFrontline.filter((feature) => inConflictDateRange(feature.properties?.date))) : [];
     map._coverageCells = state.warShowGpsJam ? (state.warGpsJam?.features || []).filter((feature) => inConflictDateRange(feature.properties?.date)) : [];
     renderMapView(map);

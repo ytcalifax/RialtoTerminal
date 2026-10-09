@@ -33,7 +33,7 @@ const state = {
     aircraftMinAltitude: 0,
     marketMovePct: 2,
   },
-  alertBaselines: { news: null, conflict: null, worldMonitor: null, chokepoints: null, diseaseOutbreaks: null, markets: null, vessels: null, aircraft: null, deductions: [], seenAlerts: [] },
+  alertBaselines: { news: null, conflict: null, worldMonitor: null, diseaseOutbreaks: null, markets: null, vessels: null, aircraft: null, deductions: [], seenAlerts: [] },
   deductions: [],
   deductionDiagnostics: null,
   deductionQuotes: [],

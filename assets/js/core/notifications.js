@@ -247,7 +247,6 @@ function observeConflict(reports) {
 }
 
 function observeWorldMonitor(layers) {
-  observeChokepointConditions(layers);
   const events = [
     ...(layers.armed || []).map((item) => ({ ...item, alertKind: 'ARMED CONFLICT EVENT' })),
     ...(layers.outages || []).map((item) => ({ ...item, alertKind: 'INTERNET DISRUPTION' })),
@@ -257,6 +256,7 @@ function observeWorldMonitor(layers) {
   const current = events.map(idFor);
   if (!previous) {
     state.alertBaselines.worldMonitor = current;
+    evaluateDeductions(addNotification);
     return [];
   }
   const newEvents = events.filter((item) => !previous.includes(idFor(item)));
@@ -274,76 +274,8 @@ function observeWorldMonitor(layers) {
       });
   }
   state.alertBaselines.worldMonitor = current;
+  evaluateDeductions(addNotification);
   return newEvents;
-}
-
-function observeChokepointConditions(layers) {
-  const fetchedAt = Date.parse(String(layers.chokepoints_fetched_at || ''));
-  const fresh = layers.source_status?.chokepoints === 'OK' && Number.isFinite(fetchedAt)
-    && fetchedAt <= Date.now() + 5 * 60 * 1000 && Date.now() - fetchedAt <= 30 * 60 * 1000;
-  if (!fresh) return;
-  const previous = state.alertBaselines.chokepoints || {};
-  const next = {};
-  (layers.chokepoints || []).forEach((point) => {
-    const name = String(point.name || point.id || 'MARITIME CHOKEPOINT');
-    const congestion = String(point.congestionLevel || 'unknown').toLowerCase();
-    const elevatedCongestion = ['high', 'severe', 'critical'].includes(congestion);
-    const ais = Math.max(0, Number(point.aisDisruptions) || 0);
-    const warnings = Math.max(0, Number(point.activeWarnings) || 0);
-    const flow = point.flowEstimate || {};
-    const flowDisrupted = flow.disrupted === true
-      || /^(red|orange|critical|severe)$/i.test(String(flow.hazardAlertLevel || ''));
-    const active = elevatedCongestion || ais > 0 || warnings > 0 || flowDisrupted;
-    const key = String(point.id || name).toLowerCase();
-    const prior = previous[key];
-    next[key] = { active, congestion: elevatedCongestion ? congestion : '', ais, warnings, flowDisrupted };
-    if (!active && !prior?.active) return;
-
-    const topicText = `${name} ${(point.affectedRoutes || []).join(' ')} ${flow.hazardAlertName || ''}`;
-    if (!matchesTopics({ name, description: topicText })) return;
-    if (!active) {
-      addNotification('CHOKEPOINT CONDITIONS EASED', `${name} · World Monitor now reports ${congestion} congestion with no active AIS disruption, navigation warning, or disrupted-flow alert.`);
-      return;
-    }
-    const escalated = !prior?.active
-      || (elevatedCongestion && congestion !== prior.congestion)
-      || ais > prior.ais || warnings > prior.warnings || (flowDisrupted && !prior.flowDisrupted);
-    if (!escalated) return;
-
-    const details = [];
-    if (elevatedCongestion) details.push(`${congestion.toUpperCase()} CONGESTION`);
-    if (ais) details.push(`${ais} AIS DISRUPTION${ais === 1 ? '' : 'S'}`);
-    if (warnings) details.push(`${warnings} ACTIVE NAVIGATION WARNING${warnings === 1 ? '' : 'S'}`);
-    if (flowDisrupted) {
-      const estimate = Number(flow.flowRatio);
-      details.push(`SUPPLY-FLOW ESTIMATE ${flow.disrupted === true ? 'DISRUPTED' : String(flow.hazardAlertLevel || 'ALERT').toUpperCase()}${Number.isFinite(estimate) ? ` · ${Math.round(estimate * 100)}% OF BASELINE FLOW` : ''}`);
-    }
-    if (Number.isFinite(Number(point.disruptionScore)) && point.status) {
-      details.push(`BASELINE-INFLUENCED RISK CONTEXT: ${String(point.status).toUpperCase()} · SCORE ${Number(point.disruptionScore)}`);
-    }
-    const transit = point.transitSummary || {};
-    if (transit.dataAvailable === true) {
-      details.push(`7-DAY CONTEXT: ${transit.incidentCount7d ?? '—'} INCIDENTS · ${transit.disruptionPct ?? '—'}% DISRUPTION`);
-    }
-    const aisAt = Number(state.timestamps.vessels) || 0;
-    if (aisAt && Date.now() - aisAt <= 5 * 60 * 1000 && Number.isFinite(Number(point.lat)) && Number.isFinite(Number(point.lon))) {
-      const count = state.ships.filter((ship) => Number.isFinite(Number(ship.lat)) && Number.isFinite(Number(ship.lon))
-        && Number(ship.age ?? 0) <= 1800 && distanceNm(point, ship) <= 25).length;
-      details.push(`LOCAL AIS SNAPSHOT: ${count} VESSELS WITHIN 25 NM · COVERAGE-DEPENDENT`);
-    }
-    addNotification(elevatedCongestion ? 'ELEVATED MARITIME CONGESTION' : 'CHOKEPOINT DISRUPTION SIGNAL', `${name} · ${details.join(' · ')}`);
-  });
-  state.alertBaselines.chokepoints = next;
-}
-
-function distanceNm(a, b) {
-  const radians = Math.PI / 180;
-  const dLat = (Number(b.lat) - Number(a.lat)) * radians;
-  const dLon = (Number(b.lon) - Number(a.lon)) * radians;
-  const lat1 = Number(a.lat) * radians;
-  const lat2 = Number(b.lat) * radians;
-  const haversine = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
-  return 3440.065 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
 }
 
 function observeDiseaseOutbreaks(outbreaks) {

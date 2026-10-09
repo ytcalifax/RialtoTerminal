@@ -241,24 +241,38 @@ function chokepointSignals(rows) {
       const ais = Number(wmPoint.aisDisruptions) || 0;
       const warnings = Number(wmPoint.activeWarnings) || 0;
       const congestion = String(wmPoint.congestionLevel || '').toLocaleLowerCase();
-      const observed = [];
-      if (ais > 0) observed.push(`${ais} AIS disruption${ais === 1 ? '' : 's'}`);
-      if (warnings > 0) observed.push(`${warnings} active navigation warning${warnings === 1 ? '' : 's'}`);
-      if (['high', 'severe', 'critical'].includes(congestion)) observed.push(`${congestion} congestion`);
-      if (observed.length) {
-        signals.push(`World Monitor observed ${observed.join(' · ')}`);
-        observations.push(...observed);
-        evidenceFamilies.add('maritime observations');
-      }
+      const elevatedCongestion = ['high', 'severe', 'critical'].includes(congestion);
+      const direct = [];
+      if (ais > 0) direct.push(`${ais} AIS disruption${ais === 1 ? '' : 's'}`);
+      if (warnings > 0) direct.push(`${warnings} active navigation warning${warnings === 1 ? '' : 's'}`);
+      if (elevatedCongestion) direct.push(`${congestion} congestion`);
+      const transit = wmPoint.transitSummary || {};
+      const transitIncidents = Number(transit.incidentCount7d);
+      const transitDisruption = Number(transit.disruptionPct);
+      const transitAnomaly = transit.dataAvailable === true && transitIncidents >= 2 && transitDisruption >= 20;
       const flow = wmPoint.flowEstimate || {};
-      if (flow.disrupted === true || /^(red|orange|critical|severe)$/i.test(String(flow.hazardAlertLevel || ''))) {
-        const detail = [flow.disrupted === true ? 'flow estimate marked disrupted' : '', flow.hazardAlertLevel ? `${flow.hazardAlertLevel} hazard alert${flow.hazardAlertName ? ` ${flow.hazardAlertName}` : ''}` : ''].filter(Boolean).join(' · ');
+      const flowAnomaly = flow.disrupted === true || /^(red|orange|critical|severe)$/i.test(String(flow.hazardAlertLevel || ''));
+      if (flowAnomaly) {
+        const ratio = Number(flow.flowRatio);
+        const detail = [flow.disrupted === true ? 'flow estimate marked disrupted' : '', Number.isFinite(ratio) ? `flow at ${Math.round(ratio * 100)}% of baseline` : '', flow.hazardAlertLevel ? `${flow.hazardAlertLevel} hazard alert${flow.hazardAlertName ? ` ${flow.hazardAlertName}` : ''}` : ''].filter(Boolean).join(' · ');
         flowSignals.push(detail);
         signals.push(`World Monitor supply-flow estimate: ${detail}`);
       }
-      const transit = wmPoint.transitSummary || {};
       if (transit.dataAvailable === true) {
         context.push(`World Monitor 7-day transit context: ${transit.incidentCount7d ?? 'incident count unavailable'} incidents · ${transit.disruptionPct ?? 'disruption unavailable'}% disruption · ${transit.riskLevel || 'risk level unavailable'}`);
+      }
+      const repeatedDirectSignals = ais >= 3 || (ais > 0 && warnings >= 3);
+      const corroboratedDirectSignal = transitAnomaly && (ais > 0 || warnings > 0 || elevatedCongestion);
+      const observedDisruption = flowAnomaly || repeatedDirectSignals || corroboratedDirectSignal;
+      if (observedDisruption) {
+        const corroboration = transitAnomaly ? `7-day transit reports ${transitIncidents} incidents and ${transitDisruption}% disruption` : '';
+        const evidence = [...direct, corroboration].filter(Boolean);
+        const detail = evidence.join(' · ') || 'supply-flow disruption estimate';
+        signals.push(`World Monitor corroborated route disruption: ${detail}`);
+        observations.push(...evidence);
+        if (direct.length) evidenceFamilies.add('maritime observations');
+      } else if (direct.length) {
+        context.push(`World Monitor route readings not scored without corroboration: ${direct.join(' · ')}`);
       }
       // This score includes a static geopolitical threat baseline. Keep it
       // visible for context, but never count it as an observed disruption.
@@ -373,7 +387,7 @@ function theaterRequires(theater, choke) {
   return [
     { label: 'Conflict reports', weight: 2, test: (c) => c.conflict.count >= 2 && c.conflict.detail },
     { label: 'Headline acceleration', weight: 1, test: (c) => (c.news.hits >= 4 && c.news.rising) && c.news.detail },
-    { label: 'Direct maritime observations', weight: 2, test: () => choke.observations.length >= 2 ? choke.observations.join(' · ') : null },
+    { label: 'Corroborated maritime disruption', weight: 2, test: () => choke.observations.length ? choke.observations.join(' · ') : null },
     { label: 'World Monitor supply-flow disruption', weight: 1, test: () => choke.flowSignals[0] || null },
     { label: 'Independent reporting corroborates maritime observations', weight: 2, test: () => choke.evidenceFamilies.includes('reporting') && choke.evidenceFamilies.includes('maritime observations') ? choke.signals.join(' · ') : null },
     { label: 'Producer-region outage', weight: 1, test: (c) => c.outages[0] },

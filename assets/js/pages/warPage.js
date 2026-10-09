@@ -1,7 +1,7 @@
 /** Conflict-report map workspace. */
 import { $, $$, esc, safeExternalUrl } from '../core/dom.js';
 import { state } from '../core/state.js';
-import { CONFLICT_TYPE_OPTIONS, saveConflictTypes } from '../core/conflictFilters.js';
+import { CONFLICT_TYPE_OPTIONS, saveConflictTypes, saveConflictDateRange } from '../core/conflictFilters.js';
 import { mapShell } from '../maps/shells.js';
 import { setupMapInteraction } from '../maps/interaction.js';
 import { renderMapView } from '../maps/view.js';
@@ -81,9 +81,11 @@ function linesFromGeoJSON(features) {
 function filterReports(reports) {
   const query = state.conflictQuery.trim().toLocaleLowerCase();
   const selectedTypes = new Set(state.conflictTypes);
+  const { from, to } = state.conflictDateRange;
   return reports.filter((report) => {
     const haystack = `${report.name} ${report.domain} ${report.date} ${report.names} ${report.themes}`.toLocaleLowerCase();
-    return selectedTypes.has(report.type) && (!query || haystack.includes(query));
+    const inDateRange = !report.date || ((!from || report.date >= from) && (!to || report.date <= to));
+    return selectedTypes.has(report.type) && inDateRange && (!query || haystack.includes(query));
   });
 }
 
@@ -111,7 +113,7 @@ function renderWarPage(root) {
   const gpsDate = state.warGpsJam?.date || 'UNAVAILABLE';
   const frontlineDate = state.warFrontline.map((feature) => day(feature.properties?.date)).filter(Boolean).sort().at(-1) || 'UNAVAILABLE';
   const activeTypeCount = state.conflictTypes.length;
-  root.innerHTML = `<div class="module-title"><span>CONFLICT MONITOR<small>CON &lt;GO&gt; · CONFLICT · INTERNET DISRUPTIONS</small></span><span class="module-title-actions"><span class="source-badge">GDELT · UN OCHA · GPSJAM · WORLD MONITOR</span><button data-copy-data>COPY DATA</button></span></div><div class="module-controls"><button class="primary" id="intelRefresh">REFRESH LAYERS</button><details class="event-type-filter map-layer-filter"><summary>≡ MAP LAYERS</summary><div class="event-type-options">${[['frontline', 'FRONT LINE', state.warShowFrontline], ['gpsjam', 'GPS HEXES', state.warShowGpsJam]].map(([id, label, enabled]) => `<label><input type="checkbox" data-map-layer="${id}" ${enabled ? 'checked' : ''}><span>${label}</span></label>`).join('')}</div></details><input id="conflictQuery" value="${esc(state.conflictQuery)}" placeholder="Filter location, actor, source…" aria-label="Filter conflict reports"><details class="event-type-filter"><summary id="eventTypeSummary">EVENT TYPES · ${activeTypeCount}/${CONFLICT_TYPE_OPTIONS.length}</summary><div class="event-type-options">${CONFLICT_TYPE_OPTIONS.map((option) => `<label><input type="checkbox" data-event-type="${esc(option.id)}" ${state.conflictTypes.includes(option.id) ? 'checked' : ''}><span>${esc(option.label)}</span></label>`).join('')}</div></details><span class="source-badge" id="conflictCount">${filtered.length}/${data.length} ITEMS · ${state.warGpsJam?.features?.length || 0} GPS HEXES${state.errors.war ? ` · ${esc(state.errors.war)}` : ''}</span></div><div class="module-body intel-body"><div class="module-list intel-list">${reportRowsHTML(filtered) || `<div class="empty-state">${data.length ? 'NO REPORTS MATCH THESE FILTERS' : esc(state.errors.war || 'WAITING FOR PUBLIC DATA')}</div>`}</div>${mapShell('war')}</div><div class="detail-row">GPSJAM HEXES: GREEN &lt;2% · YELLOW 2–10% · RED &gt;10%. GPS ANOMALIES ARE NOT VERIFIED JAMMER LOCATIONS. UCDP / ACLED: ARMED EVENTS · INTERNET DISRUPTIONS: CLOUDFLARE RADAR.</div>`;
+  root.innerHTML = `<div class="module-title"><span>CONFLICT MONITOR<small>CON &lt;GO&gt; · CONFLICT · INTERNET DISRUPTIONS</small></span><span class="module-title-actions"><span class="source-badge">GDELT · UN OCHA · GPSJAM · WORLD MONITOR</span><button data-copy-data>COPY DATA</button></span></div><div class="module-controls"><button class="primary" id="intelRefresh">REFRESH LAYERS</button><details class="event-type-filter map-layer-filter"><summary>≡ MAP LAYERS</summary><div class="event-type-options">${[['frontline', 'FRONT LINE', state.warShowFrontline], ['gpsjam', 'GPS HEXES', state.warShowGpsJam]].map(([id, label, enabled]) => `<label><input type="checkbox" data-map-layer="${id}" ${enabled ? 'checked' : ''}><span>${label}</span></label>`).join('')}</div></details><label class="source-badge" for="conflictDateFrom">FROM</label><input type="date" id="conflictDateFrom" value="${esc(state.conflictDateRange.from)}" aria-label="Show conflict events from date"><label class="source-badge" for="conflictDateTo">TO</label><input type="date" id="conflictDateTo" value="${esc(state.conflictDateRange.to)}" aria-label="Show conflict events through date"><input id="conflictQuery" value="${esc(state.conflictQuery)}" placeholder="Filter location, actor, source…" aria-label="Filter conflict reports"><details class="event-type-filter"><summary id="eventTypeSummary">EVENT TYPES · ${activeTypeCount}/${CONFLICT_TYPE_OPTIONS.length}</summary><div class="event-type-options">${CONFLICT_TYPE_OPTIONS.map((option) => `<label><input type="checkbox" data-event-type="${esc(option.id)}" ${state.conflictTypes.includes(option.id) ? 'checked' : ''}><span>${esc(option.label)}</span></label>`).join('')}</div></details><span class="source-badge" id="conflictCount">${filtered.length}/${data.length} ITEMS · ${state.warGpsJam?.features?.length || 0} GPS HEXES${state.errors.war ? ` · ${esc(state.errors.war)}` : ''}</span></div><div class="module-body intel-body"><div class="module-list intel-list">${reportRowsHTML(filtered) || `<div class="empty-state">${data.length ? 'NO REPORTS MATCH THESE FILTERS' : esc(state.errors.war || 'WAITING FOR PUBLIC DATA')}</div>`}</div>${mapShell('war')}</div><div class="detail-row">GPSJAM HEXES: GREEN &lt;2% · YELLOW 2–10% · RED &gt;10%. GPS ANOMALIES ARE NOT VERIFIED JAMMER LOCATIONS. UCDP / ACLED: ARMED EVENTS · INTERNET DISRUPTIONS: CLOUDFLARE RADAR.</div>`;
 
   const map = $('.module-map');
   map._tracks = filtered.filter(hasMapPoint).map((item) => ({ ...item, id: item.id || item.name }));
@@ -158,6 +160,8 @@ function renderWarPage(root) {
 
   const updateFilters = () => {
     state.conflictQuery = $('#conflictQuery').value;
+    state.conflictDateRange = { from: $('#conflictDateFrom').value, to: $('#conflictDateTo').value };
+    saveConflictDateRange(state.conflictDateRange);
     const matches = filterReports(data);
     $('.intel-list').innerHTML = reportRowsHTML(matches) || `<div class="empty-state">NO ITEMS MATCH THESE FILTERS</div>`;
     const summary = $('#eventTypeSummary');
@@ -167,6 +171,8 @@ function renderWarPage(root) {
     renderMapView(map);
   };
   $('#conflictQuery').oninput = updateFilters;
+  $('#conflictDateFrom').onchange = updateFilters;
+  $('#conflictDateTo').onchange = updateFilters;
   $$('[data-event-type]').forEach((control) => {
     control.onchange = () => {
       state.conflictTypes = $$('[data-event-type]:checked').map((input) => input.dataset.eventType);

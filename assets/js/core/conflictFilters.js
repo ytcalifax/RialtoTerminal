@@ -8,7 +8,35 @@ const CONFLICT_TYPE_OPTIONS = [
 
 const COOKIE = 'rialto_conflict_types_v2';
 const LEGACY_COOKIE = 'rialto_conflict_types_v1';
+const DATE_RANGE_COOKIE = 'rialto_conflict_dates_v2';
 const DEFAULT_TYPES = CONFLICT_TYPE_OPTIONS.filter((item) => item.defaultOn).map((item) => item.id);
+
+function defaultConflictDateRange() {
+  // Preserve the existing feed defaults: GDELT supplies its recent window,
+  // while other sources remain unrestricted until the user picks dates.
+  return { from: '', to: '' };
+}
+
+function loadConflictDateRange() {
+  const defaults = defaultConflictDateRange();
+  try {
+    const entry = document.cookie.split('; ').find((value) => value.startsWith(`${DATE_RANGE_COOKIE}=`));
+    if (!entry) return defaults;
+    const saved = JSON.parse(decodeURIComponent(entry.slice(DATE_RANGE_COOKIE.length + 1)));
+    const valid = (value) => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+    return { from: valid(saved?.from) ? saved.from : defaults.from, to: valid(saved?.to) ? saved.to : defaults.to };
+  } catch {
+    return defaults;
+  }
+}
+
+function saveConflictDateRange(range) {
+  try {
+    document.cookie = `${DATE_RANGE_COOKIE}=${encodeURIComponent(JSON.stringify(range))}; max-age=31536000; path=/; SameSite=Lax`;
+  } catch {
+    /* Ignore cookie write errors in restricted browser contexts. */
+  }
+}
 
 function loadConflictTypes() {
   try {
@@ -44,4 +72,4 @@ function saveConflictTypes(types) {
   }
 }
 
-export { CONFLICT_TYPE_OPTIONS, loadConflictTypes, saveConflictTypes };
+export { CONFLICT_TYPE_OPTIONS, loadConflictTypes, saveConflictTypes, loadConflictDateRange, saveConflictDateRange };

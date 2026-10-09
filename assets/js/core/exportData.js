@@ -31,6 +31,7 @@ function exportText() {
       gpsJam: state.warGpsJam,
       worldMonitor: state.warWorldMonitor,
       enabledTypes: state.conflictTypes,
+      dateRange: state.conflictDateRange,
     },
     marketplace: {
       query: state.marketplaceQuery,

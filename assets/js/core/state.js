@@ -8,7 +8,7 @@
  */
 
 import { loadPins } from './pins.js';
-import { loadConflictTypes } from './conflictFilters.js';
+import { loadConflictTypes, loadConflictDateRange } from './conflictFilters.js';
 
 const state = {
   // Navigation
@@ -74,6 +74,7 @@ const state = {
   warSelectedId: null,
   conflictQuery: '',
   conflictTypes: loadConflictTypes(),
+  conflictDateRange: loadConflictDateRange(),
   shipsRegion: null,      // last fetched vessel region: 'minLat,minLon,maxLat,maxLon'
   airRegion: null,        // last fetched aircraft region: 'minLat,minLon,maxLat,maxLon'
   vesselAttribution: {},  // AIS source credits from the snapshot payload

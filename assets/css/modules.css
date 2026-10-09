@@ -228,6 +228,21 @@
 
 .alert-activity { display: flex; flex-direction: column; max-height: 100%; min-height: 300px; }
 
+.activity-tabs { display: flex; gap: 4px; padding: 6px 10px 0; border-bottom: 1px solid #303a3d; background: #151b1d; }
+.activity-tabs button { padding: 7px 10px; border: 1px solid transparent; border-bottom: 0; background: transparent; color: #8d9a9f; font: 700 8px Roboto Mono, monospace; cursor: pointer; }
+.activity-tabs button[aria-selected="true"] { border-color: #344247; background: #1b2427; color: #d6e0e3; }
+.activity-tabs button:hover { color: #fff; }
+.activity-tabs button span { margin-left: 4px; color: #8fc4d1; }
+.activity-tab-panel { min-height: 0; flex: 1; overflow: auto; }
+.activity-tab-panel[hidden] { display: none; }
+.decision-watch { padding: 8px 12px; border-bottom: 1px solid #2d383b; background: #121a1d; }
+.decision-watch-head { display: flex; align-items: center; gap: 7px; color: #8fc4d1; font: 700 8px Roboto Mono, monospace; letter-spacing: .06em; }
+.decision-watch-head small { margin-left: auto; color: #788b91; font-size: 7px; font-weight: 400; }
+.decision-watch-item { padding: 8px 0; border-top: 1px solid #253135; }
+.decision-watch-item > div { display: flex; justify-content: space-between; gap: 8px; color: #c5d5d9; font: 700 8px Roboto Mono, monospace; }
+.decision-watch-item > div span { color: #8fc4d1; white-space: nowrap; }
+.decision-watch-item p { margin: 4px 0 0; color: #9daeb2; font: 10px/1.4 Roboto, Arial, sans-serif; }
+
 .notification-list { overflow: auto; }
 .notification-item { display: grid; gap: 6px; padding: 14px 18px; border-bottom: 1px solid #2d383b; }
 .notification-item b { color: #edbd66; font: 600 8px Roboto Mono, monospace; letter-spacing: .06em; }
@@ -973,6 +988,7 @@
 .debug-rule-status { font-weight: 700; }
 .debug-rule-status.fired { color: #92c76a; }
 .debug-rule-status.closed { color: #e0b258; }
+.debug-rule-status.watch { color: #8fc4d1; }
 .debug-rule-status.below { color: #94a0a5; }
 .debug-rule-meta,.debug-rule-summary,.debug-rule-gate { margin-top: 4px; color: #89969b; font-size: 8px; line-height: 1.4; }
 .debug-rule-evidence { display: grid; gap: 4px; margin-top: 7px; }

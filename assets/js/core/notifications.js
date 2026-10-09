@@ -1,10 +1,12 @@
 import { $, esc, safeExternalUrl } from './dom.js';
 import { state } from './state.js';
 import { evaluateDeductions } from './deduction.js';
+import { on } from './hooks.js';
 
 const STORAGE_KEY = 'rialto_alert_settings_v1';
 let initialized = false;
 let alertSound;
+let activityTab = 'activity';
 const HEADLINE_STOP_WORDS = new Set('a an and are as at be by for from has have in into is it its of on or our over says said the their this to up was were will with after amid new first more near'.split(' '));
 const DEDUCTION_STOP_WORDS = new Set([...HEADLINE_STOP_WORDS, 'event', 'report', 'reports', 'news', 'latest', 'update', 'updates', 'world', 'global', 'breaking', 'source', 'public', 'official', 'according', 'people', 'country', 'government', 'officials', 'should', 'would', 'could', 'your', 'you', 'how', 'soon']);
 const fingerprintOf = (title, detail) => `${title}|${detail}`
@@ -342,6 +344,28 @@ function observeVessels(items) { return observeTracks('vessels', items); }
 function observeAircraft(items) { return observeTracks('aircraft', items); }
 
 function renderNotifications() {
+  const watchRules = (state.deductionDiagnostics?.rules || []).filter((rule) => rule.status === 'WATCH');
+  const watchSection = $('#decisionWatch');
+  const watchList = $('#decisionWatchList');
+  if (watchSection && watchList) {
+    watchList.innerHTML = watchRules.length
+      ? watchRules.map((rule) => `<article class="decision-watch-item"><div><b>${esc(rule.title)}</b><span>SCORE ${rule.score}/${rule.maxScore} · FIRE AT ${rule.minScore}</span></div><p>${esc(rule.watchReason)}</p></article>`).join('')
+      : '<div class="notification-empty">NO ACTIVE WATCH SIGNALS</div>';
+  }
+  const watchCount = $('#decisionWatchCount');
+  if (watchCount) watchCount.textContent = String(watchRules.length);
+  const activityButton = $('#activityTab');
+  const watchButton = $('#decisionWatchTab');
+  const activityPanel = $('#notificationPanel');
+  if (activityButton && watchButton && activityPanel && watchSection) {
+    const showingActivity = activityTab === 'activity';
+    activityButton.setAttribute('aria-selected', String(showingActivity));
+    watchButton.setAttribute('aria-selected', String(!showingActivity));
+    activityPanel.hidden = !showingActivity;
+    watchSection.hidden = showingActivity;
+    const clearButton = $('#clearNotifications');
+    if (clearButton) clearButton.hidden = !showingActivity;
+  }
   const list = $('#notificationList');
   if (list) list.innerHTML = state.notifications.length
     ? state.notifications.map((x) => `<div class="notification-item"><b>${esc(x.title)}</b><span>${esc(x.detail)}</span>${x.link ? `<a href="${esc(x.link)}" target="_blank" rel="noopener">OPEN ↗</a>` : ''}<button type="button" data-remove-notification="${esc(x.id)}" aria-label="Remove alert">×</button></div>`).join('')
@@ -444,6 +468,7 @@ function renderHeadlineTermSuggestions(query, activeIndex = -1) {
 function initNotifications() {
   if (initialized) return;
   initialized = true;
+  on('deduction:updated', renderNotifications);
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
     const hadFuelSettings = Object.prototype.hasOwnProperty.call(saved, 'fuelWatches') || Object.prototype.hasOwnProperty.call(saved, 'fuelMovePct');
@@ -458,6 +483,8 @@ function initNotifications() {
 function initAlertsPage() {
   renderAlertSettings();
   renderNotifications();
+  $('#activityTab').onclick = () => { activityTab = 'activity'; renderNotifications(); };
+  $('#decisionWatchTab').onclick = () => { activityTab = 'watch'; renderNotifications(); };
   ['alertNews', 'alertConflict', 'alertDiseaseOutbreaks', 'alertMarkets', 'alertVessels', 'alertAircraft'].forEach((id) => {
     $(`#${id}`).onchange = (e) => {
       state.alertSettings[{ alertNews: 'news', alertConflict: 'conflict', alertDiseaseOutbreaks: 'diseaseOutbreaks', alertMarkets: 'markets', alertVessels: 'vessels', alertAircraft: 'aircraft' }[id]] = e.target.checked;

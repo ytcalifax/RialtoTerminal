@@ -55,7 +55,7 @@ def _yahoo_quote(symbol: str, name: str | None = None) -> dict | None:
     """
     cached = _QUOTE_CACHE.get(symbol)
     if cached is not None:
-        return dict(cached)
+        return {**cached, "name": name} if name else dict(cached)
     if symbol == "^SOFIX":
         return None  # served by _bse_sofix_row, which scrapes the exchange
 
@@ -66,7 +66,7 @@ def _yahoo_quote(symbol: str, name: str | None = None) -> dict | None:
         # prevent multiple same-symbol cache misses from reaching Yahoo.
         cached = _QUOTE_CACHE.get(symbol)
         if cached is not None:
-            return dict(cached)
+            return {**cached, "name": name} if name else dict(cached)
         if _QUOTE_FAILURE_CACHE.get(symbol):
             return None
 

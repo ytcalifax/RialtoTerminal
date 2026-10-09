@@ -1,5 +1,6 @@
 import { req } from './net.js';
 import { state } from './state.js';
+import { emit } from './hooks.js';
 const DEDUCTION_COOLDOWN_MS = 6 * 3600000;
 const DEDUCTION_LIMIT = 30;
 const DEDUCTION_WATCHLIST = [
@@ -17,6 +18,7 @@ const EFFECT_NAMES = {
 const MOVE_FLOOR_PCT = 1;
 const QUOTE_MAX_AGE_MS = 30 * 60 * 1000;
 const SIGNAL_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const NEWS_WINDOW_MS = 15 * 60 * 1000;
 const CHOKEPOINTS = [
   { id: 'hormuz', name: 'Strait of Hormuz', keywords: ['hormuz'], minLat: 25.5, maxLat: 27.5, minLon: 55, maxLon: 58 },
   { id: 'redsea', name: 'Red Sea / Bab el-Mandeb', keywords: ['red sea', 'bab el-mandeb', 'bab al-mandeb', 'mandeb'], minLat: 11, maxLat: 21, minLon: 32, maxLon: 44 },
@@ -200,13 +202,15 @@ function conflictSignals(texts, theater) {
 }
 
 function newsSignals(rows, theater) {
-  const hits = rows.filter((x) => theater.keywords.test(x.title || '')).length;
-  const previous = state.deductionBaseline.news[theater.label] ?? hits;
-  state.deductionBaseline.news[theater.label] = hits;
+  const relevant = rows.filter((x) => theater.keywords.test(x.title || ''));
+  const hits = relevant.filter((x) => ageMs(x) <= NEWS_WINDOW_MS).length;
+  const previous = relevant.filter((x) => ageMs(x) > NEWS_WINDOW_MS && ageMs(x) <= NEWS_WINDOW_MS * 2).length;
+  const rising = hits >= 4 && hits - previous >= 2;
   return {
     hits,
-    rising: hits - previous >= 3,
-    detail: hits ? `${hits} headlines reference ${theater.label}${hits > previous ? ' · coverage accelerating' : ''}` : '',
+    previousHits: previous,
+    rising,
+    detail: hits ? `${hits} headlines in the last 15m vs ${previous} in the prior 15m${rising ? ' · coverage accelerating' : ''}` : '',
   };
 }
 function chokepointSignals(rows) {
@@ -374,7 +378,7 @@ function theaterGateChecks(context) {
   const routeContext = context.choke.context.length
     ? ` · Context only (not scored): ${context.choke.context.join(' · ')}` : '';
   return [
-    { passed: conflictPass || headlinesPass, detail: `Conflict ≥2 (${context.conflict.count}) OR rising headlines ≥4 (${context.news.hits}${context.news.rising ? ', rising' : ', not rising'})` },
+    { passed: conflictPass || headlinesPass, detail: `Conflict ≥2 (${context.conflict.count}) OR headlines ≥4 and +2 vs prior 15m (${context.news.hits} vs ${context.news.previousHits}${context.news.rising ? ', rising' : ', not rising'})` },
     { passed: chokepointPass || outagePass, detail: `Route observations ${context.choke.evidenceFamilies.length} source families (${context.choke.signals.length} records) OR producer outages ≥1 (${context.outages.length})${routeContext}` },
   ];
 }
@@ -401,6 +405,16 @@ function theaterRequires(theater, choke) {
   ];
 }
 
+function theaterWatchReason(context) {
+  const details = [];
+  if (context.conflict.count) details.push(`${context.conflict.count} conflict report${context.conflict.count === 1 ? '' : 's'}`);
+  if (context.news.hits) details.push(`${context.news.hits} headlines in 15m`);
+  if (context.choke.signals.length) details.push(`${context.choke.signals.length} route signal${context.choke.signals.length === 1 ? '' : 's'}`);
+  if (context.choke.observations.length) details.push('corroborated maritime observation');
+  if (context.outages.length) details.push(`${context.outages.length} producer outage${context.outages.length === 1 ? '' : 's'}`);
+  return details.join(' · ');
+}
+
 const RULES = [
   {
     id: 'risk-off',
@@ -420,6 +434,12 @@ const RULES = [
         return gold && equities ? `${gold} · ${equities}` : null;
       } },
     ],
+    watch: (c) => Object.values(c.conflicts).some((x) => x.count > 0)
+      || [moveInDirection('^VIX', 'up'), moveInDirection('GC=F', 'up'), moveInDirection('^GSPC', 'down')].filter(Boolean).length >= 2,
+    watchReason: (c) => [
+      ...Object.entries(c.conflicts).filter(([, x]) => x.count > 0).map(([name, x]) => `${name}: ${x.count} report${x.count === 1 ? '' : 's'}`),
+      moveInDirection('^VIX', 'up'), moveInDirection('GC=F', 'up'), moveInDirection('^GSPC', 'down'),
+    ].filter(Boolean).join(' · '),
   },
   {
     id: 'outbreak-travel',
@@ -434,6 +454,12 @@ const RULES = [
       { label: 'Disease headlines rising', weight: 1, test: (c) => (c.diseaseNews >= 3 && `${c.diseaseNews} outbreak-related headlines`) || null },
       { label: 'Travel names selling off', weight: 2, test: () => moveInDirection('DAL', 'down') },
     ],
+    watch: (c) => c.outbreakCandidates.length > 0 || c.diseaseNews >= 2 || Boolean(moveInDirection('DAL', 'down')),
+    watchReason: (c) => [
+      c.outbreakCandidates.length ? `${c.outbreakCandidates.length} topic-matched outbreak reports · ${c.outbreaks.length} severe` : '',
+      c.diseaseNews ? `${c.diseaseNews} disease headlines` : '',
+      moveInDirection('DAL', 'down'),
+    ].filter(Boolean).join(' · '),
   },
 ];
 
@@ -455,16 +481,18 @@ function evaluateDeductions(notify = null) {
   const ctx = {
     conflicts: {},
     chokepoints,
-    outbreaks: (!state.diseaseOutbreaksStale
+    outbreakCandidates: (!state.diseaseOutbreaksStale
       && Number.isFinite(state.diseaseOutbreaksUpdatedAt)
       && Date.now() - state.diseaseOutbreaksUpdatedAt <= SIGNAL_MAX_AGE_MS
       ? state.diseaseOutbreaks || [] : [])
-      .filter(matchesSelectedTopics)
-      .filter((x) => /^(high|severe|emergency|(?:who\s+)?grade\s*[34])\b/i.test(String(x.alertLevel || '').trim()))
-      .slice(0, 2)
-      .map((x) => `${x.disease || 'Outbreak'} alert · ${x.location || x.countryCode || ''}`.trim()),
+      .filter(matchesSelectedTopics),
+    outbreaks: [],
     diseaseNews: new Set(headlineRows.filter((x) => DISEASE_TERMS.test(x.title || '')).map((x) => x.url || x.title)).size,
   };
+  ctx.outbreaks = ctx.outbreakCandidates
+      .filter((x) => /^(high|severe|emergency|(?:who\s+)?grade\s*[34])\b/i.test(String(x.alertLevel || '').trim()))
+      .slice(0, 2)
+      .map((x) => `${x.disease || 'Outbreak'} alert · ${x.location || x.countryCode || ''}`.trim());
 
   const fired = [];
   const diagnostics = [];
@@ -478,13 +506,15 @@ function evaluateDeductions(notify = null) {
       id: `theater-${theater.choke}`,
       title: theater.rule.title,
       summary: theater.rule.summary,
-      gateDescription: 'At least 2 conflict reports or 4+ rising theater headlines; and route evidence or a producer-region outage.',
+      gateDescription: 'At least 2 conflict reports or 4+ theater headlines, at least 2 above the prior 15m; and route evidence or a producer-region outage.',
       gateChecks: theaterGateChecks,
       effects: theater.rule.effects,
       minScore: theater.rule.minScore,
       gate: (c) => (c.conflict.count >= 2 || (c.news.hits >= 4 && c.news.rising))
         && (c.choke.signals.length > 0 || c.outages.length > 0),
       requires: theaterRequires(theater, choke),
+      watch: (c) => c.conflict.count > 0 || c.news.hits >= 2 || c.choke.signals.length > 0 || c.choke.observations.length > 0 || c.outages.length > 0,
+      watchReason: theaterWatchReason,
     }, context, diagnostics));
   }
   ctx.outages = outageSignals();
@@ -496,6 +526,7 @@ function evaluateDeductions(notify = null) {
     inputs: inputVisibility(),
     rules: diagnostics,
   };
+  emit('deduction:updated', state.deductionDiagnostics);
   commitDeductions(fired, notify);
 }
 function runRule(rule, ctx, diagnostics = null) {
@@ -531,7 +562,12 @@ function runRule(rule, ctx, diagnostics = null) {
         quoteStatus: quoteDiagnostic(effect.symbol, effect.dir),
       };
     });
-  const status = !gatePassed ? 'GATE CLOSED' : score < rule.minScore ? 'BELOW THRESHOLD' : 'FIRED';
+  const fired = gatePassed && score >= rule.minScore;
+  let watchReason = '';
+  if (!fired && rule.watch) {
+    try { watchReason = rule.watch(ctx) ? String(rule.watchReason?.(ctx) || 'Relevant partial evidence') : ''; } catch { watchReason = ''; }
+  }
+  const status = fired ? 'FIRED' : watchReason ? 'WATCH' : !gatePassed ? 'GATE CLOSED' : 'BELOW THRESHOLD';
   diagnostics?.push({
     id: rule.id,
     title: rule.title,
@@ -543,10 +579,11 @@ function runRule(rule, ctx, diagnostics = null) {
     maxScore,
     minScore: rule.minScore,
     status,
+    watchReason,
     requirements,
     effects: effects.map((effect, index) => ({ ...effect, dir: rule.effects[index].dir })),
   });
-  if (!gatePassed || score < rule.minScore) return [];
+  if (!fired) return [];
   return [{
     fingerprint: rule.id,
     rule: rule.id,

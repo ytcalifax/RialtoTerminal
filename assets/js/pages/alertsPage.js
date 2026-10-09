@@ -27,7 +27,12 @@ export function renderAlertsPage(root) {
       </div>
       <section class="alert-card alert-activity">
         <div class="alert-card-head"><span><i class="dot green"></i> ACTIVITY</span><button id="clearNotifications" type="button">CLEAR ACTIVITY</button></div>
-        <div id="notificationList" class="notification-list"></div>
+        <div class="activity-tabs" role="tablist" aria-label="Activity views">
+          <button id="activityTab" type="button" role="tab" aria-selected="true" aria-controls="notificationPanel">ACTIVITY</button>
+          <button id="decisionWatchTab" type="button" role="tab" aria-selected="false" aria-controls="decisionWatch">DECISION WATCH <span id="decisionWatchCount">0</span></button>
+        </div>
+        <div id="notificationPanel" class="activity-tab-panel" role="tabpanel" aria-labelledby="activityTab"><div id="notificationList" class="notification-list"></div></div>
+        <section id="decisionWatch" class="decision-watch activity-tab-panel" role="tabpanel" aria-labelledby="decisionWatchTab" hidden><div class="decision-watch-head"><i class="dot blue"></i> RELEVANT SIGNALS · FIRE THRESHOLDS NOT MET</div><div id="decisionWatchList"></div></section>
       </section>
     </div>`;
   initAlertsPage();

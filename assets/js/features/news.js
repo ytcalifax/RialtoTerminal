@@ -6,7 +6,7 @@
  * Rendering preserves scroll position and keyboard focus across repaints so
  * the terminal stays keyboard-first.
  */
-import { $, $$, esc } from '../core/dom.js';
+import { $, $$, esc, safeExternalUrl } from '../core/dom.js';
 import { fmtTime, newsTimestamp, timeAgo } from '../core/format.js';
 import { req } from '../core/net.js';
 import { setHealth, setStatus } from '../core/status.js';
@@ -80,7 +80,7 @@ function renderNews() {
 
   if (lead) {
     lead.innerHTML = rows.length
-      ? rows.slice(0, 8).map((x, i) => `<div tabindex="0" class="story ${i === 0 ? 'featured' : ''} ${state.selectedNews === x.url ? 'selected' : ''}" data-news-url="${esc(x.url)}"><span class="story-num">${String(i + 1).padStart(2, '0')}</span><div><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a><span class="story-meta">${esc(x.source || 'NEWS')} · ${esc(x.region || 'GLOBAL')} · ${esc(x.category || 'NEWS')}</span></div><span class="story-time">${timeAgo(x.published)}</span></div>`).join('')
+      ? rows.slice(0, 8).map((x, i) => `<div tabindex="0" class="story ${i === 0 ? 'featured' : ''} ${state.selectedNews === x.url ? 'selected' : ''}" data-news-url="${esc(x.url)}"><span class="story-num">${String(i + 1).padStart(2, '0')}</span><div><a href="${esc(safeExternalUrl(x.url) || '#')}" target="_blank" rel="noopener">${esc(x.title)}</a><span class="story-meta">${esc(x.source || 'NEWS')} · ${esc(x.region || 'GLOBAL')} · ${esc(x.category || 'NEWS')}</span></div><span class="story-time">${timeAgo(x.published)}</span></div>`).join('')
       : `<div class="empty-state">${state.errors.news ? 'NEWS SERVICE UNAVAILABLE · ' + esc(state.errors.news) : 'NO MATCHING HEADLINES · CHANGE FEED OR QUERY'}</div>`;
   }
 
@@ -91,7 +91,7 @@ function renderNews() {
     : rows.filter((x) => TOPIC_TERMS[state.filter]?.test(x.title) || String(x.category || '').toLowerCase() === state.filter);
 
   if (compact) {
-    compact.innerHTML = visible.slice(0, 12).map((x) => `<div tabindex="0" class="compact-row ${state.selectedNews === x.url ? 'selected' : ''}" data-news-url="${esc(x.url)}"><span class="source">${esc((x.source || 'NEWS').slice(0, 12))}</span><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a><time>${timeAgo(x.published)}</time></div>`).join('')
+    compact.innerHTML = visible.slice(0, 12).map((x) => `<div tabindex="0" class="compact-row ${state.selectedNews === x.url ? 'selected' : ''}" data-news-url="${esc(x.url)}"><span class="source">${esc((x.source || 'NEWS').slice(0, 12))}</span><a href="${esc(safeExternalUrl(x.url) || '#')}" target="_blank" rel="noopener">${esc(x.title)}</a><time>${timeAgo(x.published)}</time></div>`).join('')
       || `<div class="empty-state">${state.errors.news ? 'PUBLIC FEED ERROR · ' + esc(state.errors.news) : 'NO HEADLINES MATCH THIS FILTER'}</div>`;
   }
 
@@ -114,7 +114,7 @@ function selectNewsRow(row) {
   if (x) {
     setStatus(`${x.source} · ${x.region} · ${x.category} · ${fmtTime(newsTimestamp(x.published))} · OPEN PUBLISHER LINK`);
     const d = $('#newsDetail');
-    if (d) d.innerHTML = `${esc(x.source)} · ${esc(x.region)} · ${esc(x.category)} · ${fmtTime(newsTimestamp(x.published))} · <a href="${esc(x.url)}" target="_blank" rel="noopener">OPEN PUBLISHER ↗</a>`;
+    if (d) d.innerHTML = `${esc(x.source)} · ${esc(x.region)} · ${esc(x.category)} · ${fmtTime(newsTimestamp(x.published))} · <a href="${esc(safeExternalUrl(x.url) || '#')}" target="_blank" rel="noopener">OPEN PUBLISHER ↗</a>`;
   }
 }
 
@@ -140,7 +140,7 @@ function renderNewsModuleRows() {
   const focusUrl = active?.dataset.newsUrl;
   const focusHref = document.activeElement?.closest('a')?.href;
 
-  body.innerHTML = state.news.map((x) => `<div tabindex="0" class="article-row ${state.selectedNews === x.url ? 'selected' : ''}" data-news-url="${esc(x.url)}"><span class="src">${esc(x.source || 'NEWS')}</span><div><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a><small>${esc(x.region || 'GLOBAL')} · ${esc(x.category || 'NEWS')} · ${esc(x.language || '')} · ${esc(x.timeType || 'PUBLISHED')}</small></div><time>${timeAgo(x.published)}</time></div>`).join('')
+  body.innerHTML = state.news.map((x) => `<div tabindex="0" class="article-row ${state.selectedNews === x.url ? 'selected' : ''}" data-news-url="${esc(x.url)}"><span class="src">${esc(x.source || 'NEWS')}</span><div><a href="${esc(safeExternalUrl(x.url) || '#')}" target="_blank" rel="noopener">${esc(x.title)}</a><small>${esc(x.region || 'GLOBAL')} · ${esc(x.category || 'NEWS')} · ${esc(x.language || '')} · ${esc(x.timeType || 'PUBLISHED')}</small></div><time>${timeAgo(x.published)}</time></div>`).join('')
     || '<div class="empty-state">No active publisher headlines. Source failures are isolated; retry after the next feed interval or broaden search.</div>';
   body.scrollTop = scrollTop;
 
@@ -149,7 +149,7 @@ function renderNewsModuleRows() {
   const detail = $('#newsDetail');
   const selected = state.news.find((x) => x.url === state.selectedNews);
   if (detail && selected) {
-    detail.innerHTML = `${esc(selected.source)} · ${esc(selected.region)} · ${esc(selected.category)} · ${fmtTime(newsTimestamp(selected.published))} · <a href="${esc(selected.url)}" target="_blank" rel="noopener">OPEN PUBLISHER ↗</a>`;
+    detail.innerHTML = `${esc(selected.source)} · ${esc(selected.region)} · ${esc(selected.category)} · ${fmtTime(newsTimestamp(selected.published))} · <a href="${esc(safeExternalUrl(selected.url) || '#')}" target="_blank" rel="noopener">OPEN PUBLISHER ↗</a>`;
   }
   const footer = $('#newsFeedStatus');
   if (footer) {

@@ -29,4 +29,15 @@ const esc = (value) =>
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
   ));
 
-export { $, $$, esc };
+/** Return an absolute web URL for untrusted outbound links, or an empty string. */
+const safeExternalUrl = (value) => {
+  if (typeof value !== 'string') return '';
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : '';
+  } catch {
+    return '';
+  }
+};
+
+export { $, $$, esc, safeExternalUrl };

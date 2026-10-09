@@ -14,8 +14,8 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 
-from ..services.airinfo import aircraft_info
 from ..core.external_metrics import debug_snapshot
+from ..services.airinfo import aircraft_info
 from ..services.conflict import disease_outbreak_snapshot, war_snapshot
 from ..services.marketplace import listing_search
 from ..services.markets.quotes import (

@@ -1,4 +1,4 @@
-import { $, esc } from './dom.js';
+import { $, esc, safeExternalUrl } from './dom.js';
 import { state } from './state.js';
 
 const STORAGE_KEY = 'rialto_alert_settings_v1';
@@ -11,7 +11,8 @@ function saveSettings() {
 }
 
 function addNotification(title, detail, link = '') {
-  const item = { id: `${Date.now()}-${Math.random()}`, title, detail, link, at: Date.now() };
+  const safeLink = safeExternalUrl(link);
+  const item = { id: `${Date.now()}-${Math.random()}`, title, detail, link: safeLink, at: Date.now() };
   state.notifications.unshift(item);
   state.notifications = state.notifications.slice(0, 100);
   renderNotifications();
@@ -23,7 +24,7 @@ function addNotification(title, detail, link = '') {
     });
     notification.onclick = () => {
       window.focus();
-      if (link) window.open(link, '_blank', 'noopener');
+      if (safeLink) window.open(safeLink, '_blank', 'noopener');
       notification.close();
     };
   }
@@ -58,6 +59,7 @@ function matchesTopics(item) {
     .filter(Boolean);
   if (!topics.length) return true;
   const text = Object.values(item)
+    .flatMap((value) => Array.isArray(value) ? value : [value])
     .filter((value) => typeof value === 'string' || typeof value === 'number')
     .join(' ')
     .toLocaleLowerCase();
@@ -81,7 +83,8 @@ function observeNews(items) {
 function matchesTerms(item, terms) {
   const needles = String(terms || '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
   if (!needles.length) return true;
-  const text = Object.values(item).filter((x) => typeof x === 'string' || typeof x === 'number').join(' ').toLowerCase();
+  const text = Object.values(item).flatMap((value) => Array.isArray(value) ? value : [value])
+    .filter((x) => typeof x === 'string' || typeof x === 'number').join(' ').toLowerCase();
   return needles.some((term) => text.includes(term));
 }
 

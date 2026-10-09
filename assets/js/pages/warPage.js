@@ -1,5 +1,5 @@
 /** Conflict-report map workspace. */
-import { $, $$, esc } from '../core/dom.js';
+import { $, $$, esc, safeExternalUrl } from '../core/dom.js';
 import { state } from '../core/state.js';
 import { CONFLICT_TYPE_OPTIONS, saveConflictTypes } from '../core/conflictFilters.js';
 import { mapShell } from '../maps/shells.js';
@@ -94,13 +94,14 @@ function hasMapPoint(item) {
 
 function reportRowsHTML(reports) {
   return reports.map((item) => {
+    const url = safeExternalUrl(item.url);
     const metadata = [item.typeLabel, item.date, item.domain].filter(Boolean).join(' · ');
     const themeParts = String(item.themes || '').split(' · ');
     const detailThemes = themeParts.filter((part) => displayCode(part) !== item.type).join(' · ');
     const detail = [item.names, detailThemes, item.category === 'reports' ? (item.geores >= 3 ? 'LOCALITY' : 'AREA MENTION') : ''].filter(Boolean).join(' · ');
-    const mentionLink = item.url && !hasMapPoint(item);
+    const mentionLink = url && !hasMapPoint(item);
     const title = `<div class="intel-row-title"><b>${esc(item.name)}</b>${mentionLink ? '<span class="external-indicator" aria-label="Mention only — open source link" title="Mention only · open source link">↗</span>' : ''}</div>`;
-    return `<${item.url ? 'a' : 'div'} class="intel-row ${state.warSelectedId === item.id ? 'selected' : ''}" data-intel-id="${esc(item.id)}"${item.url ? ` href="${esc(item.url)}" target="_blank" rel="noopener"` : ''}>${title}<span>${esc(metadata)}</span><small>${esc(detail || 'CONFLICT COVERAGE')}</small></${item.url ? 'a' : 'div'}>`;
+    return `<${url ? 'a' : 'div'} class="intel-row ${state.warSelectedId === item.id ? 'selected' : ''}" data-intel-id="${esc(item.id)}"${url ? ` href="${esc(url)}" target="_blank" rel="noopener"` : ''}>${title}<span>${esc(metadata)}</span><small>${esc(detail || 'CONFLICT COVERAGE')}</small></${url ? 'a' : 'div'}>`;
   }).join('');
 }
 
@@ -130,7 +131,8 @@ function renderWarPage(root) {
     $$('.map-point', map).forEach((point) => point.classList.toggle('selected', map._visibleTracks[Number(point.dataset.index)]?.id === item.id));
     $$('.intel-row[data-intel-id]').forEach((row) => row.classList.toggle('selected', row.dataset.intelId === item.id));
     $$('.intel-row.selected').find((row) => row.dataset.intelId === item.id)?.scrollIntoView({ block: 'nearest' });
-    popup.innerHTML = `<button class="map-point-popup-close" type="button" aria-label="Close event details">×</button><b>${esc(item.name)}</b><span>${esc([item.typeLabel, item.date, item.domain].filter(Boolean).join(' · '))}</span><p>${esc(item.themes || 'CONFLICT EVENT')}</p><p>${esc(item.names || 'ACTORS NOT CODED')}</p>${item.url ? `<a href="${esc(item.url)}" target="_blank" rel="noopener">OPEN ORIGINAL REPORT ↗</a>` : ''}`;
+    const url = safeExternalUrl(item.url);
+    popup.innerHTML = `<button class="map-point-popup-close" type="button" aria-label="Close event details">×</button><b>${esc(item.name)}</b><span>${esc([item.typeLabel, item.date, item.domain].filter(Boolean).join(' · '))}</span><p>${esc(item.themes || 'CONFLICT EVENT')}</p><p>${esc(item.names || 'ACTORS NOT CODED')}</p>${url ? `<a href="${esc(url)}" target="_blank" rel="noopener">OPEN ORIGINAL REPORT ↗</a>` : ''}`;
     popup.hidden = false;
     $('.map-point-popup-close', popup).onclick = () => { popup.hidden = true; };
   };

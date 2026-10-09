@@ -3,7 +3,7 @@
  * Results are metadata + outbound links; failures retain the last table and
  * surface a retry path instead of blanking the module.
  */
-import { $, esc } from '../core/dom.js';
+import { $, esc, safeExternalUrl } from '../core/dom.js';
 import { fmtTime } from '../core/format.js';
 import { req } from '../core/net.js';
 import { state } from '../core/state.js';
@@ -32,8 +32,8 @@ async function loadMarketplace(q = '') {
     }
     if ($('#listingRows')) {
       $('#listingRows').innerHTML = rows.length
-        ? `<table><thead><tr><th>LISTING / DESCRIPTION</th><th>LOCATION</th><th>POSTED</th><th>PRICE</th><th>SOURCE</th><th>OPEN</th></tr></thead><tbody>${rows.map((x) => `<tr><td>${esc(x.title)}</td><td class="location">${esc(x.location || '—')}</td><td class="posted">${esc(x.posted || '—')}</td><td class="price">${esc(x.price || '—')}</td><td>BAZAR.BG</td><td><a href="${esc(x.url)}" target="_blank" rel="noopener">VIEW ↗</a></td></tr>`).join('')}</tbody></table>`
-        : `<div class="empty-state">${q ? 'NO BAZAR.BG RESULTS FOR “' + esc(q.toUpperCase()) + '”' : 'NO PUBLIC LISTING METADATA RETURNED'}${r.error ? ' · ' + esc(r.error) : ''}<br><a href="${esc(r.url)}" target="_blank" rel="noopener">OPEN SEARCH ON BAZAR.BG ↗</a></div>`;
+        ? `<table><thead><tr><th>LISTING / DESCRIPTION</th><th>LOCATION</th><th>POSTED</th><th>PRICE</th><th>SOURCE</th><th>OPEN</th></tr></thead><tbody>${rows.map((x) => `<tr><td>${esc(x.title)}</td><td class="location">${esc(x.location || '—')}</td><td class="posted">${esc(x.posted || '—')}</td><td class="price">${esc(x.price || '—')}</td><td>BAZAR.BG</td><td>${safeExternalUrl(x.url) ? `<a href="${esc(safeExternalUrl(x.url))}" target="_blank" rel="noopener">VIEW ↗</a>` : '—'}</td></tr>`).join('')}</tbody></table>`
+        : `<div class="empty-state">${q ? 'NO BAZAR.BG RESULTS FOR “' + esc(q.toUpperCase()) + '”' : 'NO PUBLIC LISTING METADATA RETURNED'}${r.error ? ' · ' + esc(r.error) : ''}<br>${safeExternalUrl(r.url) ? `<a href="${esc(safeExternalUrl(r.url))}" target="_blank" rel="noopener">OPEN SEARCH ON BAZAR.BG ↗</a>` : ''}</div>`;
     }
     if (tbody) {
       tbody.scrollTop = scrollTop;

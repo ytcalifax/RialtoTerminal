@@ -8,7 +8,7 @@
  * Both payloads degrade the same way: on fetch failure the last positions
  * stay on screen and the health indicator shows the error.
  */
-import { $, $$, esc } from '../core/dom.js';
+import { $, $$, esc, safeExternalUrl } from '../core/dom.js';
 import { ageLabel, fmtTime } from '../core/format.js';
 import { req } from '../core/net.js';
 import { setHealth, setStatus } from '../core/status.js';
@@ -495,8 +495,9 @@ function detailHTML(x, air = false, info) {
       const value = pending(v);
       return value === '…' || value === '—' ? value : esc(String(value).toUpperCase());
     };
-    const photo = ac?.photo
-      ? `<a class="trade-link" href="${esc(ac.photo)}" target="_blank" rel="noopener" title="Photo of ${esc(ac.registration || 'this airframe')}">PHOTO ↗</a>`
+    const photoUrl = safeExternalUrl(ac?.photo);
+    const photo = photoUrl
+      ? `<a class="trade-link" href="${esc(photoUrl)}" target="_blank" rel="noopener" title="Photo of ${esc(ac.registration || 'this airframe')}">PHOTO ↗</a>`
       : (info ? '—' : '…');
     return `<span>CALLSIGN <b>${esc(x.name)}</b></span><span>ICAO24 <b>${esc(x.id)}</b></span><span>BRAND <b>${upper(ac?.brand || null)}</b></span><span>MODEL <b>${upper(ac?.model || null)}</b></span><span>AIRLINE <b>${upper(airline)}</b></span><span>FROM <b>${fromA || (info ? '—' : '…')}</b></span><span>TO <b>${toA || (info ? '—' : '…')}</b></span><span>POSITION <b>${Number(x.lat).toFixed(4)}° / ${Number(x.lon).toFixed(4)}°</b></span><span>BARO ALT <b>${x.alt != null ? Math.round(x.alt) + ' m' : x.ground ? 'GND' : '—'}</b></span><span>GEO ALT <b>${x.geoAlt != null ? Math.round(x.geoAlt) + ' m' : '—'}</b></span><span>SPEED <b>${x.speed != null ? Math.round(x.speed * 1.94384) + ' kt' : '—'}</b></span><span>TRACK <b>${x.course != null ? Math.round(x.course) + '°' : '—'}</b></span><span>VERT RATE <b>${x.vertical != null ? Math.round(x.vertical * 196.85) + ' ft/min' : '—'}</b></span><span>SQUAWK <b>${esc(x.squawk || '—')}</b></span><span>LAST CONTACT <b>${x.lastContact ? fmtTime(x.lastContact * 1000) : '—'}</b></span><span class="detail-photo">${photo}</span>`;
   }

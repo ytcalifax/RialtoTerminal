@@ -36,9 +36,13 @@ from ...core.text import clean
 from .symbols import CORE_MARKETS, MARKET_GROUPS, SYMBOL_GROUP
 
 _QUOTE_CACHE: TTLCache[dict] = TTLCache(MARKET_TTL_S)
+_QUOTE_FAILURE_CACHE: TTLCache[bool] = TTLCache(1, max_entries=512)
 _SOFIX_CACHE: TTLCache[dict] = TTLCache(SOFIX_TTL_S)
 _SEARCH_CACHE: TTLCache[list] = TTLCache(SEARCH_TTL_S)
 _YAHOO_REQUEST_SLOTS = threading.BoundedSemaphore(4)
+# Cache checks and upstream fetches must be one operation per symbol. A fixed
+# stripe set coalesces duplicate misses without retaining arbitrary user keys.
+_QUOTE_LOCKS = tuple(threading.Lock() for _ in range(16))
 
 # Yahoo symbols: letters/digits plus the ^ . = - convention characters.
 _SYMBOL_RE = re.compile(r"^[A-Za-z0-9^.\-=]{1,15}$")
@@ -64,62 +68,77 @@ def _yahoo_quote(symbol: str, name: str | None = None) -> dict | None:
     if symbol == "^SOFIX":
         return None  # served by _bse_sofix_row, which scrapes the exchange
 
-    try:
-        url = YAHOO_CHART_URL.format(symbol=quote(symbol, safe=""))
-        # Yahoo does not publish a limit for this public chart URL. Bound
-        # parallel quote bursts, especially when the large STOCKS group loads.
-        with _YAHOO_REQUEST_SLOTS:
-            result = json.loads(fetch(url, "application/json"))["chart"]["result"][0]
-        meta = result.get("meta") or {}
-        resolved_name = name or meta.get("shortName") or meta.get("longName") or symbol
-        timestamps = result.get("timestamp") or []
-        quote_indicators = result.get("indicators", {}).get("quote") or []
-        raw_closes = quote_indicators[0].get("close", []) if quote_indicators else []
-        closes = [float(v) for v in raw_closes if isinstance(v, (int, float))]
-
-        # The live last price is whichever is fresher: Yahoo's consolidated
-        # regularMarketPrice or the newest 1-minute bar close.
-        last_bar_time = timestamps[-1] if timestamps else 0
-        regular_time = meta.get("regularMarketTime") or 0
-        regular_price = meta.get("regularMarketPrice")
-        if regular_price is not None and regular_time >= last_bar_time:
-            last = regular_price
-        else:
-            last = closes[-1] if closes else regular_price
-        if last is None:
+    quote_lock = _QUOTE_LOCKS[hash(symbol) % len(_QUOTE_LOCKS)]
+    with quote_lock:
+        # Another request for this ticker may have populated the cache while
+        # this caller waited. The global request semaphore alone does not
+        # prevent multiple same-symbol cache misses from reaching Yahoo.
+        cached = _QUOTE_CACHE.get(symbol)
+        if cached is not None:
+            return dict(cached)
+        if _QUOTE_FAILURE_CACHE.get(symbol):
             return None
-        previous = (
-            meta.get("chartPreviousClose")
-            or meta.get("previousClose")
-            or (closes[0] if closes else None)
-        )
-        change = (
-            (last - previous) if (last is not None and previous is not None) else 0.0
-        )
-        pct = (change / previous * 100) if (previous and previous != 0) else None
-        if previous is None:
-            change = None
-        asof = meta.get("regularMarketTime") or (timestamps[-1] if timestamps else 0)
-        row = {
-            "symbol": symbol,
-            "name": resolved_name,
-            "last": last,
-            "change": change,
-            "pct": pct,
-            "low": min(closes) if closes else None,
-            "high": max(closes) if closes else None,
-            "series": closes[-24:],
-            "currency": meta.get("currency", ""),
-            "asof": asof,
-            "stale": not asof or time.time() - asof > MARKET_STALE_AFTER_S,
-            "group": SYMBOL_GROUP.get(symbol, "INDICES"),
-        }
-        _QUOTE_CACHE.store(symbol, dict(row))
-        return dict(row)
-    except Exception:
-        # One unavailable symbol must not break the snapshot; the UI flags
-        # the gap via the "expected" count and carries stale rows forward.
-        return None
+
+        try:
+            url = YAHOO_CHART_URL.format(symbol=quote(symbol, safe=""))
+            # Yahoo does not publish a limit for this public chart URL. Bound
+            # parallel quote bursts, especially when the large STOCKS group loads.
+            with _YAHOO_REQUEST_SLOTS:
+                result = json.loads(fetch(url, "application/json"))["chart"]["result"][0]
+            meta = result.get("meta") or {}
+            resolved_name = name or meta.get("shortName") or meta.get("longName") or symbol
+            timestamps = result.get("timestamp") or []
+            quote_indicators = result.get("indicators", {}).get("quote") or []
+            raw_closes = quote_indicators[0].get("close", []) if quote_indicators else []
+            closes = [float(v) for v in raw_closes if isinstance(v, (int, float))]
+
+            # The live last price is whichever is fresher: Yahoo's consolidated
+            # regularMarketPrice or the newest 1-minute bar close.
+            last_bar_time = timestamps[-1] if timestamps else 0
+            regular_time = meta.get("regularMarketTime") or 0
+            regular_price = meta.get("regularMarketPrice")
+            if regular_price is not None and regular_time >= last_bar_time:
+                last = regular_price
+            else:
+                last = closes[-1] if closes else regular_price
+            if last is None:
+                _QUOTE_FAILURE_CACHE.store(symbol, True)
+                return None
+            previous = (
+                meta.get("chartPreviousClose")
+                or meta.get("previousClose")
+                or (closes[0] if closes else None)
+            )
+            change = (
+                (last - previous) if (last is not None and previous is not None) else 0.0
+            )
+            pct = (change / previous * 100) if (previous and previous != 0) else None
+            if previous is None:
+                change = None
+            asof = meta.get("regularMarketTime") or (timestamps[-1] if timestamps else 0)
+            row = {
+                "symbol": symbol,
+                "name": resolved_name,
+                "last": last,
+                "change": change,
+                "pct": pct,
+                "low": min(closes) if closes else None,
+                "high": max(closes) if closes else None,
+                "series": closes[-24:],
+                "currency": meta.get("currency", ""),
+                "asof": asof,
+                "stale": not asof or time.time() - asof > MARKET_STALE_AFTER_S,
+                "group": SYMBOL_GROUP.get(symbol, "INDICES"),
+            }
+            _QUOTE_CACHE.store(symbol, dict(row))
+            return dict(row)
+        except Exception:
+            # One unavailable symbol must not break the snapshot; the UI flags
+            # the gap via the "expected" count and carries stale rows forward.
+            # A short bounded negative cache prevents lock waiters from each
+            # retrying the same failed upstream request in sequence.
+            _QUOTE_FAILURE_CACHE.store(symbol, True)
+            return None
 
 
 def _bse_sofix_row() -> dict:

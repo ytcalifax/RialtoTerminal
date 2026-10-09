@@ -178,6 +178,8 @@ def _parse_bbox(raw: str | None, max_area: float | None = VESSELS_MAX_SQ_DEG) ->
         min_lat, min_lon, max_lat, max_lon = (float(x) for x in raw.split(","))
     except ValueError:
         return DEFAULT_VESSELS_BBOX
+    if not all(math.isfinite(value) for value in (min_lat, min_lon, max_lat, max_lon)):
+        return DEFAULT_VESSELS_BBOX
     min_lat = max(-85.0, min(85.0, min_lat))
     max_lat = max(-85.0, min(85.0, max_lat))
     min_lon = max(-180.0, min(180.0, min_lon))

@@ -15,6 +15,23 @@ const FACTORS = [
   ['MACRO', 'macro'],
   ['CROSS-ASSET', 'crossAsset'],
 ];
+const EXPECTED_INPUTS = {
+  sentiment: ['cnnFearGreed', 'aaiBull', 'aaiBear', 'cryptoFg'],
+  volatility: ['vix', 'vix9d', 'vix3m'],
+  positioning: ['putCallRatio', 'skew'],
+  trend: ['spxPrice', 'sma20', 'sma50', 'sma200'],
+  breadth: ['pctAbove200d', 'rspSpyRatio', 'advDecRatio'],
+  momentum: ['spxRoc20d', 'sectorRsiAvg'],
+  liquidity: ['m2Yoy', 'fedBsMom', 'sofr'],
+  credit: ['hySpread', 'igSpread', 'hyTrend30d'],
+  macro: ['fedRate', 't10y2y', 'unrate'],
+  crossAsset: ['goldReturn30d', 'tltReturn30d', 'spyReturn30d', 'dxyChange30d'],
+};
+
+function factorInputs(factor) {
+  if (factor?.inputs && typeof factor.inputs === 'object') return factor.inputs;
+  try { return JSON.parse(factor?.inputsJson || '{}'); } catch { return {}; }
+}
 
 async function loadMarketSentiment() {
   const id = ++requestId;
@@ -39,8 +56,13 @@ async function loadMarketSentiment() {
       if (!Number.isFinite(value)) return `<div class="fear-greed-factor unavailable" title="${label} factor unavailable"><span>${label}</span><i></i><strong>—</strong></div>`;
       const percent = Math.max(0, Math.min(100, value));
       const weight = Number.isFinite(Number(factor.weight)) ? ` · WEIGHT ${(Number(factor.weight) * 100).toFixed(0)}%` : '';
-      const degraded = factor.degraded ? ' · DEGRADED INPUT' : '';
-      return `<div class="fear-greed-factor${factor.degraded ? ' degraded' : ''}" title="${label}${weight}${degraded}"><span>${label}${factor.degraded ? ' *' : ''}</span><i><b style="width:${percent}%"></b></i><strong>${Math.round(value)}</strong></div>`;
+      const inputs = factorInputs(factor);
+      const missing = (EXPECTED_INPUTS[key] || []).filter((input) => inputs[input] == null);
+      const partial = Boolean(factor.degraded) || missing.length > 0;
+      const inputStatus = factor.degraded ? ' · SOURCE MARKED DEGRADED' : '';
+      const missingStatus = missing.length ? ` · MISSING ${missing.join(', ')}` : '';
+      const title = `${label}${weight}${inputStatus}${missingStatus}`;
+      return `<div class="fear-greed-factor${partial ? ' degraded' : ''}" title="${title}"><span>${label}${partial ? ' *' : ''}</span><i><b style="width:${percent}%"></b></i><strong>${Math.round(value)}</strong></div>`;
     }).join('');
     const sourceAt = Date.parse(fear.seededAt || '');
     const sourceLabel = Number.isFinite(sourceAt)

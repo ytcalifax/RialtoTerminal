@@ -1,18 +1,35 @@
 import { $, esc, safeExternalUrl } from './dom.js';
 import { state } from './state.js';
+import { evaluateDeductions } from './deduction.js';
 
 const STORAGE_KEY = 'rialto_alert_settings_v1';
 let initialized = false;
 let alertSound;
 const HEADLINE_STOP_WORDS = new Set('a an and are as at be by for from has have in into is it its of on or our over says said the their this to up was were will with after amid new first more near'.split(' '));
+const DEDUCTION_STOP_WORDS = new Set([...HEADLINE_STOP_WORDS, 'event', 'report', 'reports', 'news', 'latest', 'update', 'updates']);
+
+/** Normalise alert copy so punctuation/case drift cannot defeat de-duplication. */
+const fingerprintOf = (title, detail) => `${title}|${detail}`
+  .toLowerCase()
+  .replace(/[^\p{L}\p{N}]+/gu, ' ')
+  .trim()
+  .replace(/\s+/g, ' ');
 
 function saveSettings() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.alertSettings));
 }
 
 function addNotification(title, detail, link = '') {
+  // Same title+detail arriving through several feed pipelines is one alert.
+  const fingerprint = fingerprintOf(title, detail);
+  if (state.alertBaselines.seenAlerts.includes(fingerprint)) return;
+  state.alertBaselines.seenAlerts.push(fingerprint);
+  state.alertBaselines.seenAlerts = state.alertBaselines.seenAlerts.slice(-300);
   const safeLink = safeExternalUrl(link);
   const item = { id: `${Date.now()}-${Math.random()}`, title, detail, link: safeLink, at: Date.now() };
+  // Drop an identical copy already sitting in the activity list (e.g. cleared
+  // baselines re-observing the same event within one refresh cycle).
+  state.notifications = state.notifications.filter((x) => fingerprintOf(x.title, x.detail) !== fingerprint);
   state.notifications.unshift(item);
   state.notifications = state.notifications.slice(0, 100);
   renderNotifications();
@@ -70,14 +87,14 @@ function observeNews(items) {
   const current = new Set(items.map((x) => x.url));
   if (!state.alertBaselines.news) {
     state.alertBaselines.news = [...current];
-    return;
+    return [];
   }
   const previous = state.alertBaselines.news;
+  const newItems = items.filter((x) => !previous.includes(x.url));
   state.alertBaselines.news = [...current];
-  if (!state.alertSettings.news) return;
-  items.filter((x) => !previous.includes(x.url)).filter((x) => {
-    return matchesTopics(x);
-  }).slice(0, 5).forEach((x) => addNotification('NEW HEADLINE', x.title, x.url));
+  if (!state.alertSettings.news) return newItems;
+  newItems.filter(matchesTopics).slice(0, 5).forEach((x) => addNotification('NEW HEADLINE', x.title, x.url));
+  return newItems;
 }
 
 function matchesTerms(item, terms) {
@@ -88,19 +105,94 @@ function matchesTerms(item, terms) {
   return needles.some((term) => text.includes(term));
 }
 
+function itemId(item, fallback) {
+  const properties = item.properties || {};
+  return String(item.id || properties.event_id || item.url || properties.url || item.sourceUrl || `${item.date || properties.event_date || item.published || item.occurredAt || ''}-${item.name || properties.name || item.title || item.location || item.country || fallback}`);
+}
+
+function textValues(value) {
+  if (Array.isArray(value)) return value.flatMap(textValues);
+  if (value && typeof value === 'object') return Object.values(value).flatMap(textValues);
+  return typeof value === 'string' ? [value] : [];
+}
+
+function termsFor(item) {
+  const text = textValues(item).join(' ')
+    .toLocaleLowerCase();
+  return new Set((text.match(/[\p{L}\p{N}]{4,}/gu) || []).filter((term) => !DEDUCTION_STOP_WORDS.has(term)));
+}
+
+function recent(item) {
+  const properties = item.properties || {};
+  const raw = item.published || item.occurredAt || item.dateStart || item.detectedAt || item.publishedAt || item.date || properties.event_date || '';
+  const timestamp = Date.parse(String(raw));
+  return Number.isNaN(timestamp) ? true : Date.now() - timestamp <= 86400000;
+}
+
+function correlate(sourceName, item, targetName, targetItems, title) {
+  if (!item || !recent(item)) return;
+  const sourceTerms = termsFor(item);
+  if (sourceTerms.size === 0) return;
+  const match = targetItems.find((target) => {
+    if (!recent(target)) return false;
+    const overlap = [...sourceTerms].filter((term) => termsFor(target).has(term));
+    // Two shared terms distinguish a real link from a stop-word-shaped one.
+    return overlap.length >= 2;
+  });
+  if (!match) return;
+  // The pair is stored unordered: the same event seen news→market and
+  // market→news must produce one signal, not two.
+  const key = [[`${sourceName}:${itemId(item, sourceName)}`, `${targetName}:${itemId(match, targetName)}`]
+    .sort().join('|')].join('');
+  if (state.alertBaselines.deductions.includes(key)) return;
+  state.alertBaselines.deductions.push(key);
+  state.alertBaselines.deductions = state.alertBaselines.deductions.slice(-200);
+  const detail = [...new Set([item.name, item.title, item.location, item.country, match.title, match.name].filter(Boolean))].slice(0, 3).join(' · ');
+  addNotification(title, detail || 'Related signals detected');
+}
+
+function observeDerivedSignals(source, items) {
+  if (!items?.length) return;
+  const settings = state.alertSettings;
+  items.slice(0, 5).forEach((item) => {
+    if (source === 'news') {
+      if (settings.news && settings.conflict) correlate('news', item, 'conflict', state.warReports, 'CONFLICT + NEWS SIGNAL');
+      if (settings.news && settings.conflict) correlate('news', item, 'outage', state.warWorldMonitor?.outages || [], 'OUTAGE + NEWS SIGNAL');
+      if (settings.news && settings.diseaseOutbreaks) correlate('news', item, 'disease', state.diseaseOutbreaks, 'OUTBREAK + NEWS SIGNAL');
+      if (settings.news && settings.markets) correlate('news', item, 'market', state.market, 'MARKET + NEWS SIGNAL');
+    } else if (source === 'conflict' && settings.news && settings.conflict) {
+      correlate('conflict', item, 'news', state.news, 'CONFLICT + NEWS SIGNAL');
+    } else if (source === 'outage' && settings.news && settings.conflict) {
+      correlate('outage', item, 'news', state.news, 'OUTAGE + NEWS SIGNAL');
+    } else if (source === 'disease' && settings.news && settings.diseaseOutbreaks) {
+      correlate('disease', item, 'news', state.news, 'OUTBREAK + NEWS SIGNAL');
+    } else if (source === 'market' && settings.news && settings.markets) {
+      correlate('market', item, 'news', state.news, 'MARKET + NEWS SIGNAL');
+    } else if (source === 'vessels' && settings.news && settings.vessels) {
+      correlate('vessel', item, 'news', state.news, 'VESSEL + NEWS SIGNAL');
+    } else if (source === 'aircraft' && settings.news && settings.aircraft) {
+      correlate('aircraft', item, 'news', state.news, 'AIRCRAFT + NEWS SIGNAL');
+    }
+  });
+  // Every feed refresh is a fresh chance to corroborate cause→effect rules.
+  evaluateDeductions(addNotification);
+}
+
 function observeConflict(reports) {
   const ids = reports.map((x) => x.id || x.url || `${x.date}-${x.name}`);
   if (!state.alertBaselines.conflict) {
     state.alertBaselines.conflict = ids;
-    return;
+    return [];
   }
+  const newReports = reports.filter((x) => !state.alertBaselines.conflict.includes(x.id || x.url || `${x.date}-${x.name}`));
   if (state.alertSettings.conflict) {
-    reports.filter((x) => !state.alertBaselines.conflict.includes(x.id || x.url || `${x.date}-${x.name}`))
+    newReports
       .filter((x) => matchesTerms(x, state.alertSettings.conflictTerms))
       .filter(matchesTopics)
       .slice(0, 5).forEach((x) => addNotification('NEW CONFLICT REPORT', `${x.name || x.location || 'Reported event'} · ${x.date || ''}`, x.url || ''));
   }
   state.alertBaselines.conflict = ids;
+  return newReports;
 }
 
 function observeWorldMonitor(layers) {
@@ -113,10 +205,11 @@ function observeWorldMonitor(layers) {
   const current = events.map(idFor);
   if (!previous) {
     state.alertBaselines.worldMonitor = current;
-    return;
+    return [];
   }
+  const newEvents = events.filter((item) => !previous.includes(idFor(item)));
   if (state.alertSettings.conflict) {
-    events.filter((item) => !previous.includes(idFor(item)))
+    newEvents
       .filter((item) => matchesTerms(item, state.alertSettings.conflictTerms))
       .filter(matchesTopics)
       .slice(0, 5)
@@ -129,6 +222,7 @@ function observeWorldMonitor(layers) {
       });
   }
   state.alertBaselines.worldMonitor = current;
+  return newEvents;
 }
 
 function observeDiseaseOutbreaks(outbreaks) {
@@ -137,10 +231,11 @@ function observeDiseaseOutbreaks(outbreaks) {
   const current = outbreaks.map(idFor);
   if (!previous) {
     state.alertBaselines.diseaseOutbreaks = current;
-    return;
+    return [];
   }
+  const newOutbreaks = outbreaks.filter((item) => !previous.includes(idFor(item)));
   if (state.alertSettings.diseaseOutbreaks) {
-    outbreaks.filter((item) => !previous.includes(idFor(item))).filter(matchesTopics).slice(0, 5).forEach((item) => {
+    newOutbreaks.filter(matchesTopics).slice(0, 5).forEach((item) => {
       const title = [item.disease, item.location].filter(Boolean).join(' · ') || 'Disease outbreak';
       const detail = [item.alertLevel, item.sourceName, item.countryCode].filter(Boolean).join(' · ');
       const link = typeof item.sourceUrl === 'string' && item.sourceUrl.startsWith('https://') ? item.sourceUrl : '';
@@ -148,14 +243,17 @@ function observeDiseaseOutbreaks(outbreaks) {
     });
   }
   state.alertBaselines.diseaseOutbreaks = current;
+  return newOutbreaks;
 }
 
 function observeMarkets(items) {
   const snapshot = Object.fromEntries(items.map((x) => [x.symbol, Number(x.pct)]));
   if (!state.alertBaselines.markets) {
     state.alertBaselines.markets = snapshot;
-    return;
+    return [];
   }
+  const changed = items.filter((x) => Math.abs(Number(x.pct)) >= (Number(state.alertSettings.marketMovePct) || 2)
+    && Math.abs(Number(x.pct) - Number(state.alertBaselines.markets[x.symbol] || 0)) >= 0.25);
   if (state.alertSettings.markets) {
     const threshold = Number(state.alertSettings.marketMovePct) || 2;
     items.filter((x) => Math.abs(Number(x.pct)) >= threshold && Math.abs(Number(x.pct) - Number(state.alertBaselines.markets[x.symbol] || 0)) >= 0.25)
@@ -163,26 +261,29 @@ function observeMarkets(items) {
       .slice(0, 5).forEach((x) => addNotification('MARKET MOVE', `${x.name} ${Number(x.pct) >= 0 ? '+' : ''}${Number(x.pct).toFixed(2)}%`));
   }
   state.alertBaselines.markets = snapshot;
+  return changed;
 }
 
 function observeTracks(kind, items) {
   const key = kind === 'vessels' ? 'vessels' : 'aircraft';
   const previous = state.alertBaselines[key];
   const current = items.map((x) => String(x.id));
-  if (!previous) { state.alertBaselines[key] = current; return; }
+  if (!previous) { state.alertBaselines[key] = current; return []; }
+  const newItems = items.filter((x) => !previous.includes(String(x.id)));
   state.alertBaselines[key] = current;
   if (!state.alertSettings[key]) return;
   const terms = state.alertSettings[kind === 'vessels' ? 'vesselTerms' : 'aircraftTerms'];
   const minimum = Number(state.alertSettings[kind === 'vessels' ? 'vesselMinSpeed' : 'aircraftMinAltitude']) || 0;
-  items.filter((x) => !previous.includes(String(x.id)))
+  newItems
     .filter((x) => matchesTerms(x, terms))
     .filter(matchesTopics)
     .filter((x) => (kind === 'vessels' ? Number(x.speed) : Number(x.alt)) >= minimum)
     .slice(0, 5).forEach((x) => addNotification(kind === 'vessels' ? 'VESSEL DETECTED' : 'AIRCRAFT DETECTED', `${x.name || x.id}${kind === 'vessels' && x.dest ? ` · ${x.dest}` : ''}`));
+  return newItems;
 }
 
-function observeVessels(items) { observeTracks('vessels', items); }
-function observeAircraft(items) { observeTracks('aircraft', items); }
+function observeVessels(items) { return observeTracks('vessels', items); }
+function observeAircraft(items) { return observeTracks('aircraft', items); }
 
 function renderNotifications() {
   const list = $('#notificationList');
@@ -430,4 +531,15 @@ function initAlertsPage() {
   };
 }
 
-export { initNotifications, initAlertsPage, observeNews, observeConflict, observeWorldMonitor, observeDiseaseOutbreaks, observeMarkets, observeVessels, observeAircraft };
+export {
+  initNotifications,
+  initAlertsPage,
+  observeNews,
+  observeConflict,
+  observeWorldMonitor,
+  observeDiseaseOutbreaks,
+  observeMarkets,
+  observeVessels,
+  observeAircraft,
+  observeDerivedSignals,
+};

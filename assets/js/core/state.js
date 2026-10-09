@@ -44,7 +44,10 @@ const state = {
     aircraftMinAltitude: 0,
     marketMovePct: 2,
   },
-  alertBaselines: { news: null, conflict: null, worldMonitor: null, diseaseOutbreaks: null, markets: null, vessels: null, aircraft: null },
+  alertBaselines: { news: null, conflict: null, worldMonitor: null, diseaseOutbreaks: null, markets: null, vessels: null, aircraft: null, deductions: [], seenAlerts: [] },
+  deductions: [],         // cross-feed cause→effect deductions (newest first)
+  deductionQuotes: [],    // engine's own quote watchlist rows (effect instruments)
+  deductionBaseline: { conflict: {}, news: {}, quotes: {} }, // per-feed counters + first-seen prices
   marketplace: [],        // latest marketplace listings
   marketplaceQuery: '',   // latest marketplace search
 

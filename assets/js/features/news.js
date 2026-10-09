@@ -12,7 +12,7 @@ import { req } from '../core/net.js';
 import { setHealth, setStatus } from '../core/status.js';
 import { state } from '../core/state.js';
 import { TOPIC_TERMS } from '../core/constants.js';
-import { observeNews } from '../core/notifications.js';
+import { observeNews, observeDerivedSignals } from '../core/notifications.js';
 
 /**
  * Load the merged news payload and repaint every news surface.
@@ -35,7 +35,7 @@ async function loadNews(feed = state.feed, query = state.newsQuery || '', countr
     const failed = state.newsSources.length - sourceCount;
     if (sourceCount || !state.news.length) {
       state.news = (result.items || []).sort((a, b) => newsTimestamp(b.published) - newsTimestamp(a.published));
-      observeNews(state.news);
+      observeDerivedSignals('news', observeNews(state.news));
       state.timestamps.news = Date.now();
     }
     state.errors.news = failed ? `${failed} FEED${failed === 1 ? '' : 'S'} UNAVAILABLE` : '';

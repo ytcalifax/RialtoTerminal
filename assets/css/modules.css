@@ -236,6 +236,7 @@
 .threshold-input input { width: 68px; height: 30px; padding: 0 7px; border: 1px solid #3d494d; border-radius: 5px; background: #111719; color: #f0c36c; text-align: right; font: 11px Roboto Mono, monospace; }
 
 .alert-activity { display: flex; flex-direction: column; max-height: 100%; min-height: 300px; }
+
 .notification-list { overflow: auto; }
 .notification-item { display: grid; gap: 6px; padding: 14px 18px; border-bottom: 1px solid #2d383b; }
 .notification-item b { color: #edbd66; font: 600 8px Roboto Mono, monospace; letter-spacing: .06em; }

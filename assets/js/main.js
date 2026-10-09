@@ -14,6 +14,7 @@ import { $ } from './core/dom.js';
 import { on } from './core/hooks.js';
 import { state } from './core/state.js';
 import { initNotifications } from './core/notifications.js';
+import { initDeductions } from './core/deduction.js';
 import { initDebugPanel } from './core/debugPanel.js';
 
 import { openPage } from './ui/navigation.js';
@@ -62,6 +63,7 @@ on('geospatial:updated', () => renderModule());
 
 initChrome();
 initNotifications();
+initDeductions(); // quote watchlist for cause→effect deductions; ticks every 5 min
 initDebugPanel();
 initCommandLine();
 initNewsChrome();

@@ -7,7 +7,7 @@ export function renderAlertsPage(root) {
     <div class="alerts-layout">
       <div class="alerts-settings">
         <section class="alert-card alert-subscriptions">
-          <div class="alert-card-head"><span><i class="dot orange"></i> SUBSCRIPTIONS</span><small>CHOOSE WHAT SHOULD REACH YOU</small></div>
+          <div class="alert-card-head"><span><i class="dot orange"></i> SUBSCRIPTIONS</span><small>CHOOSE WHAT SHOULD REACH YOU · ENABLE RELATED FEEDS FOR CORRELATED SIGNALS</small></div>
           <label class="alert-option"><span class="alert-option-icon">N</span><span class="alert-option-copy"><b>Headline matches</b><small>New stories that match your selected terms</small></span><input id="alertNews" type="checkbox" aria-label="Subscribe to headline alerts"><span class="switch"></span></label>
           <label class="alert-option"><span class="alert-option-icon conflict">!</span><span class="alert-option-copy"><b>Conflict updates</b><small>New reports added to the conflict feed</small></span><input id="alertConflict" type="checkbox" aria-label="Subscribe to conflict alerts"><span class="switch"></span></label>
           <label class="alert-option"><span class="alert-option-icon conflict">+</span><span class="alert-option-copy"><b>Disease outbreaks</b><small>New WHO and ProMED outbreak alerts</small></span><input id="alertDiseaseOutbreaks" type="checkbox" aria-label="Subscribe to disease outbreak alerts"><span class="switch"></span></label>

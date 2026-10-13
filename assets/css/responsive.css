@@ -4,7 +4,7 @@
   }
 
   .terminal {
-    min-height: 100dvh;
+    min-height: var(--vh);
     height: auto;
   }
 
@@ -30,7 +30,7 @@
   }
 
   .module {
-    min-height: 70vh;
+    min-height: calc(var(--vh) * 0.7);
   }
 
   .topline {
@@ -185,7 +185,7 @@
     flex: none;
     height: auto;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(230px, 35vh) minmax(300px, 55vh);
+    grid-template-rows: minmax(230px, calc(var(--vh) * 0.35)) minmax(300px, calc(var(--vh) * 0.55));
   }
 
   .module-list {

@@ -6,11 +6,23 @@ import { focusPositionView, renderMapView } from './view.js';
 const mapKindOf = (map) => (map.id === 'miniMap' ? 'home' : map.dataset.mapKind || 'ship');
 let mapDrag = null;
 
+/**
+ * Pixels per layout pixel on a map element. The terminal is rendered through a
+ * CSS `zoom`, so pointer coordinates and `getBoundingClientRect()` are in scaled
+ * space while `clientWidth`/tile offsets are not — this bridges the two.
+ * @param {HTMLElement} map - the map element.
+ * @returns {number} scale factor, 1 when nothing is scaled.
+ */
+function mapScale(map) {
+  const layoutWidth = map.clientWidth;
+  return layoutWidth ? map.getBoundingClientRect().width / layoutWidth : 1;
+}
+
 window.addEventListener('pointermove', (e) => {
   if (!mapDrag) return;
   const d = mapDrag;
-  d.dx = e.clientX - d.x;
-  d.dy = e.clientY - d.y;
+  d.dx = (e.clientX - d.x) / d.scale;
+  d.dy = (e.clientY - d.y) / d.scale;
   if (Math.abs(d.dx) + Math.abs(d.dy) > 3) d.moved = true;
   if (d.moved) d.stage.style.transform = `translate3d(${d.dx}px,${d.dy}px,0)`;
 });
@@ -55,21 +67,23 @@ function setupMapInteraction(selector = '.module-map') {
 
   map.onpointerdown = (e) => {
     if (e.target.closest('.map-controls') || e.target.closest('.map-grid-label a') || e.target.closest('.map-point-popup')) return;
-    mapDrag = { map, stage, view, x: e.clientX, y: e.clientY, dx: 0, dy: 0, moved: false };
+    mapDrag = { map, stage, view, x: e.clientX, y: e.clientY, dx: 0, dy: 0, moved: false, scale: mapScale(map) };
     stage.classList.add('dragging');
   };
 
   // Zoom keeping the geographic point under (cx, cy) fixed: convert the
   // cursor offset to world pixels, scale by 2^(target-current), reproject.
-  const setZoom = (next, cx = map.getBoundingClientRect().left + map.clientWidth / 2,
-                   cy = map.getBoundingClientRect().top + map.clientHeight / 2) => {
+  const setZoom = (next, cx, cy) => {
     const current = clampMapZoom(view.zoom);
     const target = clampMapZoom(next);
     view.zoom = current;
     const old = mapProject(view.lon, view.lat, current);
     const rect = map.getBoundingClientRect();
-    const px = cx - rect.left - map.clientWidth / 2;
-    const py = cy - rect.top - map.clientHeight / 2;
+    const scale = mapScale(map);
+    const anchorX = cx ?? rect.left + rect.width / 2;
+    const anchorY = cy ?? rect.top + rect.height / 2;
+    const px = (anchorX - rect.left) / scale - map.clientWidth / 2;
+    const py = (anchorY - rect.top) / scale - map.clientHeight / 2;
     const k = 2 ** (target - current);
     const z = target;
     const point = { x: old.x + px, y: old.y + py };

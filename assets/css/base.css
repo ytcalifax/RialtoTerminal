@@ -1,6 +1,14 @@
 @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;600;700&family=Roboto:wght@400;500;700;900&display=swap');
 
 :root {
+  /* Global UI scale. The whole terminal is rendered through this one knob, so
+     changing it enlarges every panel, row and label proportionally. */
+  --zoom: 1.1;
+  /* `zoom` does not scale viewport units, so every `vh`/`vw` in the stylesheet
+     goes through these instead — they resolve to the viewport as measured
+     inside the zoomed layout, which keeps the terminal filling the window. */
+  --vh: calc(100dvh / var(--zoom));
+  --vw: calc(100vw / var(--zoom));
   --bg: #080a0c;
   --panel: #101316;
   --panel2: #14181b;
@@ -42,6 +50,20 @@
 
 *::-webkit-scrollbar-corner {
   background: #101316;
+}
+
+html {
+  zoom: var(--zoom);
+}
+
+/* Narrower windows get a gentler scale so the dense rows still fit on one
+   line. `--vh`/`--vw` follow automatically since they divide by `--zoom`. */
+@media (max-width: 1500px) {
+  :root { --zoom: 1.05; }
+}
+
+@media (max-width: 1200px) {
+  :root { --zoom: 1; }
 }
 
 html, body {

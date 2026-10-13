@@ -168,18 +168,24 @@ function initDebugPanel() {
   handle.addEventListener('pointerdown', (event) => {
     if (event.target.closest('button')) return;
     const rect = panel.getBoundingClientRect();
-    drag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: rect.left, top: rect.top };
-    panel.style.left = `${rect.left}px`;
-    panel.style.top = `${rect.top}px`;
+    // The terminal renders through a CSS `zoom`, so rect and pointer values are
+    // in scaled space while style offsets are not — do the drag in layout pixels.
+    const scale = panel.offsetWidth ? rect.width / panel.offsetWidth : 1;
+    const left = rect.left / scale;
+    const top = rect.top / scale;
+    drag = { pointerId: event.pointerId, x: event.clientX / scale, y: event.clientY / scale, left, top, scale };
+    panel.style.left = `${left}px`;
+    panel.style.top = `${top}px`;
     panel.style.right = 'auto';
     handle.setPointerCapture(event.pointerId);
     event.preventDefault();
   });
   handle.addEventListener('pointermove', (event) => {
     if (!drag || event.pointerId !== drag.pointerId) return;
-    const rect = panel.getBoundingClientRect();
-    const left = Math.max(0, Math.min(window.innerWidth - Math.min(rect.width, 100), drag.left + event.clientX - drag.x));
-    const top = Math.max(0, Math.min(window.innerHeight - Math.min(rect.height, 40), drag.top + event.clientY - drag.y));
+    const maxLeft = innerWidth / drag.scale - Math.min(panel.offsetWidth, 100);
+    const maxTop = innerHeight / drag.scale - Math.min(panel.offsetHeight, 40);
+    const left = Math.max(0, Math.min(maxLeft, drag.left + event.clientX / drag.scale - drag.x));
+    const top = Math.max(0, Math.min(maxTop, drag.top + event.clientY / drag.scale - drag.y));
     panel.style.left = `${left}px`;
     panel.style.top = `${top}px`;
   });

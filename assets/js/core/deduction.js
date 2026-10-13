@@ -336,7 +336,7 @@ function chokepointSignals(rows) {
       const lat = ring.reduce((sum, [, la]) => sum + Number(la), 0) / ring.length;
       const lon = ring.reduce((sum, [lo]) => sum + Number(lo), 0) / ring.length;
       const percent = Number(feature.properties?.percent) || 0;
-      if (percent >= 25 && pointIn(choke, lat, lon)) {
+      if (percent > 10 && pointIn(choke, lat, lon)) {
         context.push(`Navigation interference affecting ${percent.toFixed(0)}% of aircraft reports nearby`);
         return true;
       }
@@ -663,11 +663,11 @@ const RULES = [
       { label: 'Equities down', weight: 2, test: () => moveWeight('^GSPC', 'down') >= 2 ? moveInDirection('^GSPC', 'down') : null },
       { label: 'Conflict activity present', weight: 1, test: (c) => Object.values(c.conflicts).some((x) => (x.weight || 0) >= 2) && 'Reported conflict activity present' },
     ],
-    watch: (c) => Boolean(moveInDirection('^VIX', 'up')) || Boolean(moveInDirection('GC=F', 'up')),
-    watchReason: (c) => [
+    watch: () => Boolean(moveInDirection('^VIX', 'up')) || Boolean(moveInDirection('GC=F', 'up')),
+    watchReason: () => [
       moveInDirection('^VIX', 'up'), moveInDirection('GC=F', 'up'), moveInDirection('^GSPC', 'down'),
     ].filter(Boolean).join(' · '),
-    gate: (c) => Boolean(moveInDirection('^VIX', 'up')) && Boolean(moveInDirection('^GSPC', 'down')),
+    gate: () => Boolean(moveInDirection('^VIX', 'up')) && Boolean(moveInDirection('^GSPC', 'down')),
   },
 ];
 

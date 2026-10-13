@@ -302,7 +302,7 @@ function minimalPath({ score, minScore, gatePassed, gateChecks, requirements }) 
   const scorePath = best?.length ? best.map((item) => `${item.label} (+${item.weight})`) : [];
   const unavailable = requirements.filter((item) => !item.passed && item.dataStatus === 'NOT_EVALUABLE').map((item) => item.label);
   const prefix = !gatePassed ? 'Needs gate' : 'Needs';
-  const text = `${prefix}${!gatePassed && needed ? ` plus ${needed} points` : needed ? ` ${needed} points` : ''}${scorePath.length ? `: ${scorePath.join(' + ')}` : needed ? ': no fully evaluable point path' : ''}${gatePath.text ? ` · gate: ${gatePath.text}` : ''}${unavailable.length ? ` · not evaluable: ${unavailable.join(', ')}` : ''}`;
+  const text = `${prefix}${!gatePassed && needed ? ` plus ${needed} points` : needed ? ` ${needed} points` : ''}${scorePath.length ? `: ${scorePath.join(' + ')}` : needed ? ': no fully evaluable point path' : ''}${gatePath.text ? ` · gate: ${gatePath.text}` : ''}${unavailable.length ? ` · cannot assess yet (input unavailable or baseline warming): ${unavailable.join(', ')}` : ''}`;
   return { neededPoints: needed, gateRequired: !gatePassed, candidates: scorePath, gateOptions: gatePath.unmet, gateGroups: gatePath.groups, unevaluable: unavailable, text };
 }
 function ruleFeedHealth(rule) {

@@ -3,7 +3,7 @@ import { state } from './state.js';
 import { evaluateDeductions } from './deduction.js';
 import { on } from './hooks.js';
 import { notificationDedupeKey, notificationFingerprint } from './notificationIdentity.js';
-import { decisionWatchRules } from './decisionWatch.js';
+import { decisionWatchRules, requirementStatusLabel } from './decisionWatch.js';
 
 const STORAGE_KEY = 'rialto_alert_settings_v1';
 const NOTIFICATIONS_STORAGE_KEY = 'rialto_notifications_v1';
@@ -28,6 +28,13 @@ function persistActivity(item) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(item),
     keepalive: true,
+  }).catch(() => {});
+}
+
+function deletePersistedActivity(action) {
+  fetch('/api/alerts/activity', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(action), keepalive: true,
   }).catch(() => {});
 }
 
@@ -415,7 +422,7 @@ function renderNotifications() {
           : 'SCORE TREND · INSUFFICIENT HISTORY';
         const requirements = (rule.requirements || []).filter((item) => !item.passed).slice(0, 4);
         const evidenceLine = requirements.length
-          ? requirements.map((item) => `${item.dataStatus || 'NOT_OBSERVED'} · ${item.label}`).join(' | ')
+          ? requirements.map((item) => `${requirementStatusLabel(item.dataStatus)} · ${item.label}`).join(' | ')
           : (rule.requirements || []).filter((item) => item.passed).slice(0, 3).map((item) => `OBSERVED · ${item.label}`).join(' | ');
         const market = rule.marketConfirmation;
         const marketLine = market
@@ -685,6 +692,7 @@ function initAlertsPage() {
   });
   $('#clearNotifications').onclick = () => {
     state.notifications = [];
+    deletePersistedActivity({ action: 'clear' });
     saveNotifications();
     renderNotifications();
   };
@@ -692,6 +700,7 @@ function initAlertsPage() {
     const button = event.target.closest('[data-remove-notification]');
     if (!button) return;
     state.notifications = state.notifications.filter((item) => item.id !== button.dataset.removeNotification);
+    deletePersistedActivity({ action: 'delete', id: button.dataset.removeNotification });
     saveNotifications();
     renderNotifications();
   };

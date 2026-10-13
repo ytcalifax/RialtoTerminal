@@ -108,6 +108,9 @@ function exportAlertsText() {
       signal: requirement.label,
       points: requirement.weight,
       status: requirement.dataStatus || 'NOT_OBSERVED',
+      statusLabel: requirement.dataStatus === 'NOT_EVALUABLE' ? 'UNABLE TO EVALUATE · input unavailable or insufficient'
+        : requirement.dataStatus === 'NOT_OBSERVED' ? 'NO SIGNAL OBSERVED · input available but criterion not met'
+          : requirement.passed ? 'OBSERVED' : 'STATUS UNKNOWN',
     })),
   }));
   const divergenceMap = new Map();
@@ -244,6 +247,9 @@ function exportAlertsText() {
           weight: requirement.weight,
           passed: requirement.passed,
           dataStatus: requirement.dataStatus || (requirement.passed ? 'OBSERVED' : 'NOT_OBSERVED'),
+          dataStatusLabel: requirement.dataStatus === 'NOT_EVALUABLE' ? 'UNABLE TO EVALUATE · input unavailable or insufficient'
+            : requirement.dataStatus === 'NOT_OBSERVED' ? 'NO SIGNAL OBSERVED · input available but criterion not met'
+              : requirement.passed ? 'OBSERVED' : 'STATUS UNKNOWN',
           value: requirement.detail || '',
         })),
         effects: effectRows(rule.effects),

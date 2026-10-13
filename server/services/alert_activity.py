@@ -4,6 +4,7 @@ import json
 import os
 import sqlite3
 import threading
+from contextlib import closing, contextmanager
 from pathlib import Path
 
 _LOCK = threading.Lock()
@@ -22,8 +23,15 @@ def _connect() -> sqlite3.Connection:
     return connection
 
 
+@contextmanager
+def _session():
+    with closing(_connect()) as connection:
+        with connection:
+            yield connection
+
+
 def list_activity() -> dict:
-    with _LOCK, _connect() as connection:
+    with _LOCK, _session() as connection:
         rows = connection.execute("SELECT payload FROM activity ORDER BY at DESC, rowid DESC LIMIT ?", (_LIMIT,)).fetchall()
     return {"items": [json.loads(row[0]) for row in rows], "limit": _LIMIT, "persistence": "server-local SQLite"}
 
@@ -42,7 +50,7 @@ def save_activity(item: object) -> tuple[int, dict]:
         return 400, {"error": "Activity requires id, title, detail, and a positive timestamp."}
     normalized = {"id": identity, "at": at, "title": title, "detail": detail,
                   "link": str(item.get("link") or "")[:2000]}
-    with _LOCK, _connect() as connection:
+    with _LOCK, _session() as connection:
         connection.execute(
             "INSERT OR IGNORE INTO activity(id, at, payload) VALUES (?, ?, ?)",
             (identity, at, json.dumps(normalized, ensure_ascii=False)),
@@ -57,7 +65,7 @@ def save_activity(item: object) -> tuple[int, dict]:
 def delete_activity(action: object) -> tuple[int, dict]:
     if not isinstance(action, dict):
         return 400, {"error": "Activity action must be a JSON object."}
-    with _LOCK, _connect() as connection:
+    with _LOCK, _session() as connection:
         if action.get("action") == "clear":
             connection.execute("DELETE FROM activity")
             return 200, {"cleared": True}

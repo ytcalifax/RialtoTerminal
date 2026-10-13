@@ -201,12 +201,30 @@ function quoteDiagnostic(symbol, direction) {
 }
 
 function conflictEventWeight(report) {
+  const properties = report?.properties || report || {};
   const text = rowText(report);
-  let weight = 1;
-  if (/\bMASS VIOLENCE\b/i.test(text)) weight = 3;
-  else if (/\bFIGHT\b/i.test(text)) weight = 2;
-  else if (/\bASSAULT\b/i.test(text)) weight = 1;
-  return weight;
+  const goldstein = Number(properties.goldstein);
+  const mentions = Number(properties.mentions || properties.articles || 1);
+  // Research-backed weighting: UCDP/CAMEO severity is commonly proxied by
+  // the event's Goldstein conflict intensity; prominence is approximated by
+  // logarithmic article/mention counts, which grow sublinearly so one
+  // heavily-covered event cannot dwarf several moderate events.
+  let severity = 1;
+  if (Number.isFinite(goldstein) && goldstein < 0) {
+    // Goldstein scale runs roughly -10..+10; conflict intensity increases
+    // as values become more negative. Scale to a 1..4 severity bucket.
+    severity = Math.max(1, Math.min(4, Math.ceil(Math.abs(goldstein) / 2.5)));
+  } else if (/\bMASS VIOLENCE\b/i.test(text)) {
+    severity = 3;
+  } else if (/\bFIGHT\b/i.test(text)) {
+    severity = 2;
+  } else if (/\bASSAULT\b/i.test(text)) {
+    severity = 1;
+  }
+  const prominence = Number.isFinite(mentions) && mentions > 10
+    ? Math.min(2, Math.floor(Math.log10(Math.max(1, mentions))))
+    : 0;
+  return Math.max(1, Math.min(6, severity + prominence));
 }
 
 function conflictSignals(reports, theater) {
@@ -324,8 +342,13 @@ function chokepointSignals(rows) {
       }
       return false;
     });
+    const evidenceWeight = (observations.length ? 3 : 0)
+      + (flowSignals.length ? 2 : 0)
+      + (evidenceFamilies.has('reporting') ? 1 : 0)
+      + (evidenceFamilies.has('maritime observations') ? 1 : 0);
     return {
       ...choke,
+      weight: evidenceWeight,
       signals: [...new Set(signals)].slice(0, 4),
       observations: [...new Set(observations)],
       flowSignals: [...new Set(flowSignals)],
@@ -417,7 +440,7 @@ function inputVisibility() {
 function theaterGateChecks(context) {
   const conflictPass = context.conflict.weight >= 3;
   const headlinesPass = context.news.hits >= 4 && context.news.rising;
-  const chokepointPass = context.choke.signals.length > 0;
+  const chokepointPass = (context.choke.weight || 0) >= 2;
   const outagePass = context.outages.reduce((sum, item) => sum + (item.weight || 1), 0) >= 2;
   const routeContext = context.choke.context.length
     ? ` · Context only (not scored): ${context.choke.context.join(' · ')}` : '';
@@ -473,7 +496,7 @@ const RULES = [
       { symbol: '^GSPC', dir: 'down' },
     ],
     requires: [
-      { label: 'Conflict activity rising in at least two theaters', weight: 2, test: (c) => Object.values(c.conflicts).filter((x) => x.rising && x.count).length >= 2 && 'Reported activity increased in at least two theaters' },
+      { label: 'Conflict activity rising in at least two theaters', weight: 2, test: (c) => Object.values(c.conflicts).filter((x) => x.rising && (x.weight || 0) >= 3).length >= 2 && 'Reported activity increased in at least two theaters' },
       { label: 'Volatility up', weight: 1, test: () => moveInDirection('^VIX', 'up') },
       { label: 'Gold up · equities down', weight: 2, test: () => {
         const gold = moveInDirection('GC=F', 'up');
@@ -518,7 +541,7 @@ const RULES = [
       { symbol: 'GC=F', dir: 'up' },
     ],
     requires: [
-      { label: 'Conflict activity rising in at least two theaters', weight: 2, test: (c) => Object.values(c.conflicts).filter((x) => x.rising && x.count).length >= 2 && 'Reported activity increased in at least two theaters' },
+      { label: 'Conflict activity rising in at least two theaters', weight: 2, test: (c) => Object.values(c.conflicts).filter((x) => x.rising && (x.weight || 0) >= 3).length >= 2 && 'Reported activity increased in at least two theaters' },
       { label: 'High-severity conflict reports in at least two theaters', weight: 1, test: (c) => Object.values(c.conflicts).filter((x) => (x.weight || 0) >= 3).length >= 2 && 'Severity-weighted conflict reports in at least two theaters' },
       { label: 'Defense names bid', weight: 2, test: () => {
         const rtx = moveInDirection('RTX', 'up');
@@ -549,7 +572,7 @@ const RULES = [
       { label: 'Russia / Ukraine conflict reports', weight: 2, test: (c) => ((c.conflicts['Russia / Ukraine']?.weight || 0) >= 3 && c.conflicts['Russia / Ukraine'].detail) || null },
       { label: 'Black Sea grain corridor disruption', weight: 2, test: (c) => {
         const choke = (c.chokepoints || []).find((x) => x.id === 'blacksea');
-        return choke && choke.signals.length ? choke.signals.join(' · ') : null;
+        return choke && (choke.weight || 0) >= 2 ? choke.signals.join(' · ') : null;
       } },
       { label: 'Wheat up', weight: 2, test: () => moveInDirection('ZW=F', 'up') },
       { label: 'Hedge demand up', weight: 1, test: () => moveInDirection('GC=F', 'up') },
@@ -576,7 +599,7 @@ const RULES = [
     requires: [
       { label: 'Producer or regional internet outage', weight: 2, test: (c) => c.outages.length ? c.outages.map((o) => o.text).join(' · ') : null },
       { label: 'Corroborated route disruption', weight: 2, test: (c) => {
-        const signals = (c.chokepoints || []).flatMap((x) => x.signals || []);
+        const signals = (c.chokepoints || []).filter((x) => (x.weight || 0) >= 2).flatMap((x) => x.signals || []);
         return signals.length ? signals.slice(0, 3).join(' · ') : null;
       } },
       { label: 'Energy market moving up', weight: 3, test: () => {
@@ -606,7 +629,7 @@ const RULES = [
     requires: [
       { label: 'Navigation interference nearby', weight: 2, test: (c) => (c.chokepoints || []).some((choke) => (choke.context || []).some((note) => /GPSJam/i.test(note)))
         ? 'Navigation interference reported in a monitored area' : null },
-      { label: 'Conflict reports present', weight: 2, test: (c) => Object.values(c.conflicts).some((x) => x.count > 0 || x.weight >= 3) && 'Reported conflict activity present' },
+      { label: 'Conflict reports present', weight: 2, test: (c) => Object.values(c.conflicts).some((x) => (x.weight || 0) >= 2) && 'Reported conflict activity present' },
       { label: 'Defense bid or airline selling off', weight: 2, test: () => {
         const rtx = moveInDirection('RTX', 'up');
         const lmt = moveInDirection('LMT', 'up');
@@ -697,7 +720,7 @@ function evaluateDeductions(notify = null) {
 }
 function runRule(rule, ctx, diagnostics = null) {
   if (!rule) return [];
-  let gatePassed = true;
+  let gatePassed;
   try { gatePassed = rule.gate ? Boolean(rule.gate(ctx)) : true; } catch { gatePassed = false; }
   const gateChecks = rule.gateChecks ? rule.gateChecks(ctx) : [];
   const causes = [];

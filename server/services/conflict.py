@@ -232,6 +232,21 @@ def _conflict_events() -> list[dict]:
         url = row[60]
         domain = urlsplit(url).hostname or "GDELT"
         actors = " vs ".join(actor for actor in (row[6], row[16]) if actor)
+        goldstein = None
+        try:
+            goldstein = float(row[30])
+        except (TypeError, ValueError, IndexError):
+            goldstein = None
+        mentions = 0
+        try:
+            mentions = int(row[31])
+        except (TypeError, ValueError, IndexError):
+            mentions = 0
+        articles = 0
+        try:
+            articles = int(row[33])
+        except (TypeError, ValueError, IndexError):
+            articles = 0
         props = {
             "event_id": row[0],
             "name": row[52] or "REPORTED LOCATION",
@@ -241,6 +256,9 @@ def _conflict_events() -> list[dict]:
             "mentionedthemes": f"{labels[row[28]]} · CAMEO {row[26]} · {row[33]} ARTICLES",
             "geores": int(row[51]) if row[51].isdigit() else 0,
             "event_date": event_day.isoformat(),
+            "goldstein": goldstein,
+            "mentions": mentions,
+            "articles": articles,
         }
         geometry = {"type": "Point", "coordinates": [lon, lat]} if lat is not None and lon is not None else None
         results.append({"type": "Feature", "geometry": geometry, "properties": props})

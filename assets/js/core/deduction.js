@@ -171,6 +171,18 @@ function moveOf(symbol) {
   const pct = Number(row.pct);
   return Number.isFinite(pct) ? pct : null;
 }
+function quoteLevelOf(symbol) {
+  const row = quoteRow(symbol);
+  if (!quoteUsability(row).usable) return null;
+  const level = Number(row.last);
+  return Number.isFinite(level) ? level : null;
+}
+function volatilitySignal(direction, minimumLevel = 20, minimumMovePct = MOVE_FLOOR_PCT) {
+  const level = quoteLevelOf('^VIX');
+  const move = moveOf('^VIX');
+  if (level == null || move == null || level < minimumLevel || Math.abs(move) < minimumMovePct) return null;
+  return moveInDirection('^VIX', direction);
+}
 function effectName(symbol) {
   return EFFECT_NAMES[symbol] || quoteRow(symbol)?.name || symbol;
 }
@@ -490,7 +502,7 @@ function theaterRequires(theater, choke) {
     } },
     { label: 'Hedge demand moving in the expected direction', weight: 1, test: () => theater.rule.effects
       .filter((effect) => ['GC=F', '^VIX'].includes(effect.symbol))
-      .map((effect) => moveInDirection(effect.symbol, effect.dir)).find(Boolean) || null },
+      .map((effect) => effect.symbol === '^VIX' ? volatilitySignal(effect.dir, 20) : moveInDirection(effect.symbol, effect.dir)).find(Boolean) || null },
   ];
 }
 
@@ -516,7 +528,7 @@ const RULES = [
     ],
     requires: [
       { label: 'Conflict activity rising in at least two theaters', weight: 2, test: (c) => Object.values(c.conflicts).filter((x) => x.rising && (x.weight || 0) >= 3).length >= 2 && 'Reported activity increased in at least two theaters' },
-      { label: 'Volatility up', weight: 1, test: () => moveInDirection('^VIX', 'up') },
+      { label: 'Volatility up (VIX ≥20)', weight: 1, test: () => volatilitySignal('up', 20) },
       { label: 'Gold up · equities down', weight: 2, test: () => {
         const gold = moveInDirection('GC=F', 'up');
         const equities = moveInDirection('^GSPC', 'down');
@@ -655,7 +667,7 @@ const RULES = [
         const dal = moveInDirection('DAL', 'down');
         return rtx || lmt || dal ? [rtx, lmt, dal].filter(Boolean).join(' · ') : null;
       } },
-      { label: 'Volatility up', weight: 1, test: () => moveInDirection('^VIX', 'up') },
+      { label: 'Volatility up (VIX ≥20)', weight: 1, test: () => volatilitySignal('up', 20) },
     ],
     watch: (c) => (c.chokepoints || []).some((choke) => (choke.context || []).some((note) => /GPSJam/i.test(note)))
       || Object.values(c.conflicts).some((x) => x.count > 0),
@@ -677,7 +689,7 @@ const RULES = [
       { symbol: '^GSPC', dir: 'down' },
     ],
     requires: [
-      { label: 'Volatility spiking', weight: 2, test: () => moveWeight('^VIX', 'up') >= 2 ? moveInDirection('^VIX', 'up') : null },
+      { label: 'Volatility stress (VIX ≥25 and up ≥5%)', weight: 2, test: () => volatilitySignal('up', 25, 5) },
       { label: 'Gold and silver up', weight: 2, test: () => (moveInDirection('GC=F', 'up') && moveInDirection('SI=F', 'up')) ? `${moveInDirection('GC=F', 'up')} · ${moveInDirection('SI=F', 'up')}` : null },
       { label: 'Equities down', weight: 2, test: () => moveWeight('^GSPC', 'down') >= 2 ? moveInDirection('^GSPC', 'down') : null },
       { label: 'New severity-weighted conflict activity', weight: 1, test: (c) => Object.values(c.conflicts).some((x) => x.rising && (x.weight || 0) >= 3) && 'Conflict severity weight ≥3 and rising' },

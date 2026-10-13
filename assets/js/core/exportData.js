@@ -70,6 +70,8 @@ const effectRows = (effects = []) => effects.map((effect) => {
     direction: effect.dir,
     observed: effect.observed || '',
     latestQuoteChangePct: quote?.pct == null || !Number.isFinite(Number(quote.pct)) ? null : Number(quote.pct),
+    changeReference: quote?.changeReference || 'UNSPECIFIED',
+    changeReferencePrice: quote?.changeReferencePrice == null || !Number.isFinite(Number(quote.changeReferencePrice)) ? null : Number(quote.changeReferencePrice),
     latestQuoteAsOf: Number.isFinite(asof) && asof > 0 ? new Date(asof * 1000).toISOString() : null,
     marketState: quote?.marketState || 'UNKNOWN',
     quote: effect.quoteStatus || '',
@@ -82,6 +84,32 @@ function exportAlertsText() {
   const returnedQuoteSymbols = new Set((state.deductionQuotes || []).map((quote) => quote.symbol));
   const requiredQuoteSymbols = [...new Set(rules.flatMap((rule) => (rule.effects || []).map((effect) => effect.symbol)))];
   const evaluatedAt = Number(diagnostics.evaluatedAt);
+  const firedRuleIds = new Set(rules.filter((rule) => rule.triggered).map((rule) => rule.id));
+  const currentNextSteps = rules.filter((rule) => !firedRuleIds.has(rule.id)).map((rule) => ({
+    kind: 'NEXT_STEP',
+    rule: rule.id,
+    title: rule.title,
+    status: rule.status,
+    score: rule.score,
+    maxScore: rule.maxScore,
+    minScore: rule.minScore,
+    whatWouldChangeThis: [
+      ...(rule.gateChecks || []).filter((check) => !check.passed).map((check) => `Gate: ${check.detail}`),
+      ...(rule.requirements || []).filter((requirement) => !requirement.passed)
+        .map((requirement) => `Signal not observed or not evaluable: ${requirement.label} (weight ${requirement.weight})`),
+    ],
+  }));
+  const marketDivergences = rules.flatMap((rule) => (rule.effects || [])
+    .filter((effect) => /^OPPOSITE\b/.test(effect.quoteStatus || ''))
+    .map((effect) => ({
+      rule: rule.id,
+      title: rule.title,
+      symbol: effect.symbol,
+      name: effect.name,
+      expectedDirection: effect.dir,
+      observed: effect.quoteStatus,
+      interpretation: 'Observed move contradicts this rule effect; this is a divergence flag, not evidence of causation.',
+    })));
   return JSON.stringify({
     capturedAt: new Date().toISOString(),
     workspace: state.page,
@@ -102,26 +130,31 @@ function exportAlertsText() {
     },
     // Deductions that crossed their threshold, quoted exactly as the activity
     // list shows them, with the weighted evidence that carried them there.
-    deductions: state.deductions.map((deduction) => ({
-      rule: deduction.rule,
-      title: deduction.title,
-      summary: deduction.summary,
-      score: deduction.score,
-      maxScore: deduction.maxScore,
-      minScore: deduction.minScore,
-      evidenceCoveragePct: deduction.evidenceCoveragePct,
-      hits: deduction.hits,
-      firstAt: deduction.firstAt,
-      lastAt: deduction.lastAt,
-      lastNotifiedAt: deduction.lastNotified,
-      notification: deductionNotificationText(deduction),
-      causes: (deduction.causes || []).map((cause) => ({
-        source: cause.source,
-        weight: cause.weight ?? null,
-        value: cause.detail || '',
+    deductions: [
+      ...state.deductions.map((deduction) => ({
+        kind: 'FIRED',
+        rule: deduction.rule,
+        title: deduction.title,
+        summary: deduction.summary,
+        score: deduction.score,
+        maxScore: deduction.maxScore,
+        minScore: deduction.minScore,
+        evidenceCoveragePct: deduction.evidenceCoveragePct,
+        hits: deduction.hits,
+        firstAt: deduction.firstAt,
+        lastAt: deduction.lastAt,
+        lastNotifiedAt: deduction.lastNotified,
+        notification: deductionNotificationText(deduction),
+        causes: (deduction.causes || []).map((cause) => ({
+          source: cause.source,
+          weight: cause.weight ?? null,
+          value: cause.detail || '',
+        })),
+        effects: effectRows(deduction.effects),
       })),
-      effects: effectRows(deduction.effects),
-    })),
+      ...currentNextSteps,
+    ],
+    findings: marketDivergences,
     sources: {
       evaluatedAt: Number.isFinite(evaluatedAt) && evaluatedAt > 0 ? new Date(evaluatedAt).toISOString() : null,
       inputCoverage: diagnostics.inputs || {},
@@ -156,6 +189,7 @@ function exportAlertsText() {
       })),
       // The quotes the market signals read, so every "observed" move above can
       // be checked against a price rather than taken on trust.
+      quoteChangeBasis: 'Percent change and change are measured against Yahoo Finance chartPreviousClose when supplied, otherwise Yahoo Finance previousClose. This is provider metadata; the app does not independently verify the reference against an exchange settlement feed.',
       quotes: state.deductionQuotes || [],
       quoteCoverage: {
         requiredByRules: requiredQuoteSymbols,

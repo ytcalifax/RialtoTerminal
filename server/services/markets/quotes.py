@@ -11,7 +11,6 @@ from urllib.parse import quote
 
 from ...config import (
     BSE_SOFIX_URL,
-    MARKET_STALE_AFTER_S,
     MARKET_TTL_S,
     QUOTES_MAX_SYMBOLS,
     SEARCH_TTL_S,
@@ -42,6 +41,67 @@ MARKET_SOURCE_NOTE = (
     "Yahoo Finance public chart endpoint · 1-minute bars + live last price; "
     "BSE Sofia SOFIX · 3-minute delay · indicative"
 )
+
+# Quote-age limits permit normal closed sessions/weekends without treating a
+# feed that stops updating indefinitely as current. These are fallback bounds;
+# they are not exchange holiday calendars.
+_STALE_AFTER_BY_GROUP = {
+    "INDICES": 72 * 60 * 60,
+    "STOCKS": 72 * 60 * 60,
+    "ETFS": 72 * 60 * 60,
+    "COMMODITIES": 36 * 60 * 60,
+    "RATES": 36 * 60 * 60,
+    "FX": 36 * 60 * 60,
+    "CRYPTO": 2 * 60 * 60,
+}
+
+
+def _market_state(meta: dict, now: float) -> str:
+    """Use Yahoo's published session periods when its marketState is absent."""
+    supplied = meta.get("marketState")
+    if isinstance(supplied, str) and supplied.strip() and supplied.strip().upper() != "UNKNOWN":
+        return supplied.strip().upper()
+    periods = meta.get("currentTradingPeriod")
+    regular = periods.get("regular") if isinstance(periods, dict) else None
+    if not isinstance(regular, dict):
+        return "UNKNOWN"
+    try:
+        start, end = float(regular["start"]), float(regular["end"])
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return "UNKNOWN"
+    if not (math.isfinite(start) and math.isfinite(end) and start < end):
+        return "UNKNOWN"
+    for session in ("pre", "regular", "post"):
+        period = periods.get(session)
+        if not isinstance(period, dict):
+            continue
+        try:
+            session_start, session_end = float(period["start"]), float(period["end"])
+        except (KeyError, TypeError, ValueError, OverflowError):
+            continue
+        if session_start <= now < session_end:
+            return session.upper()
+    return "CLOSED"
+
+
+def _change_reference(meta: dict, closes: list[float]) -> tuple[float | None, str | None]:
+    """Return Yahoo's validated prior-close value and its metadata field."""
+    raw = meta.get("chartPreviousClose")
+    source = "chartPreviousClose" if raw is not None else None
+    if raw is None:
+        raw = meta.get("previousClose")
+        source = "previousClose" if raw is not None else None
+    if raw is None:
+        return None, None
+    try:
+        previous = float(raw)
+    except (TypeError, ValueError, OverflowError):
+        return None, None
+    reference = next((close for close in closes if close > 0), None)
+    scale = previous / reference if reference else 1
+    if not math.isfinite(previous) or previous <= 0 or scale < 0.1 or scale > 10:
+        return None, None
+    return previous, source
 
 
 def _yahoo_quote(symbol: str, name: str | None = None) -> dict | None:
@@ -114,22 +174,11 @@ def _yahoo_quote(symbol: str, name: str | None = None) -> dict | None:
             if not math.isfinite(last):
                 _QUOTE_FAILURE_CACHE.store(symbol, True)
                 return None
-            previous = meta.get("chartPreviousClose") or meta.get("previousClose")
             # Yahoo occasionally returns a previous close in a different
             # scale than the session bars (for example Shanghai: 0.0002 vs
             # ~3,800). The first bar is not the prior close, so omit daily
             # change values instead of publishing a nonsensical percentage.
-            if previous is not None:
-                try:
-                    previous_value = float(previous)
-                except (TypeError, ValueError, OverflowError):
-                    previous_value = math.nan
-                reference = next((close for close in closes if close > 0), None)
-                scale = previous_value / reference if reference else 1
-                if not math.isfinite(previous_value) or previous_value <= 0 or scale < 0.1 or scale > 10:
-                    previous = None
-                else:
-                    previous = previous_value
+            previous, change_reference = _change_reference(meta, closes)
             change = (last - previous) if previous is not None else None
             pct = (change / previous * 100) if (previous and previous != 0) else None
 
@@ -161,14 +210,16 @@ def _yahoo_quote(symbol: str, name: str | None = None) -> dict | None:
                 "last": last,
                 "change": change,
                 "pct": pct,
+                "changeReference": change_reference,
+                "changeReferencePrice": previous,
                 "low": day_low,
                 "high": day_high,
                 "series": closes[-24:],
                 "currency": meta.get("currency", ""),
                 "asof": asof,
-                "stale": not asof or time.time() - asof > MARKET_STALE_AFTER_S,
-                "staleAfterS": MARKET_STALE_AFTER_S,
-                "marketState": meta.get("marketState") or "UNKNOWN",
+                "stale": not asof or time.time() - asof > _STALE_AFTER_BY_GROUP.get(SYMBOL_GROUP.get(symbol, "INDICES"), 24 * 60 * 60),
+                "staleAfterS": _STALE_AFTER_BY_GROUP.get(SYMBOL_GROUP.get(symbol, "INDICES"), 24 * 60 * 60),
+                "marketState": _market_state(meta, time.time()),
                 "exchangeTimezoneName": meta.get("exchangeTimezoneName") or "",
                 "group": SYMBOL_GROUP.get(symbol, "INDICES"),
             }
@@ -264,6 +315,11 @@ def _bse_sofix_row() -> dict:
         "series": [],
         "currency": "EUR",
         "asof": estimated_quote_time,
+        "stale": time.time() - estimated_quote_time > _STALE_AFTER_BY_GROUP["INDICES"],
+        "staleAfterS": _STALE_AFTER_BY_GROUP["INDICES"],
+        "marketState": "UNKNOWN",
+        "changeReference": "BSE widget daily change · reference unspecified",
+        "changeReferencePrice": None,
         "source": "BSE SOFIA · 3 MIN DELAY",
         "group": "INDICES",
     }

@@ -31,7 +31,6 @@ USER_AGENT = "Mozilla/5.0 (compatible; RialtoTerminal/1.0)"
 
 NEWS_TTL_S = 300  # align publisher feed cache with the 5-minute UI poll
 MARKET_TTL_S = 300  # per-symbol quotes; limits Yahoo refreshes to one per 5 min
-MARKET_STALE_AFTER_S = 86400  # older quotes are retained but explicitly stale
 SOFIX_TTL_S = 180  # BSE labels the index widget 3 min delayed
 
 # One process-wide pool shared by news and market fan-outs. A single bounded

@@ -167,6 +167,9 @@ def _yahoo_quote(symbol: str, name: str | None = None) -> dict | None:
                 "currency": meta.get("currency", ""),
                 "asof": asof,
                 "stale": not asof or time.time() - asof > MARKET_STALE_AFTER_S,
+                "staleAfterS": MARKET_STALE_AFTER_S,
+                "marketState": meta.get("marketState") or "UNKNOWN",
+                "exchangeTimezoneName": meta.get("exchangeTimezoneName") or "",
                 "group": SYMBOL_GROUP.get(symbol, "INDICES"),
             }
             _QUOTE_CACHE.store(symbol, dict(row))

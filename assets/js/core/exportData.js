@@ -60,20 +60,37 @@ function exportText() {
   return JSON.stringify(data, null, 2);
 }
 
-/** Per-effect market evidence: the instrument, what was seen and how the quote checked out. */
-const effectRows = (effects = []) => effects.map((effect) => ({
-  symbol: effect.symbol,
-  name: effect.name,
-  direction: effect.dir,
-  observed: effect.observed || '',
-  quote: effect.quoteStatus || '',
-}));
+/** Per-effect market evidence, including last-session values when not scoreable. */
+const effectRows = (effects = []) => effects.map((effect) => {
+  const quote = (state.deductionQuotes || []).find((item) => item.symbol === effect.symbol);
+  const asof = Number(quote?.asof);
+  return {
+    symbol: effect.symbol,
+    name: effect.name,
+    direction: effect.dir,
+    observed: effect.observed || '',
+    latestQuoteChangePct: quote?.pct == null || !Number.isFinite(Number(quote.pct)) ? null : Number(quote.pct),
+    latestQuoteAsOf: Number.isFinite(asof) && asof > 0 ? new Date(asof * 1000).toISOString() : null,
+    marketState: quote?.marketState || 'UNKNOWN',
+    quote: effect.quoteStatus || '',
+  };
+});
 
 function exportAlertsText() {
   const diagnostics = state.deductionDiagnostics || { at: null, rules: [] };
+  const rules = diagnostics.rules || [];
+  const returnedQuoteSymbols = new Set((state.deductionQuotes || []).map((quote) => quote.symbol));
+  const requiredQuoteSymbols = [...new Set(rules.flatMap((rule) => (rule.effects || []).map((effect) => effect.symbol)))];
+  const evaluatedAt = Number(diagnostics.evaluatedAt);
   return JSON.stringify({
     capturedAt: new Date().toISOString(),
     workspace: state.page,
+    evaluation: {
+      evaluatedAt: Number.isFinite(evaluatedAt) && evaluatedAt > 0 ? new Date(evaluatedAt).toISOString() : null,
+      status: !Number.isFinite(evaluatedAt) || evaluatedAt <= 0 ? 'NOT_EVALUATED'
+        : Object.values(state.errors).some(Boolean) ? 'PARTIAL' : 'COMPLETE',
+      statusSemantics: 'FIRED means gate passed and score met the threshold; BUILDING means the gate passed and score reached at least 80% of the threshold; GATE CLOSED means an activation gate failed. Gate-closed rules are diagnostic only. Ongoing conflict is context; the theater gate requires rising severity-weighted activity or accelerating headlines.',
+    },
     alerts: {
       count: state.notifications.length,
       items: state.notifications.map((item) => ({
@@ -106,22 +123,27 @@ function exportAlertsText() {
       effects: effectRows(deduction.effects),
     })),
     sources: {
-      evaluatedAt: diagnostics.at || null,
+      evaluatedAt: Number.isFinite(evaluatedAt) && evaluatedAt > 0 ? new Date(evaluatedAt).toISOString() : null,
+      inputCoverage: diagnostics.inputs || {},
       // Every rule the engine looked at, not only the ones that fired: a rule
       // that fell short is the more interesting half of the record, and its
       // checklist shows exactly which signal was missing.
-      rules: (diagnostics.rules || []).map((rule) => ({
+      rules: rules.map((rule) => ({
         id: rule.id,
         title: rule.title,
         summary: rule.summary,
         status: rule.status,
+        triggered: rule.triggered ?? rule.status === 'FIRED',
+        scoreMet: rule.scoreMet ?? rule.score >= rule.minScore,
         watchReason: rule.watchReason || '',
+        contextReason: rule.contextReason || '',
         score: rule.score,
         maxScore: rule.maxScore,
         minScore: rule.minScore,
         gate: {
+          required: rule.gateRequired ?? rule.gateDescription !== 'No separate gate.',
           description: rule.gateDescription || '',
-          passed: rule.gatePassed,
+          passed: (rule.gateRequired ?? rule.gateDescription !== 'No separate gate.') ? rule.gatePassed : null,
           checks: rule.gateChecks || [],
         },
         sources: (rule.requirements || []).map((requirement) => ({
@@ -135,16 +157,31 @@ function exportAlertsText() {
       // The quotes the market signals read, so every "observed" move above can
       // be checked against a price rather than taken on trust.
       quotes: state.deductionQuotes || [],
+      quoteCoverage: {
+        requiredByRules: requiredQuoteSymbols,
+        returned: [...returnedQuoteSymbols],
+        missing: requiredQuoteSymbols.filter((symbol) => !returnedQuoteSymbols.has(symbol)),
+        stale: (state.deductionQuotes || []).filter((quote) => quote.stale === true).map((quote) => quote.symbol),
+      },
       feedCounts: {
         news: state.news.length,
         conflictReports: state.warReports.length,
-        worldMonitor: state.warWorldMonitor?.features?.length || 0,
+        worldMonitor: {
+          armed: state.warWorldMonitor?.armed?.length || 0,
+          outages: state.warWorldMonitor?.outages?.length || 0,
+          chokepoints: state.warWorldMonitor?.chokepoints?.length || 0,
+        },
         diseaseOutbreaks: state.diseaseOutbreaks?.length || 0,
         marketInstruments: state.market.length,
         vessels: state.ships.length,
         aircraft: state.aircraft.length,
       },
+      conflictCoverage: state.warCoverage || null,
       feedTimestamps: state.timestamps,
+      timestampUnits: {
+        feedTimestamps: 'milliseconds since Unix epoch',
+        quoteAsOf: 'seconds since Unix epoch',
+      },
       errors: state.errors,
     },
   }, null, 2);

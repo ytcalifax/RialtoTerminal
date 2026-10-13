@@ -200,6 +200,24 @@ def _features(data: object) -> list[dict]:
     return [x for x in data["features"] if isinstance(x, dict)]
 
 
+def _war_coverage(reports: list, frontline: list, gpsjam: dict | None, worldmonitor: dict) -> dict:
+    sources = {
+        "GDELT": {"status": "OK" if reports else "UNAVAILABLE", "records": len(reports)},
+        "frontline": {"status": "OK" if frontline else "UNAVAILABLE", "records": len(frontline)},
+        "GPSJam": {
+            "status": "OK" if gpsjam and gpsjam.get("features") else "UNAVAILABLE",
+            "records": len((gpsjam or {}).get("features") or []),
+            "date": (gpsjam or {}).get("date", ""),
+        },
+        **{
+            f"World Monitor {name}": {"status": status, "records": len(worldmonitor.get(name, []))}
+            for name, status in (worldmonitor.get("source_status") or {}).items()
+        },
+    }
+    incomplete = [f"{name}: {source['status']}" for name, source in sources.items() if source["status"] != "OK"]
+    return {"status": "PARTIAL" if incomplete else "COMPLETE", "sources": sources, "incomplete": incomplete}
+
+
 def _conflict_events() -> list[dict]:
     manifest = fetch(_GDELT_MANIFEST_URL, "text/plain").decode("utf-8", "replace")
     first_line = next((line for line in manifest.splitlines() if line.strip()), "")
@@ -337,11 +355,15 @@ def war_snapshot() -> tuple[int, dict]:
         except Exception:
             recovered_gpsjam = None
         if recovered_gpsjam and recovered_gpsjam.get("features"):
+            coverage = _war_coverage(
+                cached.get("reports") or [], cached.get("frontline") or [],
+                recovered_gpsjam, cached.get("worldmonitor") or {},
+            )
             payload = {
                 **cached,
                 "gpsjam": recovered_gpsjam,
-                "partial": not cached.get("reports") or not cached.get("frontline")
-                or any(status != "OK" for status in (cached.get("worldmonitor") or {}).get("source_status", {}).values()),
+                "coverage": coverage,
+                "partial": coverage["status"] == "PARTIAL",
             }
             _war_cache.store("global", payload)
             return 200, payload
@@ -385,6 +407,7 @@ def war_snapshot() -> tuple[int, dict]:
         frontline_features = _features(front)
         if not report_features and not frontline_features:
             raise ValueError("Conflict feeds returned no map features")
+        coverage = _war_coverage(report_features, frontline_features, gpsjam, worldmonitor)
         payload = {
             "source": "GDELT Event Database",
             "reports": report_features,
@@ -392,8 +415,8 @@ def war_snapshot() -> tuple[int, dict]:
             "frontline_source": "UN OCHA / ISW & CTP Ukraine Front Line",
             "gpsjam": gpsjam or {"date": "", "source": "GPSJam", "features": []},
             "worldmonitor": worldmonitor,
-            "partial": not report_features or not frontline_features or gpsjam is None
-            or any(status != "OK" for status in worldmonitor.get("source_status", {}).values()),
+            "coverage": coverage,
+            "partial": coverage["status"] == "PARTIAL",
             "updated_at": int(time.time()),
         }
         _war_cache.store("global", payload)

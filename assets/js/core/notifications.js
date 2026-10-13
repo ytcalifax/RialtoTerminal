@@ -358,7 +358,7 @@ function observeAircraft(items) { return observeTracks('aircraft', items); }
 
 function renderNotifications() {
   const watchRules = (state.deductionDiagnostics?.rules || [])
-    .filter((rule) => rule.status === 'WATCH' || rule.status === 'FIRED')
+    .filter((rule) => ['BUILDING', 'FIRED', 'GATE CLOSED'].includes(rule.status))
     // Fired rules first: they are the ones that cleared their threshold.
     .sort((a, b) => (a.status === 'FIRED' ? 0 : 1) - (b.status === 'FIRED' ? 0 : 1));
   const watchSection = $('#decisionWatch');
@@ -371,16 +371,22 @@ function renderNotifications() {
         const downCount = effects.filter((effect) => effect.dir === 'down' && effect.observed).length;
         const trendArrow = upCount > downCount ? '↑' : downCount > upCount ? '↓' : '=';
         const fired = rule.status === 'FIRED';
+        const building = rule.status === 'BUILDING';
+        const gateClosed = rule.status === 'GATE CLOSED';
         const scoreLine = fired
           ? `FIRED · ${rule.score}/${rule.maxScore} (needs ${rule.minScore})`
-          : `SCORE ${rule.score}/${rule.maxScore} · FIRE AT ${rule.minScore}`;
+          : `${gateClosed ? 'GATE CLOSED · ' : building ? 'BUILDING · ' : ''}SCORE ${rule.score}/${rule.maxScore} · FIRE AT ${rule.minScore}`;
         // A fired rule's own reason text is thin, so fall back to the evidence
         // that actually carried it over the line.
-        const reason = rule.watchReason
-          || (fired ? (rule.requirements || []).filter((x) => x.passed).map((x) => x.detail || x.label).slice(0, 3).join(' · ') : '');
-        return `<article class="decision-watch-item${fired ? ' fired' : ''}"><div><b>${esc(rule.title)} <span class="trend-arrow">${esc(trendArrow)}</span></b><span class="${fired ? 'fired-score' : ''}">${esc(scoreLine)}</span></div><p>${esc(reason)}</p></article>`;
+        const gateReason = (rule.gateChecks || []).filter((x) => !x.passed).map((x) => x.detail).join(' · ')
+          || rule.gateDescription;
+        const reason = gateClosed
+          ? [rule.contextReason && `SIGNALS · ${rule.contextReason}`, `GATE · ${gateReason}`].filter(Boolean).join(' · ')
+          : rule.contextReason
+            || (fired ? (rule.requirements || []).filter((x) => x.passed).map((x) => x.detail || x.label).slice(0, 3).join(' · ') : '');
+        return `<article class="decision-watch-item${fired ? ' fired' : ''}${gateClosed ? ' closed' : ''}"><div><b>${esc(rule.title)} <span class="trend-arrow">${esc(trendArrow)}</span></b><span class="${fired ? 'fired-score' : gateClosed ? 'closed-score' : ''}">${esc(scoreLine)}</span></div><p>${esc(reason)}</p></article>`;
       }).join('')
-      : '<div class="notification-empty">NO ACTIVE WATCH SIGNALS</div>';
+      : '<div class="notification-empty">NO FIRED, BUILDING OR GATE-CLOSED RULES</div>';
   }
   const watchCount = $('#decisionWatchCount');
   if (watchCount) watchCount.textContent = String(watchRules.length);

@@ -5,7 +5,7 @@ const DEDUCTION_COOLDOWN_MS = 6 * 3600000;
 const DEDUCTION_LIMIT = 30;
 const DEDUCTION_WATCHLIST = [
   'BZ=F', 'CL=F', 'RB=F', 'HO=F', 'NG=F', 'GC=F', 'ZW=F',
-  '^VIX', '^GSPC', 'XLE', 'USO', 'UNG', 'XOM', 'SHEL', 'TTE',
+  'SI=F', '^VIX', '^GSPC', 'XLE', 'USO', 'UNG',
   'RTX', 'LMT', 'DAL', 'TSM', 'SMH',
 ];
 const EFFECT_NAMES = {
@@ -16,7 +16,7 @@ const EFFECT_NAMES = {
   'RTX': 'RTX', 'LMT': 'Lockheed', 'DAL': 'Delta', 'TSM': 'TSMC', 'SMH': 'Semis ETF',
 };
 const MOVE_FLOOR_PCT = 1;
-const QUOTE_MAX_AGE_MS = 30 * 60 * 1000;
+const DEFAULT_QUOTE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const SIGNAL_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const NEWS_WINDOW_MS = 15 * 60 * 1000;
 const CHOKEPOINTS = [
@@ -149,14 +149,25 @@ function fmtPct(value) {
 function quoteRow(symbol) {
   return state.deductionQuotes.find((x) => x.symbol === symbol) || null;
 }
-function moveOf(symbol) {
-  const row = quoteRow(symbol);
-  if (!row || row.stale === true) return null;
+function quoteUsability(row) {
+  if (!row) return { usable: false, reason: 'NO QUOTE' };
+  if (row.stale === true) return { usable: false, reason: 'STALE QUOTE' };
   const asof = Number(row.asof);
   const quoteAt = asof * 1000;
-  if (!Number.isFinite(asof) || asof <= 0 || quoteAt > Date.now() + 5 * 60 * 1000
-    || Date.now() - quoteAt > QUOTE_MAX_AGE_MS) return null;
-  if (row.pct == null || row.pct === '') return null;
+  if (!Number.isFinite(asof) || asof <= 0 || quoteAt > Date.now() + 5 * 60 * 1000) {
+    return { usable: false, reason: 'INVALID QUOTE TIMESTAMP' };
+  }
+  const maxAgeMs = Number(row.staleAfterS) > 0 ? Number(row.staleAfterS) * 1000 : DEFAULT_QUOTE_MAX_AGE_MS;
+  const ageMs = Math.max(0, Date.now() - quoteAt);
+  if (ageMs > maxAgeMs) return { usable: false, reason: `STALE QUOTE · ${Math.round(ageMs / 60000)}M OLD` };
+  if (row.pct == null || row.pct === '' || !Number.isFinite(Number(row.pct))) {
+    return { usable: false, reason: 'NO VALID CHANGE VALUE' };
+  }
+  return { usable: true, ageMs };
+}
+function moveOf(symbol) {
+  const row = quoteRow(symbol);
+  if (!quoteUsability(row).usable) return null;
   const pct = Number(row.pct);
   return Number.isFinite(pct) ? pct : null;
 }
@@ -183,21 +194,13 @@ function moveWeight(symbol, direction) {
 
 function quoteDiagnostic(symbol, direction) {
   const row = quoteRow(symbol);
-  if (!row) return 'NO QUOTE';
-  if (row.stale === true) return 'SOURCE MARKED STALE';
-  const asof = Number(row.asof);
-  const quoteAt = asof * 1000;
-  if (!Number.isFinite(asof) || asof <= 0 || quoteAt > Date.now() + 5 * 60 * 1000) return 'INVALID QUOTE TIMESTAMP';
-  const ageMinutes = Math.max(0, Math.round((Date.now() - quoteAt) / 60000));
-  if (Date.now() - quoteAt > QUOTE_MAX_AGE_MS) return `STALE QUOTE · ${ageMinutes}M OLD`;
-  if (row.pct == null || row.pct === '' || !Number.isFinite(Number(row.pct))) return 'NO VALID CHANGE VALUE';
+  const usability = quoteUsability(row);
+  if (!usability.usable) return usability.reason;
   const move = Number(row.pct);
-  if (move === 0) return `FLAT · ${fmtPct(move)} · BELOW ${MOVE_FLOOR_PCT}% FLOOR`;
+  const session = String(row.marketState || '').toUpperCase() === 'CLOSED' ? 'CLOSED · LAST SESSION · ' : '';
+  if (Math.abs(move) < MOVE_FLOOR_PCT) return `${session}FLAT · ${fmtPct(move)} · BELOW ${MOVE_FLOOR_PCT}% FLOOR`;
   const directionMatches = direction === 'up' ? move > 0 : move < 0;
-  if (Math.abs(move) < MOVE_FLOOR_PCT) {
-    return `${directionMatches ? 'ALIGNED' : 'OPPOSITE'} · ${fmtPct(move)} · BELOW ${MOVE_FLOOR_PCT}% FLOOR`;
-  }
-  return `${directionMatches ? 'ALIGNED' : 'OPPOSITE'} · ${fmtPct(move)}`;
+  return `${session}${directionMatches ? 'ALIGNED' : 'OPPOSITE'} · ${fmtPct(move)}`;
 }
 
 function conflictEventWeight(report) {
@@ -233,11 +236,17 @@ function conflictSignals(reports, theater) {
   const weight = relevant.reduce((sum, report) => sum + conflictEventWeight(report), 0);
   const previous = state.deductionBaseline.conflict[theater.label] ?? weight;
   state.deductionBaseline.conflict[theater.label] = weight;
+  const examples = relevant.slice(0, 2).map((report) => {
+    const properties = report?.properties || report || {};
+    const event = [properties.event_date || properties.date || properties.dateStart, properties.mentionednames || properties.actors, properties.name || properties.title, properties.domain || properties.source]
+      .filter(Boolean).join(' · ');
+    return `${event || 'Report details unavailable'}${properties.event_id ? ` · ID ${properties.event_id}` : properties.id ? ` · ID ${properties.id}` : ''}`;
+  }).join(' / ');
   return {
     count,
     weight,
     rising: weight > previous && previous >= 0,
-    detail: count ? `${count} ${theater.label} ${count === 1 ? 'event' : 'events'} reported (severity weight ${weight})${weight > previous ? ' · activity rising' : ''}` : '',
+    detail: count ? `${count} ${theater.label} ${count === 1 ? 'event' : 'events'} reported (severity weight ${weight})${weight > previous ? ' · activity rising' : ''} · ${examples}` : '',
   };
 }
 
@@ -392,7 +401,9 @@ function inputVisibility() {
   const rawReports = [...state.warReports, ...(state.warWorldMonitor?.armed || [])]
     .filter((x) => ageMs(x) <= 7 * 86400000);
   const topicReports = topics.length ? rawReports.filter(matchesSelectedTopics) : rawReports;
-  const rawOutages = (state.warWorldMonitor?.outages || []).filter((x) => ageMs(x) <= SIGNAL_MAX_AGE_MS);
+  const allOutages = state.warWorldMonitor?.outages || [];
+  const freshOutages = allOutages.filter((x) => ageMs(x) <= SIGNAL_MAX_AGE_MS);
+  const matchedOutages = topics.length ? freshOutages.filter(matchesSelectedTopics) : freshOutages;
   const chokepoints = state.warWorldMonitor?.chokepoints || [];
   const chokepointAt = Date.parse(String(state.warWorldMonitor?.chokepoints_fetched_at || ''));
   const chokepointFresh = state.warWorldMonitor?.source_status?.chokepoints === 'OK'
@@ -406,15 +417,21 @@ function inputVisibility() {
   const severeOutbreak = (x) => /^(high|severe|emergency|(?:who\s+)?grade\s*[34])\b/i.test(String(x.alertLevel || '').trim());
   const topicOutbreaks = topics.length ? rawOutbreaks.filter(matchesSelectedTopics) : rawOutbreaks;
   return {
-    headlines: { considered: Math.min(state.news.length, 120), fresh: rawHeadlines.length, topicMatched: topicMatched(rawHeadlines) },
+    headlines: { available: state.news.length, considered: Math.min(state.news.length, 120), truncated: state.news.length > 120, fresh: rawHeadlines.length, topicMatched: topicMatched(rawHeadlines) },
     conflictReports: {
       fresh: rawReports.length,
       topicMatched: topicReports.length,
       uniqueTopicMatched: new Set(topicReports.map((x) => String(x.id || x.url || x.sourceUrl || `${x.date || x.dateStart || x.occurredAt || ''}-${x.name || x.title || x.location || ''}`))).size,
     },
-    outages: { fresh: rawOutages.length, topicMatched: topicMatched(rawOutages) },
+    outages: {
+      received: allOutages.length,
+      fresh: freshOutages.length,
+      expired: allOutages.length - freshOutages.length,
+      topicMatched: matchedOutages.length,
+    },
     chokepointStatus: {
       status: chokepointFresh ? 'CURRENT' : 'STALE / UNAVAILABLE',
+      expectedRoutes: chokepoints.length,
       observedRoutes: chokepointFresh ? chokepoints.filter((point) => matchesTopicText(`${point.name || ''} ${(point.affectedRoutes || []).join(' ')} ${point.description || ''}`)
         && (Number(point.aisDisruptions) > 0
         || Number(point.activeWarnings) > 0
@@ -438,15 +455,17 @@ function inputVisibility() {
 }
 
 function theaterGateChecks(context) {
-  const conflictPass = context.conflict.weight >= 3;
+  const conflictPass = context.conflict.weight >= 3 && context.conflict.rising;
   const headlinesPass = context.news.hits >= 4 && context.news.rising;
   const chokepointPass = (context.choke.weight || 0) >= 2;
-  const outagePass = context.outages.reduce((sum, item) => sum + (item.weight || 1), 0) >= 2;
+  const outageWeight = context.outages.reduce((sum, item) => sum + (item.weight || 1), 0);
+  const outagePass = outageWeight >= 2;
+  const routeWeight = context.choke.weight || 0;
   const routeContext = context.choke.context.length
     ? ` · Context only (not scored): ${context.choke.context.join(' · ')}` : '';
   return [
-    { passed: conflictPass || headlinesPass, detail: `Conflict ≥2 (${context.conflict.count}) OR headlines ≥4 and +2 vs prior 15m (${context.news.hits} vs ${context.news.previousHits}${context.news.rising ? ', rising' : ', not rising'})` },
-    { passed: chokepointPass || outagePass, detail: `Route observations ${context.choke.evidenceFamilies.length} source families (${context.choke.signals.length} records) OR producer outages ≥1 (${context.outages.length})${routeContext}` },
+    { passed: conflictPass || headlinesPass, detail: `New conflict severity weight ≥3 (${context.conflict.weight} from ${context.conflict.count} reports${context.conflict.rising ? ', rising' : ', not rising'}) OR headlines ≥4 and +2 vs prior 15m (${context.news.hits} vs ${context.news.previousHits}${context.news.rising ? ', rising' : ', not rising'})` },
+    { passed: chokepointPass || outagePass, detail: `Route evidence weight ≥2 (${routeWeight}; ${context.choke.evidenceFamilies.length} source families, ${context.choke.signals.length} records) OR producer-outage weight ≥2 (${outageWeight} from ${context.outages.length} outages)${routeContext}` },
   ];
 }
 
@@ -456,7 +475,7 @@ function theaterRequires(theater, choke) {
     coreEffects.push(...theater.rule.effects.filter((effect) => ['TSM', 'SMH'].includes(effect.symbol)));
   }
   return [
-    { label: 'Conflict reports', weight: 2, test: (c) => c.conflict.weight >= 3 && c.conflict.detail },
+    { label: 'Severity-weighted conflict activity', weight: 2, test: (c) => c.conflict.weight >= 3 && c.conflict.detail },
     { label: 'Headline acceleration', weight: 1, test: (c) => (c.news.hits >= 4 && c.news.rising) && c.news.detail },
     { label: 'Corroborated maritime disruption', weight: 2, test: () => choke.observations.length ? choke.observations.join(' · ') : null },
     { label: 'World Monitor supply-flow disruption', weight: 1, test: () => choke.flowSignals[0] || null },
@@ -556,7 +575,7 @@ const RULES = [
       ...Object.entries(c.conflicts).filter(([, x]) => x.count > 0).map(([name, x]) => `${name}: ${x.count} report${x.count === 1 ? '' : 's'}`),
       moveInDirection('RTX', 'up'), moveInDirection('LMT', 'up'), moveInDirection('^VIX', 'up'),
     ].filter(Boolean).join(' · '),
-    gate: (c) => Object.values(c.conflicts).some((x) => x.rising && x.count)
+    gate: (c) => Object.values(c.conflicts).some((x) => x.rising && x.weight >= 3)
       && (Boolean(moveInDirection('RTX', 'up')) || Boolean(moveInDirection('LMT', 'up')) || Boolean(moveInDirection('^VIX', 'up'))),
   },
   {
@@ -585,7 +604,7 @@ const RULES = [
       (c.chokepoints || []).find((x) => x.id === 'blacksea')?.signals?.length ? 'Black Sea route signal' : '',
       moveInDirection('ZW=F', 'up'),
     ].filter(Boolean).join(' · '),
-    gate: (c) => Boolean(c.conflicts['Russia / Ukraine']?.count || c.conflicts['Russia / Ukraine']?.rising)
+    gate: (c) => Boolean(c.conflicts['Russia / Ukraine']?.rising && c.conflicts['Russia / Ukraine']?.weight >= 3)
       && (Boolean((c.chokepoints || []).find((x) => x.id === 'blacksea' && x.signals.length)) || Boolean(moveInDirection('ZW=F', 'up'))),
   },
   {
@@ -629,7 +648,7 @@ const RULES = [
     requires: [
       { label: 'Navigation interference nearby', weight: 2, test: (c) => (c.chokepoints || []).some((choke) => (choke.context || []).some((note) => /GPSJam/i.test(note)))
         ? 'Navigation interference reported in a monitored area' : null },
-      { label: 'Conflict reports present', weight: 2, test: (c) => Object.values(c.conflicts).some((x) => (x.weight || 0) >= 2) && 'Reported conflict activity present' },
+      { label: 'New severity-weighted conflict activity', weight: 2, test: (c) => Object.values(c.conflicts).some((x) => x.rising && (x.weight || 0) >= 3) && 'Conflict severity weight ≥3 and rising' },
       { label: 'Defense bid or airline selling off', weight: 2, test: () => {
         const rtx = moveInDirection('RTX', 'up');
         const lmt = moveInDirection('LMT', 'up');
@@ -646,7 +665,7 @@ const RULES = [
       moveInDirection('RTX', 'up'), moveInDirection('DAL', 'down'),
     ].filter(Boolean).join(' · '),
     gate: (c) => (c.chokepoints || []).some((choke) => (choke.context || []).some((note) => /GPSJam/i.test(note)))
-      && Object.values(c.conflicts).some((x) => x.count > 0),
+      && Object.values(c.conflicts).some((x) => x.rising && x.weight >= 3),
   },
   {
     id: 'volatility-panic',
@@ -661,7 +680,7 @@ const RULES = [
       { label: 'Volatility spiking', weight: 2, test: () => moveWeight('^VIX', 'up') >= 2 ? moveInDirection('^VIX', 'up') : null },
       { label: 'Gold and silver up', weight: 2, test: () => (moveInDirection('GC=F', 'up') && moveInDirection('SI=F', 'up')) ? `${moveInDirection('GC=F', 'up')} · ${moveInDirection('SI=F', 'up')}` : null },
       { label: 'Equities down', weight: 2, test: () => moveWeight('^GSPC', 'down') >= 2 ? moveInDirection('^GSPC', 'down') : null },
-      { label: 'Conflict activity present', weight: 1, test: (c) => Object.values(c.conflicts).some((x) => (x.weight || 0) >= 2) && 'Reported conflict activity present' },
+      { label: 'New severity-weighted conflict activity', weight: 1, test: (c) => Object.values(c.conflicts).some((x) => x.rising && (x.weight || 0) >= 3) && 'Conflict severity weight ≥3 and rising' },
     ],
     watch: () => Boolean(moveInDirection('^VIX', 'up')) || Boolean(moveInDirection('GC=F', 'up')),
     watchReason: () => [
@@ -713,11 +732,11 @@ function evaluateDeductions(notify = null) {
       id: `theater-${theater.choke}`,
       title: theater.rule.title,
       summary: theater.rule.summary,
-      gateDescription: 'At least 2 conflict reports or 4+ theater headlines, at least 2 above the prior 15m; and route evidence or a producer-region outage.',
+      gateDescription: 'New conflict activity with severity weight ≥3, or 4+ theater headlines rising by at least 2 versus the prior 15m; plus route evidence or a producer-region outage.',
       gateChecks: theaterGateChecks,
       effects: theater.rule.effects,
       minScore: theater.rule.minScore,
-      gate: (c) => (c.conflict.weight >= 3 || (c.news.hits >= 4 && c.news.rising))
+      gate: (c) => ((c.conflict.weight >= 3 && c.conflict.rising) || (c.news.hits >= 4 && c.news.rising))
         && (c.choke.signals.length > 0 || c.outages.length > 0),
       requires: theaterRequires(theater, choke),
       watch: (c) => c.conflict.count > 0 || c.news.hits >= 2 || c.choke.signals.length > 0 || c.choke.observations.length > 0 || c.outages.length > 0,
@@ -776,23 +795,31 @@ function runRule(rule, ctx, diagnostics = null) {
   // Evaluate the watch signal even when the rule has already fired. A fired
   // rule is the most interesting thing in the watch list, and the reason text
   // explains which evidence carried it there.
-  let watchReason = '';
+  let contextReason = '';
   if (rule.watch) {
-    try { watchReason = rule.watch(ctx) ? String(rule.watchReason?.(ctx) || 'Relevant partial evidence') : ''; } catch { watchReason = ''; }
+    try { contextReason = rule.watch(ctx) ? String(rule.watchReason?.(ctx) || 'Relevant partial evidence') : ''; } catch { contextReason = ''; }
   }
-  const status = fired ? 'FIRED' : watchReason ? 'WATCH' : !gatePassed ? 'GATE CLOSED' : 'BELOW THRESHOLD';
+  const watchMinimum = Math.ceil(rule.minScore * 0.8);
+  const watchReason = !fired && gatePassed && score >= watchMinimum ? contextReason : '';
+  // A gate is a hard activation condition. Keep watch evidence available as
+  // context, but never label a blocked rule as an ordinary WATCH candidate.
+  const status = fired ? 'FIRED' : !gatePassed ? 'GATE CLOSED' : watchReason ? 'BUILDING' : 'BELOW THRESHOLD';
   diagnostics?.push({
     id: rule.id,
     title: rule.title,
     summary: rule.summary,
-    gateDescription: rule.gateDescription || 'No separate gate.',
+    gateDescription: rule.gateDescription || (rule.gate ? 'Rule-specific activation conditions.' : 'No separate gate.'),
+    gateRequired: Boolean(rule.gate),
     gatePassed,
     gateChecks,
     score,
     maxScore,
     minScore: rule.minScore,
+    scoreMet: score >= rule.minScore,
+    triggered: fired,
     status,
     watchReason,
+    contextReason,
     requirements,
     effects: effects.map((effect, index) => ({ ...effect, dir: rule.effects[index].dir })),
   });
@@ -904,12 +931,18 @@ function emitNotification(deduction, notify) {
 }
 
 async function refreshQuotes() {
-  try {
-    const r = await req(`/api/quotes?symbols=${encodeURIComponent(DEDUCTION_WATCHLIST.join(','))}`);
-    const fresh = r.items || [];
-    if (!fresh.length) return;
-    state.deductionQuotes = fresh;
-  } catch { /* deduction quotes are corroboration, not a primary feed */ }
+  const batches = [];
+  for (let index = 0; index < DEDUCTION_WATCHLIST.length; index += 12) {
+    batches.push(DEDUCTION_WATCHLIST.slice(index, index + 12));
+  }
+  const results = await Promise.all(batches.map(async (symbols) => {
+    try {
+      const response = await req(`/api/quotes?symbols=${encodeURIComponent(symbols.join(','))}`);
+      return response.items || [];
+    } catch { return []; }
+  }));
+  const fresh = results.flat();
+  if (fresh.length) state.deductionQuotes = fresh;
 }
 function initDeductions() {
   if (quoteTimer) return;

@@ -10,6 +10,7 @@ async function loadWar(force = false) {
   try {
     const data = await req('/api/conficts');
     state.warReports = data.reports || [];
+    state.warCoverage = data.coverage || null;
     observeDerivedSignals('conflict', observeConflict(state.warReports));
     state.warFrontline = data.frontline || [];
     state.warGpsJam = data.gpsjam || { date: '', features: [] };
@@ -17,7 +18,8 @@ async function loadWar(force = false) {
     const newWorldMonitorItems = observeWorldMonitor(state.warWorldMonitor);
     observeDerivedSignals('outage', newWorldMonitorItems.filter((item) => item.alertKind === 'INTERNET DISRUPTION'));
     state.timestamps.war = Date.now();
-    state.errors.war = data.stale ? 'SHOWING CACHED PUBLIC DATA' : data.partial ? 'PARTIAL SOURCE COVERAGE' : '';
+    state.errors.war = data.stale ? 'SHOWING CACHED PUBLIC DATA'
+      : data.partial ? `PARTIAL SOURCE COVERAGE${data.coverage?.incomplete?.length ? ` · ${data.coverage.incomplete.join('; ')}` : ''}` : '';
   } catch (error) {
     state.errors.war = error.message;
   } finally {

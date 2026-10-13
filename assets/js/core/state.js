@@ -55,6 +55,7 @@ const state = {
   ships: [],
   aircraft: [],
   warReports: [],
+  warCoverage: null,
   warFrontline: [],
   warGpsJam: { date: '', features: [] },
   warShowFrontline: true,

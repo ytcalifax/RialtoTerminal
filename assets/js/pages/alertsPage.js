@@ -34,7 +34,7 @@ export function renderAlertsPage(root) {
           <button id="decisionWatchTab" type="button" role="tab" aria-selected="false" aria-controls="decisionWatch">DECISION WATCH <span id="decisionWatchCount">0</span></button>
         </div>
         <div id="notificationPanel" class="activity-tab-panel" role="tabpanel" aria-labelledby="activityTab"><div id="notificationList" class="notification-list"></div></div>
-        <section id="decisionWatch" class="decision-watch activity-tab-panel" role="tabpanel" aria-labelledby="decisionWatchTab" hidden><div class="decision-watch-head"><i class="dot blue"></i> RELEVANT SIGNALS · FIRED AND BUILDING</div><div id="decisionWatchList"></div></section>
+        <section id="decisionWatch" class="decision-watch activity-tab-panel" role="tabpanel" aria-labelledby="decisionWatchTab" hidden><div class="decision-watch-head"><i class="dot blue"></i> RELEVANT SIGNALS · FIRED, BUILDING &amp; GATE-CLOSED</div><div id="decisionWatchList"></div></section>
       </section>
     </div>`;
   $('#copyAlerts').onclick = (event) => copyJson(exportAlertsText(), event.currentTarget);

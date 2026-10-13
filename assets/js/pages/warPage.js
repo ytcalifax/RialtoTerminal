@@ -104,6 +104,12 @@ function linesFromGeoJSON(features) {
   return lines;
 }
 
+// GPSJam is a latest-day global coverage layer, not a dated conflict-event
+// archive. Keep it visible when the user narrows the event date range.
+function gpsJamFeatures() {
+  return state.warGpsJam?.features || [];
+}
+
 function filterReports(reports) {
   const query = state.conflictQuery.trim().toLocaleLowerCase();
   const selectedTypes = new Set(state.conflictTypes);
@@ -149,7 +155,7 @@ function renderWarPage(root) {
     && Number.isFinite(wmChokepointAt) && Date.now() - wmChokepointAt <= 30 * 60 * 1000;
   map._mapLabel = `FRONT LINE ${frontlineDate} · GPSJAM ${gpsDate} · WORLD MONITOR CHOKEPOINTS ${wmChokepointsCurrent ? 'CURRENT' : 'STALE / UNAVAILABLE'}`;
   map._routeSegments = state.warShowFrontline ? linesFromGeoJSON(state.warFrontline.filter((feature) => inConflictDateRange(feature.properties?.date))) : [];
-  map._coverageCells = state.warShowGpsJam ? (state.warGpsJam?.features || []).filter((feature) => inConflictDateRange(feature.properties?.date)) : [];
+  map._coverageCells = state.warShowGpsJam ? gpsJamFeatures() : [];
   map._selectedPointId = state.warSelectedId;
   const popup = document.createElement('aside');
   popup.className = 'map-point-popup';
@@ -189,7 +195,7 @@ function renderWarPage(root) {
       if (control.dataset.mapLayer === 'frontline') state.warShowFrontline = control.checked;
       if (control.dataset.mapLayer === 'gpsjam') state.warShowGpsJam = control.checked;
       map._routeSegments = state.warShowFrontline ? linesFromGeoJSON(state.warFrontline.filter((feature) => inConflictDateRange(feature.properties?.date))) : [];
-      map._coverageCells = state.warShowGpsJam ? (state.warGpsJam?.features || []).filter((feature) => inConflictDateRange(feature.properties?.date)) : [];
+      map._coverageCells = state.warShowGpsJam ? gpsJamFeatures() : [];
       renderMapView(map);
     };
   });
@@ -206,7 +212,7 @@ function renderWarPage(root) {
     map._tracks = matches.filter((item) => item.category !== 'chokepoints' && hasMapPoint(item)).map((item) => ({ ...item, id: item.id || item.name }));
     map._chokepoints = matches.filter((item) => item.category === 'chokepoints' && hasMapPoint(item));
     map._routeSegments = state.warShowFrontline ? linesFromGeoJSON(state.warFrontline.filter((feature) => inConflictDateRange(feature.properties?.date))) : [];
-    map._coverageCells = state.warShowGpsJam ? (state.warGpsJam?.features || []).filter((feature) => inConflictDateRange(feature.properties?.date)) : [];
+    map._coverageCells = state.warShowGpsJam ? gpsJamFeatures() : [];
     renderMapView(map);
   };
   $('#conflictQuery').oninput = updateFilters;

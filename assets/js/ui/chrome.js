@@ -30,12 +30,7 @@ function initChrome() {
     const target = event.target;
     const button = target instanceof Element ? target.closest('[data-copy-data]') : null;
     if (!button) return;
-    copyCurrentData(button).catch(() => {
-      button.textContent = 'COPY FAILED';
-      setTimeout(() => {
-        button.textContent = button.dataset.copyLabel || 'COPY DATA';
-      }, 1600);
-    });
+    copyCurrentData(button);
   });
 }
 

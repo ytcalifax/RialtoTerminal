@@ -758,7 +758,7 @@ function runRule(rule, ctx, diagnostics = null) {
     requirements.push({ label: requirement.label, weight: requirement.weight, passed, detail: detail ? String(detail) : '' });
     if (passed) {
       score += requirement.weight;
-      causes.push({ source: requirement.label, detail });
+      causes.push({ source: requirement.label, detail, weight: requirement.weight });
     }
   }
   const effects = rule.effects
@@ -860,14 +860,23 @@ function conciseEvidence(text, limit = 96) {
   return joined.length > limit ? `${joined.slice(0, limit - 1)}…` : joined;
 }
 
-function emitNotification(deduction, notify) {
-  if (!notify) return;
+/**
+ * The exact alert text a deduction hands back to the activity list.
+ *
+ * Split out of emitNotification so an export can quote the alert verbatim
+ * rather than re-deriving wording that would quietly drift from what the page
+ * shows.
+ *
+ * @param {object} deduction - entry from state.deductions
+ * @returns {{title: string, body: string}} notification title and body
+ */
+function deductionNotificationText(deduction) {
   const causes = [...new Set(
-    deduction.causes
+    (deduction.causes || [])
     .map((x) => conciseEvidence(x.detail || x.source))
     .filter(Boolean),
   )].slice(0, 3);
-  const effects = deduction.effects
+  const effects = (deduction.effects || [])
     .filter((x) => x.observed)
     .slice(0, 3)
     .map((x) => x.observed);
@@ -885,7 +894,13 @@ function emitNotification(deduction, notify) {
     ...causes.map((cause) => `• ${cause}`),
     ...(effects.length ? [`→ Seen: ${effects.join(' · ')}`] : []),
   ];
-  notify(`DEDUCTION · ${head}`, lines.join('\n'), '');
+  return { title: `DEDUCTION · ${head}`, body: lines.join('\n') };
+}
+
+function emitNotification(deduction, notify) {
+  if (!notify) return;
+  const { title, body } = deductionNotificationText(deduction);
+  notify(title, body, '');
 }
 
 async function refreshQuotes() {
@@ -907,4 +922,5 @@ function initDeductions() {
 export {
   initDeductions,
   evaluateDeductions,
+  deductionNotificationText,
 };

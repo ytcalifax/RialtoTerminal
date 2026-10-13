@@ -106,6 +106,49 @@ attached to the server process.
 
 Keyboard shortcuts: `/` focuses the command line, `F2` opens help, `↑` and `↓` browse command history, and `Esc` returns to the top screen.
 
+## 💬 Chat Setup
+
+The `CHAT` workspace talks to any OpenAI-compatible endpoint. There is nothing
+to configure on the server: open ⚙ CHAT and set the endpoint, your API key,
+and the model. Settings are stored per browser in a cookie, so each person
+using the terminal brings their own key and can target whichever provider they
+hold an account with. The Python backend holds no LLM credential and makes no
+LLM requests.
+
+Groq free keys are available at
+[console.groq.com/keys](https://console.groq.com/keys) and work with the
+defaults below. Note that the key is kept in a browser cookie, which is
+readable by any script running on this origin; use a key you are comfortable
+storing that way.
+
+### Staying inside the free-plan rate limit
+
+Groq's free plan meters input and output against a single **8,000
+token/minute** window. Two things make a function-calling session expensive:
+every tool round re-sends the whole conversation plus the tool schemas, and
+each tool result carries live JSON. Measured on a four-round session, the
+untrimmed replayed history reached roughly 9,200 input tokens — over the whole
+window before any output was generated.
+
+Rialto therefore trims three things before each request:
+
+- **Input budget** (default 3500) — `pruneConversation` drops the oldest whole
+  tool rounds until the replayed history fits. Whole rounds are dropped
+  together so a `tool` result is never orphaned from its call, and the system
+  prompt is always kept.
+- **Tool result size** (default 2500 chars) — applied by removing trailing
+  records from the result's lists, so the payload stays valid JSON instead of
+  being sliced mid-string.
+- **Rounds** (default 4) — with the two caps above, a full session lands near
+  4,000 of the 8,000 available.
+
+Endpoint, key, model, temperature, completion cap, round cap, tool-result cap,
+and input budget are all editable from the ⚙ menu on the `CHAT` screen. That
+panel also shows the provider's remaining per-minute and per-day budget after
+each turn when the endpoint exposes those headers. These defaults assume the
+8,000 token/minute free plan; raise the input budget and completion cap if you
+move to a plan with a larger window.
+
 ## 🔌 Data Sources
 
 Rialto reads public data from Yahoo Finance, the Bulgarian Stock Exchange, publisher RSS feeds and Google News, OpenSky, Open Waters AIS, ADSBDB aircraft enrichment, Bazar.bg, GDELT, UN OCHA, and GPSJam. It also reads World Monitor's fear/greed index, UCDP/ACLED and internet outage feeds using a periodically refreshed anonymous API session. Coverage, update timing, access tier, and available fields depend on each provider. The app does not place orders.

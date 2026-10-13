@@ -95,6 +95,9 @@ const TICKER_SYMBOLS = ['^GSPC', '^IXIC', '^FTSE', '^SOFIX', 'EURUSD=X', 'GC=F',
 const COINBASE_SLUGS = { 'BTC-USD': 'bitcoin', 'ETH-USD': 'ethereum', 'SOL-USD': 'solana' };
 const PINNED_COOKIE = 'rialto_pins_v1';
 const CHAT_COOKIE = 'rialto_chat_v1';
+// LLM calls run through the local proxy and can stall while a reasoning
+// model composes; the default dashboard request timeout is far too short.
+const LLM_TIMEOUT_MS = 90000;
 const MAX_PINNED_SYMBOLS = 24;
 const CUSTOM_GROUP = 'CUSTOM';
 const osmTileUrl = (z, x, y) => `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
@@ -139,7 +142,7 @@ export {
   COMMAND_PAGES, COMMAND_NAMES, MENU_ITEMS, HELP_ITEMS,
   TOPIC_TERMS,
   MARKET_GROUPS, TICKER_SYMBOLS, COINBASE_SLUGS,
-  PINNED_COOKIE, MAX_PINNED_SYMBOLS, CUSTOM_GROUP, CHAT_COOKIE,
+  PINNED_COOKIE, MAX_PINNED_SYMBOLS, CUSTOM_GROUP, CHAT_COOKIE, LLM_TIMEOUT_MS,
   osmTileUrl, OSM_CREDIT,
   VESSEL_LOOKUP_URL, vesselTypeLabel,
 };

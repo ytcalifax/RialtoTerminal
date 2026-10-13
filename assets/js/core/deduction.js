@@ -237,7 +237,7 @@ function conflictSignals(reports, theater) {
     count,
     weight,
     rising: weight > previous && previous >= 0,
-    detail: count ? `${count} reported ${theater.label} events (severity weight ${weight}) in the recent window${weight > previous ? ' · activity rising' : ''}` : '',
+    detail: count ? `${count} ${theater.label} ${count === 1 ? 'event' : 'events'} reported (severity weight ${weight})${weight > previous ? ' · activity rising' : ''}` : '',
   };
 }
 
@@ -773,8 +773,11 @@ function runRule(rule, ctx, diagnostics = null) {
       };
     });
   const fired = gatePassed && score >= rule.minScore;
+  // Evaluate the watch signal even when the rule has already fired. A fired
+  // rule is the most interesting thing in the watch list, and the reason text
+  // explains which evidence carried it there.
   let watchReason = '';
-  if (!fired && rule.watch) {
+  if (rule.watch) {
     try { watchReason = rule.watch(ctx) ? String(rule.watchReason?.(ctx) || 'Relevant partial evidence') : ''; } catch { watchReason = ''; }
   }
   const status = fired ? 'FIRED' : watchReason ? 'WATCH' : !gatePassed ? 'GATE CLOSED' : 'BELOW THRESHOLD';
@@ -802,6 +805,9 @@ function runRule(rule, ctx, diagnostics = null) {
     causes,
     effects,
     evidenceCoveragePct: Math.round(100 * score / Math.max(1, maxScore)),
+    score,
+    maxScore,
+    minScore: rule.minScore,
     at: Date.now(),
   }];
 }
@@ -812,6 +818,9 @@ function commitDeductions(candidates, notify) {
       existing.causes = candidate.causes;
       existing.effects = candidate.effects;
       existing.evidenceCoveragePct = candidate.evidenceCoveragePct;
+      existing.score = candidate.score;
+      existing.maxScore = candidate.maxScore;
+      existing.minScore = candidate.minScore;
       existing.lastAt = Date.now();
       if (Date.now() - existing.lastNotified > DEDUCTION_COOLDOWN_MS) {
         existing.hits += 1;
@@ -832,15 +841,51 @@ function commitDeductions(candidates, notify) {
   });
 }
 
+/**
+ * Collapse a noisy evidence phrase into something a person can scan.
+ *
+ * Raw detail strings join several independent observations with " · ", so
+ * four of them flattened into one alert line produced a single unreadable
+ * run-on. Keep the parts that carry a number or a named alert and drop the
+ * rest, so the reader sees the evidence that decided the outcome.
+ */
+function conciseEvidence(text, limit = 96) {
+  const parts = String(text || '')
+    .split(' · ')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const scored = parts.filter((part) => /\d/.test(part) || /\b(RED|ORANGE|disrupted|congestion)\b/i.test(part));
+  const keep = scored.length ? scored : parts;
+  const joined = keep.slice(0, 3).join(' · ');
+  return joined.length > limit ? `${joined.slice(0, limit - 1)}…` : joined;
+}
+
 function emitNotification(deduction, notify) {
   if (!notify) return;
-  const causes = deduction.causes.map((x) => x.detail || x.source).slice(0, 3).join(' · ');
+  const causes = [...new Set(
+    deduction.causes
+    .map((x) => conciseEvidence(x.detail || x.source))
+    .filter(Boolean),
+  )].slice(0, 3);
   const effects = deduction.effects
     .filter((x) => x.observed)
-    .slice(0, 4)
-    .map((x) => x.observed)
-    .join(' · ');
-  notify(`DEDUCTION · ${deduction.title}`, effects ? `${causes} → Observed: ${effects}` : causes, '');
+    .slice(0, 3)
+    .map((x) => x.observed);
+  // Weighted evidence points against the rule's threshold, not a confidence
+  // level: a percentage here implied a certainty the number cannot support,
+  // and its floor varies with each rule's checklist size.
+  const score = Number.isFinite(deduction.score) ? deduction.score : null;
+  const maxScore = Number.isFinite(deduction.maxScore) ? deduction.maxScore : null;
+  const minScore = Number.isFinite(deduction.minScore) ? deduction.minScore : null;
+  const tally = score !== null && maxScore
+    ? `SCORE ${score}/${maxScore}${minScore !== null ? ` · FIRES AT ${minScore}` : ''}`
+    : '';
+  const head = [deduction.title, tally].filter(Boolean).join(' · ');
+  const lines = [
+    ...causes.map((cause) => `• ${cause}`),
+    ...(effects.length ? [`→ Seen: ${effects.join(' · ')}`] : []),
+  ];
+  notify(`DEDUCTION · ${head}`, lines.join('\n'), '');
 }
 
 async function refreshQuotes() {

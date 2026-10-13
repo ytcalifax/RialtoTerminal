@@ -1,7 +1,36 @@
-import { CHAT_COOKIE } from '../core/constants.js';
+import { CHAT_COOKIE, LLM_TIMEOUT_MS } from '../core/constants.js';
 import { req } from '../core/net.js';
 
-export const CHAT_DEFAULT_MODEL = 'gpt-4o-mini';
+/**
+ * Per-user chat settings: endpoint, credential, model, and limits.
+ *
+ * These live in this browser's cookie rather than the server's `.env` so each
+ * person using the terminal brings their own key and can point at whichever
+ * OpenAI-compatible endpoint they have an account with. The server holds no
+ * LLM credential at all.
+ *
+ * The limit defaults are sized for Groq's free plan, which meters input and
+ * output against a single 8,000 token/minute window. Each round re-sends the
+ * whole history plus these tool schemas (~1k tokens), so the caps below are
+ * what keep a function-calling query inside that window.
+ */
+export const CHAT_DEFAULTS = {
+  url: 'https://api.groq.com/openai/v1',
+  apiKey: '',
+  model: 'openai/gpt-oss-20b',
+  temperature: 0.6,
+  maxCompletionTokens: 1500,
+  maxRounds: 4,
+  toolResultChars: 2500,
+  // Input ceiling applied to the replayed history before each request.
+  inputBudget: 3500,
+};
+
+function num(value, fallback, low, high) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(high, Math.max(low, Math.round(parsed)));
+}
 
 function getCookie(name) {
   try {
@@ -13,28 +42,33 @@ function getCookie(name) {
   }
 }
 
+function coerceSettings(parsed, base) {
+  return {
+    url: String(parsed.url || base.url).trim().replace(/\/+$/, ''),
+    apiKey: String(parsed.apiKey || ''),
+    model: String(parsed.model || base.model).trim() || base.model,
+    temperature: num(parsed.temperature, base.temperature, 0, 2),
+    maxCompletionTokens: num(parsed.maxCompletionTokens, base.maxCompletionTokens, 64, 32000),
+    maxRounds: num(parsed.maxRounds, base.maxRounds, 1, 8),
+    toolResultChars: num(parsed.toolResultChars, base.toolResultChars, 300, 16000),
+    inputBudget: num(parsed.inputBudget, base.inputBudget, 500, 200000),
+  };
+}
+
 export function loadChatSettings() {
+  const base = { ...CHAT_DEFAULTS };
   try {
     const raw = getCookie(CHAT_COOKIE);
-    if (!raw) return { url: '', apiKey: '' };
-    const parsed = JSON.parse(decodeURIComponent(raw));
-    return {
-      url: String(parsed?.url || ''),
-      apiKey: String(parsed?.apiKey || ''),
-      model: String(parsed?.model || CHAT_DEFAULT_MODEL),
-    };
+    if (!raw) return base;
+    return coerceSettings(JSON.parse(decodeURIComponent(raw)) || {}, base);
   } catch {
-    return { url: '', apiKey: '', model: CHAT_DEFAULT_MODEL };
+    return base;
   }
 }
 
 export function saveChatSettings(settings) {
   try {
-    const payload = {
-      url: String(settings?.url || '').trim(),
-      apiKey: String(settings?.apiKey || '').trim(),
-      model: String(settings?.model || CHAT_DEFAULT_MODEL).trim() || CHAT_DEFAULT_MODEL,
-    };
+    const payload = coerceSettings(settings || {}, { ...CHAT_DEFAULTS });
     document.cookie = `${CHAT_COOKIE}=${encodeURIComponent(JSON.stringify(payload))}; max-age=31536000; path=/; SameSite=Lax`;
   } catch {
     /* ignore cookie write errors in restricted browser contexts */
@@ -218,60 +252,275 @@ export const CHAT_TOOLS = [
       }, required: ['resource'] } } },
 ];
 
-export async function sendChat(settings, messages) {
-  const base = String(settings?.url || '').trim().replace(/\/+$/, '');
-  if (!base) throw new Error('Chat endpoint URL is required.');
-  const endpoint = `${base}/chat/completions`;
-  const conversation = messages.map((m) => ({ ...m }));
-  const maxRounds = 8;
-  for (let round = 0; round < maxRounds; round += 1) {
-    const response = await fetch(endpoint, {
+/**
+ * Drop the last element of the first shrinkable list in a payload.
+ *
+ * Returns a smaller copy, or null when nothing further can be removed. Used
+ * to fit a tool result inside its character budget by discarding whole
+ * records — headline lists, quote rows, vessel arrays — rather than slicing
+ * mid-string, which would hand the model invalid JSON to guess at.
+ */
+function trimOnce(node) {
+  if (Array.isArray(node)) {
+    return node.length > 1 ? node.slice(0, -1) : null;
+  }
+  if (node && typeof node === 'object') {
+    for (const key of Object.keys(node)) {
+      const smaller = trimOnce(node[key]);
+      if (smaller) return { ...node, [key]: smaller };
+    }
+  }
+  return null;
+}
+
+export function shrinkToolResult(value, maxChars) {
+  let node = value;
+  let text = typeof node === 'string' ? node : JSON.stringify(node);
+  if (text.length <= maxChars) return text;
+  // Bounded so a pathological deeply-nested payload cannot spin here.
+  for (let guard = 0; guard < 500 && text.length > maxChars; guard += 1) {
+    const smaller = trimOnce(node);
+    if (!smaller) break;
+    node = smaller;
+    text = typeof node === 'string' ? node : JSON.stringify(node);
+  }
+  // Nothing list-shaped to trim (e.g. one oversized string): fall back to a
+  // hard slice so a single result can never blow the whole budget.
+  return text.length > maxChars ? `${text.slice(0, maxChars)}…[truncated]` : text;
+}
+
+/** Rough token estimate (~4 chars/token). Directional only — it just has to
+ * be close enough to keep a request under the window. */
+function estimateTokens(value) {
+  const chars = typeof value === 'string' ? value.length : JSON.stringify(value).length;
+  return Math.max(1, Math.ceil(chars / 4));
+}
+
+/**
+ * Group messages into units that must be kept or dropped together: a `tool`
+ * result is meaningless without the assistant message that requested it.
+ */
+function toolRounds(messages) {
+  const groups = [];
+  for (const message of messages) {
+    const open = groups.length
+      && groups[groups.length - 1][0].role === 'assistant'
+      && Array.isArray(groups[groups.length - 1][0].tool_calls)
+      && groups[groups.length - 1][0].tool_calls.length;
+    if (open && message.role === 'tool') groups[groups.length - 1].push(message);
+    else groups.push([message]);
+  }
+  return groups;
+}
+
+/**
+ * Drop the oldest whole rounds until the replayed history fits the budget.
+ *
+ * This is the fix for provider 429s. Every round re-sends the entire
+ * conversation, so without it a four-round function-calling query exceeds an
+ * 8,000 token/minute window on input alone. Dropping whole rounds rather than
+ * individual messages keeps the assistant/tool_call pairing the provider
+ * requires, and the system prompt is always retained because it is the only
+ * thing that tells the model it has terminal tools at all.
+ */
+export function pruneConversation(messages, budget, reserved = 0) {
+  const groups = toolRounds(messages);
+  let spent = reserved;
+  const kept = [];
+  for (let i = groups.length - 1; i >= 0; i -= 1) {
+    const cost = groups[i].reduce((sum, m) => sum + estimateTokens(m), 0);
+    if (spent + cost > budget && kept.length) break;
+    spent += cost;
+    kept.push(groups[i]);
+  }
+  kept.reverse();
+  const flat = kept.flat();
+  if (flat.length && flat[0].role !== 'system') {
+    const system = messages.find((m) => m.role === 'system');
+    if (system) flat.unshift(system);
+  }
+  return { messages: flat, tokens: spent };
+}
+
+/** Read the provider's remaining-budget headers, when CORS exposes them.
+ * Not every endpoint sets Access-Control-Expose-Headers, so a null here is
+ * normal and simply means the readout is unavailable for that provider. */
+function readLimits(headers) {
+  const int = (name) => {
+    const raw = headers.get(name);
+    const parsed = Number(raw);
+    return raw && Number.isFinite(parsed) ? parsed : null;
+  };
+  const tpm = int('x-ratelimit-remaining-tokens');
+  const rpd = int('x-ratelimit-remaining-requests');
+  if (tpm === null && rpd === null) return null;
+  return {
+    tpm_remaining: tpm,
+    rpd_remaining: rpd,
+    tpm_limit: int('x-ratelimit-limit-tokens'),
+    rpd_limit: int('x-ratelimit-limit-requests'),
+  };
+}
+
+/**
+ * Condense a provider rate-limit body into one readable line.
+ *
+ * The raw 429 carries the organisation id, the model, the service tier, a
+ * millisecond retry hint and an upgrade pitch. None of that belongs in a
+ * transcript next to the user's question.
+ */
+function tidyRateLimit(text, retryAfter) {
+  const raw = String(text || '');
+  // "Used 5791, Requested" — the character class would swallow that comma.
+  const grab = (re) => raw.match(re)?.[1]?.replace(/[,\s]+$/, '');
+  const used = grab(/Used\s+([\d,]+)/i);
+  const limit = grab(/Limit\s+([\d,]+)/i);
+  const millis = raw.match(/try again in\s+([\d.]+)\s*ms/i)?.[1];
+  const parts = ['Rate limit reached'];
+  if (used && limit) parts.push(`${used} of ${limit} tokens/min used`);
+  else if (raw.trim()) parts.push(raw.split(/\.\s| · /)[0].slice(0, 110));
+  let seconds;
+  if (millis !== undefined) seconds = Math.max(1, Math.round(Number(millis) / 1000));
+  else if (retryAfter !== null && retryAfter !== undefined && retryAfter !== '') {
+    const parsed = Number(retryAfter);
+    if (Number.isFinite(parsed)) seconds = parsed;
+  }
+  if (seconds !== undefined) parts.push(`retry in ${seconds}s`);
+  return `${parts.join(' · ')}.`;
+}
+
+async function callProvider(cfg, payload) {
+  const base = String(cfg.url || '').trim().replace(/\/+$/, '');
+  if (!base) throw new Error('Set the endpoint URL in ⚙ CHAT.');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${base}/chat/completions`, {
       method: 'POST',
+      signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
-        ...(settings?.apiKey ? { Authorization: `Bearer ${settings.apiKey}` } : {}),
+        ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}),
       },
-      body: JSON.stringify({
-        model: settings?.model || CHAT_DEFAULT_MODEL,
-        messages: conversation,
-        tools: CHAT_TOOLS,
-        tool_choice: 'auto',
-      }),
+      body: JSON.stringify(payload),
     });
+    const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      let detail = '';
-      try {
-        const body = await response.json();
-        if (body?.error) detail = ` · ${typeof body.error === 'string' ? body.error : JSON.stringify(body.error)}`;
-      } catch { /* non-json */ }
+      const raw = (data && data.error && (data.error.message || data.error.message)) || (data && data.error) || '';
+      if (response.status === 429) {
+        throw new Error(tidyRateLimit(raw, response.headers.get('retry-after')));
+      }
+      const detail = raw ? ` · ${String(raw).slice(0, 200)}` : '';
       throw new Error(`HTTP ${response.status}${detail}`);
     }
-    const data = await response.json();
+    return { data, limits: readLimits(response.headers) };
+  } catch (err) {
+    if (err.name === 'AbortError') throw new Error('Request timed out.');
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Run the chat loop against the user's configured endpoint.
+ *
+ * @param {object} settings - from loadChatSettings()
+ * @param {Array} messages - full conversation, system prompt first
+ * @param {(progress: {round: number, limits: object|null}) => void} [onProgress]
+ * @returns {Promise<{messages: Array, content: string, limits: object|null}>}
+ */
+const KNOWN_TOOLS = new Set(CHAT_TOOLS.map((tool) => tool.function.name));
+
+export async function sendChat(settings, messages, onProgress) {
+  const cfg = { ...CHAT_DEFAULTS, ...(settings || {}) };
+  const conversation = messages.map((m) => ({ ...m }));
+  const maxRounds = num(cfg.maxRounds, CHAT_DEFAULTS.maxRounds, 1, 8);
+  const toolChars = num(cfg.toolResultChars, CHAT_DEFAULTS.toolResultChars, 300, 16000);
+  const budget = num(cfg.inputBudget, CHAT_DEFAULTS.inputBudget, 500, 200000);
+  const toolsTokens = estimateTokens(CHAT_TOOLS);
+  const seenCalls = new Set();
+  let inventedCalls = 0;
+  let limits = null;
+
+  for (let round = 0; round < maxRounds; round += 1) {
+    const { messages: trimmed, tokens } = pruneConversation(conversation, budget, toolsTokens);
+    const { data, limits: seen } = await callProvider(cfg, {
+      model: cfg.model,
+      messages: trimmed,
+      tools: CHAT_TOOLS,
+      tool_choice: 'auto',
+      temperature: num(cfg.temperature, CHAT_DEFAULTS.temperature, 0, 2),
+      max_completion_tokens: num(cfg.maxCompletionTokens, CHAT_DEFAULTS.maxCompletionTokens, 64, 32000),
+      stream: false,
+    });
+
+    limits = seen;
+    if (onProgress) onProgress({ round: round + 1, limits, inputTokens: tokens });
+
     const message = data?.choices?.[0]?.message;
     if (!message) throw new Error('No chat completion returned.');
-    conversation.push(message);
+
+    // Preserve the provider's tool_call ids verbatim: the next round pairs
+    // them with `tool` results, and a regenerated id breaks that pairing.
+    conversation.push({ ...message, role: 'assistant' });
+
     const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
-    if (toolCalls.length) {
-      for (const call of toolCalls) {
-        let args = {};
-        try { args = JSON.parse(call?.function?.arguments || '{}'); } catch { args = {}; }
-        let result;
-        try {
-          result = await executeChatTool(call?.function?.name, args);
-        } catch (err) {
-          result = { error: String(err?.message || err) };
-        }
-        const content = typeof result === 'string' ? result : JSON.stringify(result);
-        conversation.push({
-          role: 'tool',
-          tool_call_id: call.id,
-          name: call?.function?.name,
-          content: content.length > 16000 ? `${content.slice(0, 16000)}…` : content,
-        });
+    if (!toolCalls.length) {
+      return { messages: conversation, content: message.content || '', limits };
+    }
+
+    // A model that asks for a function we do not define has invented it. Give
+    // it one correction naming the real functions — most questions have a
+    // usable proxy, and aborting outright would block answers it could have
+    // produced. A second invention means it is not recovering, so stop before
+    // the remaining rounds burn the per-minute budget.
+    const invented = toolCalls.find((call) => !KNOWN_TOOLS.has(call?.function?.name));
+    if (invented) {
+      inventedCalls += 1;
+      if (inventedCalls > 1) {
+        throw new Error(
+          `The model tried to call "${invented.function?.name}", which this terminal does not have. `
+          + 'Rialto covers news, markets, vessels, aircraft, conflicts, outbreaks, listings, and the current screen state.',
+        );
       }
+      conversation.push({
+        role: 'tool',
+        tool_call_id: invented.id,
+        name: invented.function?.name,
+        content: `No such function. Available functions: ${[...KNOWN_TOOLS].join(', ')}. `
+          + 'Pick the closest one that informs the answer, or reply without calling anything.',
+      });
       continue;
     }
-    return { messages: conversation, content: message.content || '' };
+
+    for (const call of toolCalls) {
+      let args = {};
+      try { args = JSON.parse(call?.function?.arguments || '{}'); } catch { args = {}; }
+      const signature = `${call?.function?.name}:${JSON.stringify(args)}`;
+      if (seenCalls.has(signature)) {
+        throw new Error(
+          `The model repeated the same call (${call?.function?.name}) without new information. `
+          + 'It is looping rather than answering — try rephrasing the question.',
+        );
+      }
+      seenCalls.add(signature);
+      let out;
+      try {
+        out = await executeChatTool(call?.function?.name, args);
+      } catch (err) {
+        out = { error: String(err?.message || err) };
+      }
+      conversation.push({
+        role: 'tool',
+        tool_call_id: call.id,
+        name: call?.function?.name,
+        content: shrinkToolResult(out, toolChars),
+      });
+    }
   }
-  throw new Error('Too many tool rounds.');
+
+  throw new Error(
+    `Stopped at the ${maxRounds}-round tool limit without an answer. Raise "Max rounds" in ⚙ CHAT, or ask something narrower.`,
+  );
 }

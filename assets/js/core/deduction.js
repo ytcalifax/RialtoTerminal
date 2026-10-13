@@ -648,6 +648,27 @@ const RULES = [
     gate: (c) => (c.chokepoints || []).some((choke) => (choke.context || []).some((note) => /GPSJam/i.test(note)))
       && Object.values(c.conflicts).some((x) => x.count > 0),
   },
+  {
+    id: 'volatility-panic',
+    title: 'VOLATILITY PANIC',
+    summary: 'Extreme volatility with safe-haven demand and falling equities; this is a risk signal, not proof of causation.',
+    minScore: 5,
+    effects: [
+      { symbol: '^VIX', dir: 'up' }, { symbol: 'GC=F', dir: 'up' }, { symbol: 'SI=F', dir: 'up' },
+      { symbol: '^GSPC', dir: 'down' },
+    ],
+    requires: [
+      { label: 'Volatility spiking', weight: 2, test: () => moveWeight('^VIX', 'up') >= 2 ? moveInDirection('^VIX', 'up') : null },
+      { label: 'Gold and silver up', weight: 2, test: () => (moveInDirection('GC=F', 'up') && moveInDirection('SI=F', 'up')) ? `${moveInDirection('GC=F', 'up')} · ${moveInDirection('SI=F', 'up')}` : null },
+      { label: 'Equities down', weight: 2, test: () => moveWeight('^GSPC', 'down') >= 2 ? moveInDirection('^GSPC', 'down') : null },
+      { label: 'Conflict activity present', weight: 1, test: (c) => Object.values(c.conflicts).some((x) => (x.weight || 0) >= 2) && 'Reported conflict activity present' },
+    ],
+    watch: (c) => Boolean(moveInDirection('^VIX', 'up')) || Boolean(moveInDirection('GC=F', 'up')),
+    watchReason: (c) => [
+      moveInDirection('^VIX', 'up'), moveInDirection('GC=F', 'up'), moveInDirection('^GSPC', 'down'),
+    ].filter(Boolean).join(' · '),
+    gate: (c) => Boolean(moveInDirection('^VIX', 'up')) && Boolean(moveInDirection('^GSPC', 'down')),
+  },
 ];
 
 /**
@@ -706,7 +727,7 @@ function evaluateDeductions(notify = null) {
   ctx.outages = outageSignals();
   fired.push(...runRule(RULES.find((r) => r.id === 'risk-off'), ctx, diagnostics));
   fired.push(...runRule(RULES.find((r) => r.id === 'outbreak-travel'), ctx, diagnostics));
-  for (const id of ['defense-escalation', 'food-security-risk', 'critical-infrastructure', 'airspace-navigation-risk']) {
+  for (const id of ['defense-escalation', 'food-security-risk', 'critical-infrastructure', 'airspace-navigation-risk', 'volatility-panic']) {
     fired.push(...runRule(RULES.find((r) => r.id === id), ctx, diagnostics));
   }
   state.deductionDiagnostics = {

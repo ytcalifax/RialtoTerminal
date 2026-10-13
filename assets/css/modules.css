@@ -241,6 +241,7 @@
 .decision-watch-item { padding: 8px 0; border-top: 1px solid #253135; }
 .decision-watch-item > div { display: flex; justify-content: space-between; gap: 8px; color: #c5d5d9; font: 700 8px Roboto Mono, monospace; }
 .decision-watch-item > div span { color: #8fc4d1; white-space: nowrap; }
+.trend-arrow { display: inline-block; margin-left: 4px; font-size: 13px; line-height: 1; color: #c5d5d9; vertical-align: middle; }
 .decision-watch-item p { margin: 4px 0 0; color: #9daeb2; font: 10px/1.4 Roboto, Arial, sans-serif; }
 
 .notification-list { overflow: auto; }

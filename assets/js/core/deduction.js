@@ -171,6 +171,16 @@ function moveInDirection(symbol, direction) {
   return `${effectName(symbol)} ${fmtPct(move)}`;
 }
 
+function moveWeight(symbol, direction) {
+  const move = moveOf(symbol);
+  if (move == null || Math.abs(move) < MOVE_FLOOR_PCT) return 0;
+  if ((direction === 'up' && move <= 0) || (direction === 'down' && move >= 0)) return 0;
+  const magnitude = Math.abs(move);
+  if (magnitude >= 5) return 3;
+  if (magnitude >= 2) return 2;
+  return 1;
+}
+
 function quoteDiagnostic(symbol, direction) {
   const row = quoteRow(symbol);
   if (!row) return 'NO QUOTE';
@@ -190,14 +200,26 @@ function quoteDiagnostic(symbol, direction) {
   return `${directionMatches ? 'ALIGNED' : 'OPPOSITE'} · ${fmtPct(move)}`;
 }
 
-function conflictSignals(texts, theater) {
-  const count = texts.filter((text) => theater.keywords.test(text)).length;
-  const previous = state.deductionBaseline.conflict[theater.label] ?? count;
-  state.deductionBaseline.conflict[theater.label] = count;
+function conflictEventWeight(report) {
+  const text = rowText(report);
+  let weight = 1;
+  if (/\bMASS VIOLENCE\b/i.test(text)) weight = 3;
+  else if (/\bFIGHT\b/i.test(text)) weight = 2;
+  else if (/\bASSAULT\b/i.test(text)) weight = 1;
+  return weight;
+}
+
+function conflictSignals(reports, theater) {
+  const relevant = (Array.isArray(reports) ? reports : []).filter((report) => theater.keywords.test(rowText(report)));
+  const count = relevant.length;
+  const weight = relevant.reduce((sum, report) => sum + conflictEventWeight(report), 0);
+  const previous = state.deductionBaseline.conflict[theater.label] ?? weight;
+  state.deductionBaseline.conflict[theater.label] = weight;
   return {
     count,
-    rising: count > previous && previous >= 0,
-    detail: count ? `${count} reported ${theater.label} events in the recent window${count > previous ? ' · activity rising' : ''}` : '',
+    weight,
+    rising: weight > previous && previous >= 0,
+    detail: count ? `${count} reported ${theater.label} events (severity weight ${weight}) in the recent window${weight > previous ? ' · activity rising' : ''}` : '',
   };
 }
 
@@ -297,7 +319,7 @@ function chokepointSignals(rows) {
       const lon = ring.reduce((sum, [lo]) => sum + Number(lo), 0) / ring.length;
       const percent = Number(feature.properties?.percent) || 0;
       if (percent >= 25 && pointIn(choke, lat, lon)) {
-        context.push(`GPSJam reports navigation interference affecting ${percent.toFixed(0)}% of aircraft reports nearby`);
+        context.push(`Navigation interference affecting ${percent.toFixed(0)}% of aircraft reports nearby`);
         return true;
       }
       return false;
@@ -313,6 +335,21 @@ function chokepointSignals(rows) {
   });
 }
 
+function outageSeverityWeight(outage) {
+  const text = rowText(outage).toLowerCase();
+  let weight = 1;
+  if (/\b(critical|severe|major|total|nationwide|countrywide|blackout)\b/.test(text)) weight = 3;
+  else if (/\b(moderate|medium|partial)\b/.test(text)) weight = 2;
+  const percentage = Number(
+    outage?.percentage ?? outage?.disruptionPct ?? outage?.percent ?? outage?.impactPct ?? NaN
+  );
+  if (Number.isFinite(percentage)) {
+    if (percentage >= 75) weight = Math.max(weight, 3);
+    else if (percentage >= 35) weight = Math.max(weight, 2);
+  }
+  return weight;
+}
+
 function outageSignals(producers = null) {
   const outages = (state.warWorldMonitor?.outages || [])
     .filter((x) => ageMs(x) <= SIGNAL_MAX_AGE_MS && matchesSelectedTopics(x) && OUTAGE_COUNTRY_TERMS.test(rowText(x)));
@@ -320,8 +357,10 @@ function outageSignals(producers = null) {
     const text = rowText(x);
     return producers.some((country) => text.includes(country.toLowerCase()));
   }) : outages;
-  return filtered.slice(0, 3)
-    .map((x) => `Internet disruption in ${x.country || x.region || x.title || 'producer region'}`);
+  return filtered.slice(0, 3).map((x) => ({
+    text: `Internet disruption in ${x.country || x.region || x.title || 'producer region'}`,
+    weight: outageSeverityWeight(x),
+  }));
 }
 
 function inputVisibility() {
@@ -376,10 +415,10 @@ function inputVisibility() {
 }
 
 function theaterGateChecks(context) {
-  const conflictPass = context.conflict.count >= 2;
+  const conflictPass = context.conflict.weight >= 3;
   const headlinesPass = context.news.hits >= 4 && context.news.rising;
   const chokepointPass = context.choke.signals.length > 0;
-  const outagePass = context.outages.length > 0;
+  const outagePass = context.outages.reduce((sum, item) => sum + (item.weight || 1), 0) >= 2;
   const routeContext = context.choke.context.length
     ? ` · Context only (not scored): ${context.choke.context.join(' · ')}` : '';
   return [
@@ -394,15 +433,18 @@ function theaterRequires(theater, choke) {
     coreEffects.push(...theater.rule.effects.filter((effect) => ['TSM', 'SMH'].includes(effect.symbol)));
   }
   return [
-    { label: 'Conflict reports', weight: 2, test: (c) => c.conflict.count >= 2 && c.conflict.detail },
+    { label: 'Conflict reports', weight: 2, test: (c) => c.conflict.weight >= 3 && c.conflict.detail },
     { label: 'Headline acceleration', weight: 1, test: (c) => (c.news.hits >= 4 && c.news.rising) && c.news.detail },
     { label: 'Corroborated maritime disruption', weight: 2, test: () => choke.observations.length ? choke.observations.join(' · ') : null },
     { label: 'World Monitor supply-flow disruption', weight: 1, test: () => choke.flowSignals[0] || null },
     { label: 'Independent reporting corroborates maritime observations', weight: 2, test: () => choke.evidenceFamilies.includes('reporting') && choke.evidenceFamilies.includes('maritime observations') ? choke.signals.join(' · ') : null },
-    { label: 'Producer-region outage', weight: 1, test: (c) => c.outages[0] },
-    { label: 'At least two core market quotes moving in the expected direction', weight: 3, test: () => {
-      const matches = coreEffects.map((effect) => moveInDirection(effect.symbol, effect.dir)).filter(Boolean);
-      return matches.length >= 2 ? matches.slice(0, 3).join(' · ') : null;
+    { label: 'Producer-region outage', weight: 1, test: (c) => c.outages.length ? (c.outages.map((o) => `${o.text} (weight ${o.weight})`).join(' · ')) : null },
+    { label: 'Core market quotes moving in the expected direction', weight: 3, test: () => {
+      const weightedMoves = coreEffects
+        .map((effect) => ({ effect, weight: moveWeight(effect.symbol, effect.dir), label: moveInDirection(effect.symbol, effect.dir) }))
+        .filter((item) => item.weight > 0);
+      const totalWeight = weightedMoves.reduce((sum, item) => sum + item.weight, 0);
+      return totalWeight >= 3 ? weightedMoves.slice(0, 3).map((item) => item.label).join(' · ') : null;
     } },
     { label: 'Hedge demand moving in the expected direction', weight: 1, test: () => theater.rule.effects
       .filter((effect) => ['GC=F', '^VIX'].includes(effect.symbol))
@@ -466,6 +508,123 @@ const RULES = [
       moveInDirection('DAL', 'down'),
     ].filter(Boolean).join(' · '),
   },
+  {
+    id: 'defense-escalation',
+    title: 'DEFENSE & SECURITY BID',
+    summary: 'Conflict signals in multiple theaters coincide with rising defense names; this is a risk signal, not proof of causation.',
+    minScore: 5,
+    effects: [
+      { symbol: 'RTX', dir: 'up' }, { symbol: 'LMT', dir: 'up' }, { symbol: '^VIX', dir: 'up' },
+      { symbol: 'GC=F', dir: 'up' },
+    ],
+    requires: [
+      { label: 'Conflict activity rising in at least two theaters', weight: 2, test: (c) => Object.values(c.conflicts).filter((x) => x.rising && x.count).length >= 2 && 'Reported activity increased in at least two theaters' },
+      { label: 'High-severity conflict reports in at least two theaters', weight: 1, test: (c) => Object.values(c.conflicts).filter((x) => (x.weight || 0) >= 3).length >= 2 && 'Severity-weighted conflict reports in at least two theaters' },
+      { label: 'Defense names bid', weight: 2, test: () => {
+        const rtx = moveInDirection('RTX', 'up');
+        const lmt = moveInDirection('LMT', 'up');
+        return rtx || lmt ? [rtx, lmt].filter(Boolean).join(' · ') : null;
+      } },
+      { label: 'Volatility or gold up', weight: 1, test: () => moveInDirection('^VIX', 'up') || moveInDirection('GC=F', 'up') },
+    ],
+    watch: (c) => Object.values(c.conflicts).some((x) => x.count > 0)
+      || Boolean(moveInDirection('RTX', 'up')) || Boolean(moveInDirection('LMT', 'up')),
+    watchReason: (c) => [
+      ...Object.entries(c.conflicts).filter(([, x]) => x.count > 0).map(([name, x]) => `${name}: ${x.count} report${x.count === 1 ? '' : 's'}`),
+      moveInDirection('RTX', 'up'), moveInDirection('LMT', 'up'), moveInDirection('^VIX', 'up'),
+    ].filter(Boolean).join(' · '),
+    gate: (c) => Object.values(c.conflicts).some((x) => x.rising && x.count)
+      && (Boolean(moveInDirection('RTX', 'up')) || Boolean(moveInDirection('LMT', 'up')) || Boolean(moveInDirection('^VIX', 'up'))),
+  },
+  {
+    id: 'food-security-risk',
+    title: 'FOOD & GRAIN SECURITY',
+    summary: 'Grain-corridor disruption or Russia/Ukraine conflict signals coincide with rising wheat; this is a risk signal, not proof of causation.',
+    minScore: 5,
+    effects: [
+      { symbol: 'ZW=F', dir: 'up' }, { symbol: 'BZ=F', dir: 'up' }, { symbol: 'GC=F', dir: 'up' },
+      { symbol: '^GSPC', dir: 'down' },
+    ],
+    requires: [
+      { label: 'Russia / Ukraine conflict reports', weight: 2, test: (c) => ((c.conflicts['Russia / Ukraine']?.weight || 0) >= 3 && c.conflicts['Russia / Ukraine'].detail) || null },
+      { label: 'Black Sea grain corridor disruption', weight: 2, test: (c) => {
+        const choke = (c.chokepoints || []).find((x) => x.id === 'blacksea');
+        return choke && choke.signals.length ? choke.signals.join(' · ') : null;
+      } },
+      { label: 'Wheat up', weight: 2, test: () => moveInDirection('ZW=F', 'up') },
+      { label: 'Hedge demand up', weight: 1, test: () => moveInDirection('GC=F', 'up') },
+    ],
+    watch: (c) => Boolean(c.conflicts['Russia / Ukraine']?.count)
+      || Boolean((c.chokepoints || []).find((x) => x.id === 'blacksea' && x.signals.length))
+      || Boolean(moveInDirection('ZW=F', 'up')),
+    watchReason: (c) => [
+      c.conflicts['Russia / Ukraine'] ? `Ukraine/Russia: ${c.conflicts['Russia / Ukraine'].count} report${c.conflicts['Russia / Ukraine'].count === 1 ? '' : 's'}` : '',
+      (c.chokepoints || []).find((x) => x.id === 'blacksea')?.signals?.length ? 'Black Sea route signal' : '',
+      moveInDirection('ZW=F', 'up'),
+    ].filter(Boolean).join(' · '),
+    gate: (c) => Boolean(c.conflicts['Russia / Ukraine']?.count || c.conflicts['Russia / Ukraine']?.rising)
+      && (Boolean((c.chokepoints || []).find((x) => x.id === 'blacksea' && x.signals.length)) || Boolean(moveInDirection('ZW=F', 'up'))),
+  },
+  {
+    id: 'critical-infrastructure',
+    title: 'CRITICAL INFRASTRUCTURE DISRUPTION',
+    summary: 'Internet outages in producer or chokepoint regions coincide with route signals or energy moves; this is a risk signal, not proof of causation.',
+    minScore: 6,
+    effects: [
+      { symbol: 'BZ=F', dir: 'up' }, { symbol: 'CL=F', dir: 'up' }, { symbol: 'GC=F', dir: 'up' },
+    ],
+    requires: [
+      { label: 'Producer or regional internet outage', weight: 2, test: (c) => c.outages.length ? c.outages.map((o) => o.text).join(' · ') : null },
+      { label: 'Corroborated route disruption', weight: 2, test: (c) => {
+        const signals = (c.chokepoints || []).flatMap((x) => x.signals || []);
+        return signals.length ? signals.slice(0, 3).join(' · ') : null;
+      } },
+      { label: 'Energy market moving up', weight: 3, test: () => {
+        const moves = ['BZ=F', 'CL=F', 'HO=F'].map((symbol) => moveInDirection(symbol, 'up')).filter(Boolean);
+        return moves.length >= 1 ? moves.slice(0, 3).join(' · ') : null;
+      } },
+      { label: 'Hedge demand up', weight: 1, test: () => moveInDirection('GC=F', 'up') },
+    ],
+    watch: (c) => c.outages.length > 0 || (c.chokepoints || []).some((x) => x.signals.length),
+    watchReason: (c) => [
+      c.outages.length ? `${c.outages.length} outage${c.outages.length === 1 ? '' : 's'}` : '',
+      (c.chokepoints || []).some((x) => x.signals.length) ? 'Route signal' : '',
+      moveInDirection('BZ=F', 'up'), moveInDirection('CL=F', 'up'),
+    ].filter(Boolean).join(' · '),
+    gate: (c) => c.outages.length > 0
+      && (Boolean((c.chokepoints || []).some((x) => x.signals.length)) || ['BZ=F', 'CL=F'].some((symbol) => moveInDirection(symbol, 'up'))),
+  },
+  {
+    id: 'airspace-navigation-risk',
+    title: 'AIRSPACE & NAVIGATION RISK',
+    summary: 'Navigation interference in contested airspace coincides with conflict and defense or travel market moves; this is a risk signal, not proof of causation.',
+    minScore: 5,
+    effects: [
+      { symbol: 'RTX', dir: 'up' }, { symbol: 'LMT', dir: 'up' }, { symbol: 'DAL', dir: 'down' },
+      { symbol: '^VIX', dir: 'up' },
+    ],
+    requires: [
+      { label: 'Navigation interference nearby', weight: 2, test: (c) => (c.chokepoints || []).some((choke) => (choke.context || []).some((note) => /GPSJam/i.test(note)))
+        ? 'Navigation interference reported in a monitored area' : null },
+      { label: 'Conflict reports present', weight: 2, test: (c) => Object.values(c.conflicts).some((x) => x.count > 0 || x.weight >= 3) && 'Reported conflict activity present' },
+      { label: 'Defense bid or airline selling off', weight: 2, test: () => {
+        const rtx = moveInDirection('RTX', 'up');
+        const lmt = moveInDirection('LMT', 'up');
+        const dal = moveInDirection('DAL', 'down');
+        return rtx || lmt || dal ? [rtx, lmt, dal].filter(Boolean).join(' · ') : null;
+      } },
+      { label: 'Volatility up', weight: 1, test: () => moveInDirection('^VIX', 'up') },
+    ],
+    watch: (c) => (c.chokepoints || []).some((choke) => (choke.context || []).some((note) => /GPSJam/i.test(note)))
+      || Object.values(c.conflicts).some((x) => x.count > 0),
+    watchReason: (c) => [
+      (c.chokepoints || []).some((choke) => (choke.context || []).some((note) => /GPSJam/i.test(note))) ? 'Navigation interference' : '',
+      ...Object.entries(c.conflicts).filter(([, x]) => x.count > 0).slice(0, 1).map(([name, x]) => `${name}: ${x.count}`),
+      moveInDirection('RTX', 'up'), moveInDirection('DAL', 'down'),
+    ].filter(Boolean).join(' · '),
+    gate: (c) => (c.chokepoints || []).some((choke) => (choke.context || []).some((note) => /GPSJam/i.test(note)))
+      && Object.values(c.conflicts).some((x) => x.count > 0),
+  },
 ];
 
 /**
@@ -480,7 +639,6 @@ function evaluateDeductions(notify = null) {
   const reportRows = [...new Map(reportCandidates.map((x) => [
     String(x.id || x.url || x.sourceUrl || `${x.date || x.dateStart || x.occurredAt || ''}-${x.name || x.title || x.location || ''}`), x,
   ])).values()];
-  const reportTexts = reportRows.map(rowText);
   const chokepoints = chokepointSignals(headlineRows);
 
   const ctx = {
@@ -502,7 +660,7 @@ function evaluateDeductions(notify = null) {
   const fired = [];
   const diagnostics = [];
   for (const theater of Object.values(THEATERS)) {
-    ctx.conflicts[theater.label] = conflictSignals(reportTexts, theater);
+    ctx.conflicts[theater.label] = conflictSignals(reportRows, theater);
     ctx.news = newsSignals(headlineRows, theater);
     ctx.outages = outageSignals(theater.producers);
     const choke = chokepoints.find((x) => x.id === theater.choke);
@@ -515,7 +673,7 @@ function evaluateDeductions(notify = null) {
       gateChecks: theaterGateChecks,
       effects: theater.rule.effects,
       minScore: theater.rule.minScore,
-      gate: (c) => (c.conflict.count >= 2 || (c.news.hits >= 4 && c.news.rising))
+      gate: (c) => (c.conflict.weight >= 3 || (c.news.hits >= 4 && c.news.rising))
         && (c.choke.signals.length > 0 || c.outages.length > 0),
       requires: theaterRequires(theater, choke),
       watch: (c) => c.conflict.count > 0 || c.news.hits >= 2 || c.choke.signals.length > 0 || c.choke.observations.length > 0 || c.outages.length > 0,
@@ -525,6 +683,9 @@ function evaluateDeductions(notify = null) {
   ctx.outages = outageSignals();
   fired.push(...runRule(RULES.find((r) => r.id === 'risk-off'), ctx, diagnostics));
   fired.push(...runRule(RULES.find((r) => r.id === 'outbreak-travel'), ctx, diagnostics));
+  for (const id of ['defense-escalation', 'food-security-risk', 'critical-infrastructure', 'airspace-navigation-risk']) {
+    fired.push(...runRule(RULES.find((r) => r.id === id), ctx, diagnostics));
+  }
   state.deductionDiagnostics = {
     evaluatedAt: Date.now(),
     selectedTopics: String(state.alertSettings.keywords || '').split(',').map((term) => term.trim()).filter(Boolean),

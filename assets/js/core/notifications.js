@@ -362,7 +362,13 @@ function renderNotifications() {
   const watchList = $('#decisionWatchList');
   if (watchSection && watchList) {
     watchList.innerHTML = watchRules.length
-      ? watchRules.map((rule) => `<article class="decision-watch-item"><div><b>${esc(rule.title)}</b><span>SCORE ${rule.score}/${rule.maxScore} · FIRE AT ${rule.minScore}</span></div><p>${esc(rule.watchReason)}</p></article>`).join('')
+      ? watchRules.map((rule) => {
+        const effects = Array.isArray(rule.effects) ? rule.effects : [];
+        const upCount = effects.filter((effect) => effect.dir === 'up' && effect.observed).length;
+        const downCount = effects.filter((effect) => effect.dir === 'down' && effect.observed).length;
+        const trendArrow = upCount > downCount ? '↑' : downCount > upCount ? '↓' : '=';
+        return `<article class="decision-watch-item"><div><b>${esc(rule.title)} <span class="trend-arrow">${esc(trendArrow)}</span></b><span>SCORE ${rule.score}/${rule.maxScore} · FIRE AT ${rule.minScore}</span></div><p>${esc(rule.watchReason)}</p></article>`;
+      }).join('')
       : '<div class="notification-empty">NO ACTIVE WATCH SIGNALS</div>';
   }
   const watchCount = $('#decisionWatchCount');

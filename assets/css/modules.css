@@ -238,21 +238,27 @@
 .decision-watch { padding: 8px 12px; border-bottom: 1px solid #2d383b; background: #121a1d; }
 .decision-watch-head { display: flex; align-items: center; gap: 7px; color: #8fc4d1; font: 700 8px Roboto Mono, monospace; letter-spacing: .06em; padding-bottom: 8px; }
 .decision-watch-head small { margin-left: auto; color: #788b91; font-size: 7px; font-weight: 400; }
-.decision-watch-item { padding: 8px 0; border-top: 1px solid #253135; }
-.decision-watch-item > div:first-child { display: flex; justify-content: space-between; gap: 8px; color: #c5d5d9; font: 700 8px Roboto Mono, monospace; }
-.decision-watch-item > div:first-child span { color: #8fc4d1; white-space: nowrap; }
+.decision-watch-item { padding: 0; border-top: 1px solid #253135; }
+.decision-watch-disclosure > summary { display: grid; grid-template-columns: minmax(0, 1fr) 12px; align-items: center; gap: 3px 7px; padding: 7px 0; cursor: pointer; list-style: none; }
+.decision-watch-disclosure > summary::-webkit-details-marker { display: none; }
+.decision-watch-title { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-width: 0; color: #c5d5d9; font: 700 8px Roboto Mono, monospace; letter-spacing: .03em; }
+.decision-watch-title > span { color: #8fc4d1; white-space: nowrap; }
+.decision-watch-tldr { grid-column: 1; color: #91a3a8; font: 8px/1.45 Roboto Mono, monospace; }
+.decision-watch-chevron { grid-column: 2; grid-row: 1 / span 2; justify-self: center; color: #8fc4d1; font: 12px/1 Roboto Mono, monospace; transition: transform .12s ease; }
+.decision-watch-disclosure[open] .decision-watch-chevron { transform: rotate(180deg); }
+.decision-watch-disclosure > summary:hover .decision-watch-tldr,
+.decision-watch-disclosure > summary:focus-visible .decision-watch-tldr { color: #d2e1e4; }
 .trend-arrow { display: inline-block; margin-left: 4px; font-size: 13px; line-height: 1; color: #c5d5d9; vertical-align: middle; }
-.decision-watch-item p { margin: 4px 0 0; color: #9daeb2; font: 10px/1.4 Roboto, Arial, sans-serif; }
-.decision-watch-diagnostics { display: grid; gap: 4px; margin-top: 6px; padding-left: 7px; border-left: 1px solid #35464b; color: #91a3a8; font: 8px/1.45 Roboto Mono, monospace; overflow-wrap: anywhere; }
+.decision-watch-diagnostics { display: grid; gap: 4px; margin: 0 0 8px 7px; padding-left: 7px; border-left: 1px solid #35464b; color: #91a3a8; font: 8px/1.45 Roboto Mono, monospace; overflow-wrap: anywhere; }
 .decision-watch-diagnostics b { color: #b6cbd0; font-weight: 700; }
 .decision-watch-diagnostics .path { color: #d5c394; }
 .decision-watch-diagnostics .source-disagreement { color: #e7a77f; }
 /* A rule that cleared its threshold stays listed, but reads as resolved
    rather than pending so it is not mistaken for a near-miss. */
 .decision-watch-item.fired { border-left: 2px solid #d1a346; padding-left: 8px; }
-.decision-watch-item.fired > div span.fired-score { color: #f2bd53; }
+.decision-watch-item.fired .decision-watch-title > span.fired-score { color: #f2bd53; }
 .decision-watch-item.closed { border-left: 2px solid #6b7580; padding-left: 8px; }
-.decision-watch-item.closed > div span.closed-score { color: #a1abb2; }
+.decision-watch-item.closed .decision-watch-title > span.closed-score { color: #a1abb2; }
 
 .notification-list { overflow: auto; }
 .notification-item { display: grid; gap: 6px; padding: 14px 18px; border-bottom: 1px solid #2d383b; }

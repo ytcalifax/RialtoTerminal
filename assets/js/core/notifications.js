@@ -396,6 +396,7 @@ function renderNotifications() {
   const watchSection = $('#decisionWatch');
   const watchList = $('#decisionWatchList');
   if (watchSection && watchList) {
+    const expandedRules = new Set([...watchList.querySelectorAll('details[open][data-rule-id]')].map((item) => item.dataset.ruleId));
     watchList.innerHTML = watchRules.length
       ? watchRules.map((rule) => {
         const trend = rule.trend || {};
@@ -411,10 +412,19 @@ function renderNotifications() {
         const gateReason = (rule.gateChecks || []).filter((x) => !x.passed)
           .map((x) => x.detail || x.label).filter(Boolean).join(' · ')
           || rule.gateDescription;
-        const reason = gateClosed
-          ? [rule.contextReason && `SIGNALS · ${rule.contextReason}`, `GATE · ${gateReason}`].filter(Boolean).join(' · ')
-          : rule.contextReason
-            || (fired ? (rule.requirements || []).filter((x) => x.passed).map((x) => x.detail || x.label).slice(0, 3).join(' · ') : '');
+        const failedGateGroups = (rule.gateChecks || []).filter((check) => !check.passed);
+        const gateTldr = failedGateGroups.map((check) => {
+          const labels = (check.alternatives || []).map((item) => item.label).filter(Boolean);
+          return labels.length ? labels.join(check.operator === 'OR' ? ' or ' : ' and ') : check.label;
+        }).filter(Boolean).join('; ').replace(/\s*[≥≤]\s*\d+(?:\.\d+)?/g, '').replace(/weight\b/gi, '').trim();
+        const passedLabels = (rule.requirements || []).filter((item) => item.passed).map((item) => item.label).slice(0, 2);
+        const shortSummary = gateClosed
+          ? rule.id.startsWith('theater-')
+            ? 'Needs rising conflict/headline activity plus route evidence or a producer outage.'
+            : gateTldr ? `Waiting for ${gateTldr}.` : 'Activation conditions are not met.'
+          : passedLabels.length
+            ? `Evidence: ${passedLabels.join(', ')}.`
+            : 'No qualifying cause evidence observed.';
         const confidence = rule.confidence;
         const history = rule.scoreHistory || [];
         const historyLine = history.length > 1
@@ -433,7 +443,8 @@ function renderNotifications() {
         const sourceLine = disagreement ? `SOURCE DISAGREEMENT · ${disagreement}` : '';
         const path = rule.minimalPath?.text || 'Threshold path unavailable';
         const qualityFlags = confidence?.qualityFlags?.length ? ` · ${confidence.qualityFlags.join('; ')}` : '';
-        return `<article class="decision-watch-item${fired ? ' fired' : ''}${gateClosed ? ' closed' : ''}" data-rule-id="${esc(rule.id)}"><div><b>${esc(rule.title)} <span class="trend-arrow" aria-label="Score trend ${esc(trend.direction || 'unknown')}">${esc(trendArrow)}</span></b><span class="${fired ? 'fired-score' : gateClosed ? 'closed-score' : ''}">${esc(scoreLine)}</span></div><p>${esc(reason)}</p><div class="decision-watch-diagnostics"><span class="path"><b>THRESHOLD PATH</b> ${esc(path)}</span><span><b>INPUT HEALTH</b> ${esc(confidence?.label || 'UNKNOWN')} · ${Number.isFinite(confidence?.coveragePct) ? `${confidence.coveragePct}% available` : 'coverage not reported'}${esc(qualityFlags)} · not an alert probability</span><span><b>${esc(historyLine)}</b></span>${evidenceLine ? `<span><b>REQUIREMENTS</b> ${esc(evidenceLine)}</span>` : ''}${marketLine ? `<span><b>${esc(marketLine)}</b></span>` : ''}${sourceLine ? `<span class="source-disagreement"><b>${esc(sourceLine)}</b></span>` : ''}</div></article>`;
+        const open = expandedRules.has(rule.id) ? ' open' : '';
+        return `<article class="decision-watch-item${fired ? ' fired' : ''}${gateClosed ? ' closed' : ''}" data-rule-id="${esc(rule.id)}"><details class="decision-watch-disclosure" data-rule-id="${esc(rule.id)}"${open}><summary><span class="decision-watch-title"><b>${esc(rule.title)} <span class="trend-arrow" aria-label="Score trend ${esc(trend.direction || 'unknown')}">${esc(trendArrow)}</span></b><span class="${fired ? 'fired-score' : gateClosed ? 'closed-score' : ''}">${esc(scoreLine)}</span></span><span class="decision-watch-tldr">${esc(shortSummary)}</span><span class="decision-watch-chevron" aria-hidden="true">⌄</span></summary><div class="decision-watch-diagnostics"><span><b>GATE DETAIL</b> ${esc(gateClosed ? gateReason : rule.gateDescription || 'No separate activation gate.')}${rule.contextReason ? ` · ${esc(rule.contextReason)}` : ''}</span><span class="path"><b>THRESHOLD PATH</b> ${esc(path)}</span><span><b>INPUT HEALTH</b> ${esc(confidence?.label || 'UNKNOWN')} · ${Number.isFinite(confidence?.coveragePct) ? `${confidence.coveragePct}% available` : 'coverage not reported'}${esc(qualityFlags)} · not an alert probability</span><span><b>${esc(historyLine)}</b></span>${evidenceLine ? `<span><b>REQUIREMENTS</b> ${esc(evidenceLine)}</span>` : ''}${marketLine ? `<span><b>${esc(marketLine)}</b></span>` : ''}${sourceLine ? `<span class="source-disagreement"><b>${esc(sourceLine)}</b></span>` : ''}</div></details></article>`;
       }).join('')
       : '<div class="notification-empty">NO RULE EVALUATIONS AVAILABLE</div>';
   }

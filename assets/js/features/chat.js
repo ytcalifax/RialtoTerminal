@@ -11,15 +11,22 @@ import { req } from '../core/net.js';
  * OpenAI-compatible endpoint they have an account with. The server holds no
  * LLM credential at all.
  *
- * The limit defaults are sized for Groq's free plan, which meters input and
- * output against a single 8,000 token/minute window. Each round re-sends the
- * whole history plus these tool schemas (~1k tokens), so the caps below are
- * what keep a function-calling query inside that window.
+ * OpenRouter is the default because its limits are the only ones that can be
+ * lifted: the `:free` models run at 20 RPM, and any paid model carries no
+ * platform-level request cap at all — it is billed per token instead, at
+ * roughly $0.08–0.15 per million input tokens for the models listed in
+ * chatPage.js. A single question costs a fraction of a cent even when it burns
+ * five rounds, so topping up $10 removes the rate ceiling for good.
+ *
+ * The limit defaults below are therefore provider-neutral safety values rather
+ * than a fit to one free plan. Each round re-sends the whole history plus these
+ * tool schemas (~1k tokens), so `inputBudget` is what keeps a long
+ * function-calling session from growing without bound.
  */
 export const CHAT_DEFAULTS = {
-  url: 'https://api.groq.com/openai/v1',
+  url: 'https://openrouter.ai/api/v1',
   apiKey: '',
-  model: 'openai/gpt-oss-20b',
+  model: 'nvidia/nemotron-3-super-120b-a12b:free',
   temperature: 0.6,
   maxCompletionTokens: 1500,
   maxRounds: 4,
@@ -344,6 +351,48 @@ export function pruneConversation(messages, budget, reserved = 0) {
   return { messages: flat, tokens: spent };
 }
 
+/**
+ * Ask the configured endpoint which models it serves.
+ *
+ * Every OpenAI-compatible provider exposes `GET {base}/models` in the same
+ * `{ data: [{ id }] }` shape. OpenRouter answers without a key, Groq/Mistral/
+ * Cerebras/Gemini need one, so this is called with whatever the browser already
+ * holds. A provider that refuses or does not implement listing is not an error:
+ * the model field stays free-text, so a failure resolves to an empty list and a
+ * short note explaining what happened.
+ *
+ * @param {object} settings - { url, apiKey }
+ * @returns {Promise<{models: string[], note: string}>}
+ */
+export async function listProviderModels(settings) {
+  const cfg = { ...CHAT_DEFAULTS, ...(settings || {}) };
+  const base = String(cfg.url || '').trim().replace(/\/+$/, '');
+  if (!base) return { models: [], note: 'Set an endpoint URL first.' };
+  try {
+    const response = await fetch(`${base}/models`, {
+      headers: cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {},
+    });
+    if (!response.ok) {
+      const hint = response.status === 401 || response.status === 403 ? ' — check the API key' : '';
+      return { models: [], note: `Model list unavailable (HTTP ${response.status})${hint}. Type the model id.` };
+    }
+    const data = await response.json();
+    const ids = (Array.isArray(data?.data) ? data.data : [])
+      .map((m) => (typeof m === 'string' ? m : m?.id))
+      .filter((id) => typeof id === 'string' && id.trim());
+    // Free variants first: this terminal defaults to a free model, and a long
+    // catalog sorted alphabetically buries exactly the ids worth trying.
+    const models = [...new Set(ids)].sort((a, b) => (
+      Number(b.endsWith(':free')) - Number(a.endsWith(':free')) || a.localeCompare(b)
+    ));
+    return models.length
+      ? { models, note: `${models.length} models offered by this endpoint` }
+      : { models: [], note: 'Endpoint returned no models. Type the model id.' };
+  } catch {
+    return { models: [], note: 'Could not reach the endpoint. Type the model id.' };
+  }
+}
+
 /** Read the provider's remaining-budget headers, when CORS exposes them.
  * Not every endpoint sets Access-Control-Expose-Headers, so a null here is
  * normal and simply means the readout is unavailable for that provider. */
@@ -429,11 +478,32 @@ async function callProvider(cfg, payload) {
  *
  * @param {object} settings - from loadChatSettings()
  * @param {Array} messages - full conversation, system prompt first
- * @param {(progress: {round: number, limits: object|null}) => void} [onProgress]
+ * @param {(progress: {round: number, limits: object|null, final?: boolean}) => void} [onProgress]
  * @returns {Promise<{messages: Array, content: string, limits: object|null}>}
  */
 const KNOWN_TOOLS = new Set(CHAT_TOOLS.map((tool) => tool.function.name));
 const CHAT_TRACE_LIMIT = 60;
+
+/** Closing instruction for the tool-free turn that ends a capped run. */
+const FINAL_TURN_PROMPT = 'Tool budget spent. Answer now from the data above: lead with the '
+  + 'best supported figure or fact, then state plainly what the data does not cover.';
+
+/**
+ * State the real tool budget in the system prompt.
+ *
+ * The shared prompt cannot quote a number the browser owns, and a model that has
+ * to guess spends one call per round and arrives at the cap with no answer.
+ * This rewrites the system message in place instead of adding a second one,
+ * which some OpenAI-compatible providers reject mid-conversation.
+ */
+function stateToolBudget(messages, maxRounds) {
+  const line = `Tool budget: ${maxRounds} call${maxRounds === 1 ? '' : 's'} for this question,`
+    + ' then you must answer from what you already have. Batch independent calls into a single'
+    + ' turn instead of one per turn, and name what is missing rather than fetching more.';
+  const system = messages.find((m) => m.role === 'system');
+  if (system) system.content = `${system.content} ${line}`;
+  else messages.unshift({ role: 'system', content: line });
+}
 
 /** Append one entry to the tool-call trace the debug pane renders. */
 function traceCall(entry) {
@@ -467,6 +537,7 @@ export async function sendChat(settings, messages, onProgress) {
   const seenCalls = new Set();
   let inventedCalls = 0;
   let limits = null;
+  stateToolBudget(conversation, maxRounds);
   startTrace(cfg.model, maxRounds);
 
   try {
@@ -587,9 +658,30 @@ export async function sendChat(settings, messages, onProgress) {
       }
     }
 
-    throw new Error(
-      `Stopped at the ${maxRounds}-round tool limit without an answer. Raise "Max rounds" in ⚙ CHAT, or ask something narrower.`,
-    );
+    // The round cap is a cost cap, not a reason to throw away an answer the
+    // model can already give: at this point it is holding every result it
+    // gathered. One last turn with no tools attached makes it commit to those
+    // instead of the question dying with data already in the transcript.
+    const { messages: trimmed, tokens } = pruneConversation(conversation, budget);
+    const { data, limits: seen } = await callProvider(cfg, {
+      model: cfg.model,
+      messages: [...trimmed, { role: 'user', content: FINAL_TURN_PROMPT }],
+      temperature: num(cfg.temperature, CHAT_DEFAULTS.temperature, 0, 2),
+      max_completion_tokens: num(cfg.maxCompletionTokens, CHAT_DEFAULTS.maxCompletionTokens, 64, 32000),
+      stream: false,
+    });
+    limits = seen;
+    if (onProgress) onProgress({ round: maxRounds + 1, limits, inputTokens: tokens, final: true });
+
+    const answer = data?.choices?.[0]?.message?.content?.trim();
+    if (!answer) {
+      throw new Error(
+        `Stopped at the ${maxRounds}-round tool limit without an answer. Raise "Max rounds" in ⚙ CHAT, or ask something narrower.`,
+      );
+    }
+    conversation.push({ role: 'assistant', content: answer });
+    endTrace('ANSWERED', `tool cap of ${maxRounds} rounds reached · answered from the ${seenCalls.size} gathered result${seenCalls.size === 1 ? '' : 's'}`);
+    return { messages: conversation, content: answer, limits };
   } catch (err) {
     endTrace('ABORTED', String(err?.message || err));
     throw err;

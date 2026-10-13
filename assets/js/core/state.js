@@ -1,6 +1,10 @@
 import { loadPins } from './pins.js';
 import { loadConflictTypes, loadConflictDateRange } from './conflictFilters.js';
 
+function loadStored(key, fallback) {
+  try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
+}
+
 const state = {
   page: 'top',
   screen: '1',
@@ -12,9 +16,12 @@ const state = {
   filter: 'all',
   news: [],
   newsSources: [],
+  newsStaleSources: [],
+  newsDataStale: false,
+  newsMeta: null,
   newsQuery: '',
   selectedNews: '',
-  notifications: [],
+  notifications: loadStored('rialto_notifications_v1', []),
   alertSettings: {
     news: false,
     conflict: false,
@@ -35,6 +42,9 @@ const state = {
   },
   alertBaselines: { news: null, conflict: null, worldMonitor: null, diseaseOutbreaks: null, markets: null, vessels: null, aircraft: null, deductions: [], seenAlerts: [] },
   deductions: [],
+  deductionHistory: loadStored('rialto_deduction_history_v1', []),
+  chokepointHistory: loadStored('rialto_chokepoint_history_v1', {}),
+  deductionDelivery: loadStored('rialto_deduction_delivery_v1', {}),
   deductionDiagnostics: null,
   deductionQuotes: [],
   deductionBaseline: { conflict: {}, news: {} },

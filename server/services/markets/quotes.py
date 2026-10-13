@@ -4,8 +4,10 @@ import html
 import json
 import math
 import re
+import statistics
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from urllib.parse import quote
 
@@ -38,7 +40,7 @@ _QUOTE_LOCKS = tuple(threading.Lock() for _ in range(16))
 _SYMBOL_RE = re.compile(r"^[A-Za-z0-9^.\-=]{1,15}$")
 
 MARKET_SOURCE_NOTE = (
-    "Yahoo Finance public chart endpoint · 1-minute bars + live last price; "
+    "Yahoo Finance public chart endpoint · daily bars + consolidated last price; "
     "BSE Sofia SOFIX · 3-minute delay · indicative"
 )
 
@@ -54,43 +56,94 @@ _STALE_AFTER_BY_GROUP = {
     "FX": 36 * 60 * 60,
     "CRYPTO": 2 * 60 * 60,
 }
+_OPEN_STALE_AFTER_S = 15 * 60
+_EXCHANGE_BY_SYMBOL = {
+    "BZ=F": "ICE_BRENT",  # ICE Brent session uses London-local trading hours
+    "^VIX": "XCBF",  # Cboe Futures Exchange VIX index sessions
+    "CL=F": "CMES", "RB=F": "CMES", "HO=F": "CMES", "NG=F": "CMES",
+    "GC=F": "CMES", "SI=F": "CMES", "ZW=F": "CMES",  # CBOT wheat uses CME Group calendar
+    "^GSPC": "XNYS", "RTX": "XNYS", "LMT": "XNYS", "DAL": "XNYS",
+    "TSM": "XNYS", "SMH": "XNYS", "XLE": "XNYS", "USO": "XNYS", "UNG": "XNYS",
+}
+_EXCHANGE_BY_YAHOO_NAME = {
+    "NMS": "XNYS", "NGM": "XNYS", "NCM": "XNYS", "NYQ": "XNYS", "PCX": "XNYS",
+    "BTS": "XNYS", "ASE": "XNYS", "CBO": "XCBF", "CBT": "CMES", "CMX": "CMES",
+    "NYM": "CMES", "ICE": "IEPA", "LSE": "XLON", "GER": "XFRA", "PAR": "XPAR",
+    "HKG": "XHKG", "JPX": "XTKS", "SHH": "XSHG", "TAI": "XTAI", "BSE": "XBOM",
+}
 
 
-def _market_state(meta: dict, now: float) -> str:
-    """Use Yahoo's published session periods when its marketState is absent."""
-    supplied = meta.get("marketState")
-    if isinstance(supplied, str) and supplied.strip() and supplied.strip().upper() != "UNKNOWN":
-        return supplied.strip().upper()
-    periods = meta.get("currentTradingPeriod")
-    regular = periods.get("regular") if isinstance(periods, dict) else None
-    if not isinstance(regular, dict):
-        return "UNKNOWN"
-    try:
-        start, end = float(regular["start"]), float(regular["end"])
-    except (KeyError, TypeError, ValueError, OverflowError):
-        return "UNKNOWN"
-    if not (math.isfinite(start) and math.isfinite(end) and start < end):
-        return "UNKNOWN"
-    for session in ("pre", "regular", "post"):
-        period = periods.get(session)
-        if not isinstance(period, dict):
-            continue
+def _exchange_calendar(symbol: str, group: str, meta: dict) -> str:
+    if symbol in _EXCHANGE_BY_SYMBOL:
+        return _EXCHANGE_BY_SYMBOL[symbol]
+    if group == "CRYPTO":
+        return "24/7"
+    if group == "FX":
+        return "24/5"
+    return _EXCHANGE_BY_YAHOO_NAME.get(str(meta.get("exchangeName") or "").upper(), "UNKNOWN")
+
+
+def _market_state(calendar_name: str, now: float) -> str:
+    """Return the exchange-calendar state for the instrument at ``now``."""
+    if calendar_name == "ICE_BRENT":
         try:
-            session_start, session_end = float(period["start"]), float(period["end"])
-        except (KeyError, TypeError, ValueError, OverflowError):
-            continue
-        if session_start <= now < session_end:
-            return session.upper()
-    return "CLOSED"
+            import exchange_calendars as xcals
+            from zoneinfo import ZoneInfo
+
+            london_now = datetime.fromtimestamp(now, timezone.utc).astimezone(ZoneInfo("Europe/London"))
+            business_calendar = xcals.get_calendar("XLON")
+            if london_now.weekday() == 6:
+                next_business_day = london_now.date() + timedelta(days=1)
+                return "OPEN" if london_now.hour >= 22 and business_calendar.is_session(next_business_day.isoformat()) else "CLOSED"
+            if london_now.weekday() < 5 and business_calendar.is_session(london_now.date().isoformat()):
+                return "OPEN" if 1 <= london_now.hour < 23 else "CLOSED"
+            return "CLOSED"
+        except Exception:
+            return "UNKNOWN"
+    if calendar_name == "24/7":
+        return "OPEN"
+    if calendar_name == "24/5":
+        instant = datetime.fromtimestamp(now, timezone.utc)
+        return "CLOSED" if instant.weekday() == 5 or (instant.weekday() == 4 and instant.hour >= 21) or (instant.weekday() == 6 and instant.hour < 21) else "OPEN"
+    if calendar_name:
+        try:
+            import exchange_calendars as xcals
+
+            calendar = xcals.get_calendar(calendar_name)
+            instant = datetime.fromtimestamp(now, timezone.utc)
+            start = (instant.date() - timedelta(days=1)).isoformat()
+            end = (instant.date() + timedelta(days=1)).isoformat()
+            sessions = calendar.schedule.loc[start:end]
+            for _, session in sessions.iterrows():
+                opened = session["open"].timestamp()
+                closed = session["close"].timestamp()
+                if opened <= now < closed:
+                    break_start = session["break_start"].timestamp() if session["break_start"] is not None and str(session["break_start"]) != "NaT" else None
+                    break_end = session["break_end"].timestamp() if session["break_end"] is not None and str(session["break_end"]) != "NaT" else None
+                    if break_start is not None and break_end is not None and break_start <= now < break_end:
+                        return "BREAK"
+                    return "OPEN"
+            return "CLOSED"
+        except Exception:
+            return "UNKNOWN"
+    return "UNKNOWN"
+
+
+def _quote_staleness(asof: float, now: float, market_state: str, group: str) -> tuple[bool, int]:
+    stale_after = _OPEN_STALE_AFTER_S if market_state == "OPEN" else _STALE_AFTER_BY_GROUP.get(group, 24 * 60 * 60)
+    return (not asof or now - asof > stale_after), stale_after
 
 
 def _change_reference(meta: dict, closes: list[float]) -> tuple[float | None, str | None]:
-    """Return Yahoo's validated prior-close value and its metadata field."""
-    raw = meta.get("chartPreviousClose")
-    source = "chartPreviousClose" if raw is not None else None
-    if raw is None:
-        raw = meta.get("previousClose")
-        source = "previousClose" if raw is not None else None
+    """Use the last completed daily bar, not Yahoo's sometimes stale metadata field."""
+    # Yahoo's chartPreviousClose has been observed to point at the first bar in
+    # the requested range on several instruments. The bar immediately before
+    # the latest daily bar is the preceding session close and keeps the move
+    # daily. Fall back to metadata only when history has fewer than two bars.
+    raw = closes[-2] if len(closes) >= 2 else meta.get("chartPreviousClose") or meta.get("previousClose")
+    source = "precedingDailyBar" if len(closes) >= 2 else (
+        "chartPreviousClose" if meta.get("chartPreviousClose") is not None else "previousClose"
+    )
     if raw is None:
         return None, None
     try:
@@ -102,6 +155,28 @@ def _change_reference(meta: dict, closes: list[float]) -> tuple[float | None, st
     if not math.isfinite(previous) or previous <= 0 or scale < 0.1 or scale > 10:
         return None, None
     return previous, source
+
+
+def _reference_consistency(previous: float | None, closes: list[float], metadata_reference: float | None = None) -> dict:
+    """Expose Yahoo metadata discrepancies without allowing them into scoring."""
+    if previous is None or len(closes) < 2 or closes[-2] <= 0:
+        return {"status": "UNAVAILABLE", "comparison": "preceding completed daily bar from Yahoo", "differencePct": None}
+    metadata_difference = abs(metadata_reference / previous - 1) * 100 if metadata_reference and previous else None
+    if metadata_difference is not None and metadata_difference > 0.2:
+        return {
+            "status": "METADATA_DISAGREEMENT",
+            "comparison": "Yahoo chart metadata versus preceding completed daily bar; scoring uses the daily bar",
+            "differencePct": round(metadata_difference, 4),
+            "tolerancePct": 0.2,
+            "metadataReferencePrice": metadata_reference,
+            "selectedReferencePrice": previous,
+        }
+    return {
+        "status": "DAILY_BAR_SELECTED",
+        "comparison": "preceding completed daily bar from Yahoo; not independent exchange verification",
+        "differencePct": round(metadata_difference, 4) if metadata_difference is not None else 0,
+        "tolerancePct": 0.2,
+    }
 
 
 def _yahoo_quote(symbol: str, name: str | None = None) -> dict | None:
@@ -179,8 +254,21 @@ def _yahoo_quote(symbol: str, name: str | None = None) -> dict | None:
             # ~3,800). The first bar is not the prior close, so omit daily
             # change values instead of publishing a nonsensical percentage.
             previous, change_reference = _change_reference(meta, closes)
+            raw_meta_reference = meta.get("chartPreviousClose") or meta.get("previousClose")
+            try:
+                raw_meta_reference = float(raw_meta_reference) if raw_meta_reference is not None else None
+            except (TypeError, ValueError, OverflowError):
+                raw_meta_reference = None
+            reference_consistency = _reference_consistency(previous, closes, raw_meta_reference)
             change = (last - previous) if previous is not None else None
             pct = (change / previous * 100) if (previous and previous != 0) else None
+            daily_returns = [
+                (closes[index] / closes[index - 1] - 1) * 100
+                for index in range(1, len(closes))
+                if closes[index - 1] > 0 and closes[index] > 0
+            ][-20:]
+            daily_volatility_pct = statistics.pstdev(daily_returns) if len(daily_returns) >= 5 else None
+            move_threshold_pct = max(0.2, daily_volatility_pct * 0.5) if daily_volatility_pct is not None else None
 
             def valid_meta_number(key: str) -> float | None:
                 value = meta.get(key)
@@ -204,24 +292,35 @@ def _yahoo_quote(symbol: str, name: str | None = None) -> dict | None:
                 day_low = min(low_values)
             if day_high is None and high_values:
                 day_high = max(high_values)
+            group = SYMBOL_GROUP.get(symbol, "INDICES")
+            exchange_calendar = _exchange_calendar(symbol, group, meta)
+            quote_now = time.time()
+            market_state = _market_state(exchange_calendar, quote_now)
+            stale, stale_after_s = _quote_staleness(asof, quote_now, market_state, group)
             row = {
                 "symbol": symbol,
                 "name": resolved_name,
                 "last": last,
                 "change": change,
                 "pct": pct,
+                "dailyVolatilityPct": daily_volatility_pct,
+                "moveThresholdPct": move_threshold_pct,
                 "changeReference": change_reference,
                 "changeReferencePrice": previous,
+                "changeReferenceConsistency": reference_consistency,
                 "low": day_low,
                 "high": day_high,
                 "series": closes[-24:],
                 "currency": meta.get("currency", ""),
                 "asof": asof,
-                "stale": not asof or time.time() - asof > _STALE_AFTER_BY_GROUP.get(SYMBOL_GROUP.get(symbol, "INDICES"), 24 * 60 * 60),
-                "staleAfterS": _STALE_AFTER_BY_GROUP.get(SYMBOL_GROUP.get(symbol, "INDICES"), 24 * 60 * 60),
-                "marketState": _market_state(meta, time.time()),
+                "retrievedAt": time.time(),
+                "asofMeaning": "provider quote timestamp, seconds since Unix epoch; retrievedAt records this server's retrieval time",
+                "stale": stale,
+                "staleAfterS": stale_after_s,
+                "marketState": market_state,
+                "exchangeCalendar": exchange_calendar,
                 "exchangeTimezoneName": meta.get("exchangeTimezoneName") or "",
-                "group": SYMBOL_GROUP.get(symbol, "INDICES"),
+                "group": group,
             }
             _QUOTE_CACHE.store(symbol, dict(row))
             return dict(row)

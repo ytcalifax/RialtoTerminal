@@ -3,3 +3,4 @@
 # Project metadata and the `rialto` console script live in pyproject.toml:
 #   pip install -e .
 h3>=4.2
+exchange-calendars>=4.13.2

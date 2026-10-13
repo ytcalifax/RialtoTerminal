@@ -11,6 +11,7 @@ authors = [{ name = "ytcalifax (98w)", email = "hello@98w.eu" }]
 requires-python = ">=3.12"
 dependencies = [
     "h3>=4.2",
+    "exchange-calendars>=4.13.2",
 ]
 keywords = [
     "markets",

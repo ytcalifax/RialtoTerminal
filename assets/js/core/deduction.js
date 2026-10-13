@@ -1,5 +1,7 @@
 import { req } from './net.js';
 import { state } from './state.js';
+import { describeGatePath } from './gateLogic.js';
+import { adjustConflictEvidence } from './conflictEvidence.js';
 import { emit } from './hooks.js';
 const DEDUCTION_COOLDOWN_MS = 6 * 3600000;
 const DEDUCTION_LIMIT = 30;
@@ -15,8 +17,55 @@ const EFFECT_NAMES = {
   'UNG': 'NatGas Fund', 'XOM': 'Exxon', 'SHEL': 'Shell', 'TTE': 'TotalEnergies',
   'RTX': 'RTX', 'LMT': 'Lockheed', 'DAL': 'Delta', 'TSM': 'TSMC', 'SMH': 'Semis ETF',
 };
-const MOVE_FLOOR_PCT = 1;
 const DEFAULT_QUOTE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const VIX_ELEVATED_LEVEL = 20;
+const VIX_EXTREME_LEVEL = 25;
+const VIX_SIGNAL_SIGMA = 0.5;
+const VIX_PANIC_SIGMA = 1.5;
+const ROUTE_HISTORY_LIMIT = 672;
+const RULE_HISTORY_LIMIT = 288;
+
+function saveStored(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage may be disabled */ }
+}
+
+function recordChokepointSample(point, asof) {
+  const id = String(point.id || point.name || '').toLowerCase();
+  const transit = point.transitSummary || {};
+  if (!id || transit.dataAvailable !== true) return [];
+  const incidentCount7d = Number(transit.incidentCount7d);
+  const disruptionPct = Number(transit.disruptionPct);
+  if (!Number.isFinite(incidentCount7d) || !Number.isFinite(disruptionPct)) return [];
+  const history = state.chokepointHistory[id] || [];
+  if (!history.some((sample) => sample.at === asof)) {
+    history.push({ at: asof, incidentCount7d, disruptionPct });
+    state.chokepointHistory[id] = history.slice(-ROUTE_HISTORY_LIMIT);
+    saveStored('rialto_chokepoint_history_v1', state.chokepointHistory);
+  }
+  const baseline = history.filter((sample) => sample.at !== asof && sample.at >= Date.now() - 30 * 86400000).slice(-672);
+  const intervals = history.slice(1).map((sample, index) => (sample.at - history[index].at) / 1000)
+    .filter((seconds) => seconds > 0 && seconds <= 30 * 86400).sort((a, b) => a - b);
+  const sampleCadenceSeconds = intervals.length
+    ? Math.round(intervals[Math.floor(intervals.length / 2)]) : null;
+  const samplesNeeded = Math.max(0, 24 - baseline.length);
+  const estimatedSecondsUntilReady = sampleCadenceSeconds == null ? null : samplesNeeded * sampleCadenceSeconds;
+  const deviation = (field, margin) => {
+    if (baseline.length < 24) return { evaluable: false, value: null, mean: null, std: null,
+      historySamples: baseline.length, requiredSamples: 24, sampleCadenceSeconds, estimatedSecondsUntilReady };
+    const values = baseline.map((sample) => Number(sample[field])).filter(Number.isFinite);
+    if (values.length < 24) return { evaluable: false, value: null, mean: null, std: null,
+      historySamples: values.length, requiredSamples: 24, sampleCadenceSeconds, estimatedSecondsUntilReady };
+    const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+    const std = Math.sqrt(values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length);
+    return { evaluable: true, mean, std, value: field === 'incidentCount7d' ? incidentCount7d : disruptionPct,
+      historySamples: values.length, requiredSamples: 24, sampleCadenceSeconds, estimatedSecondsUntilReady: 0,
+      anomalous: (field === 'incidentCount7d' ? incidentCount7d : disruptionPct) > mean + Math.max(2 * std, margin) };
+  };
+  return [
+    deviation('incidentCount7d', 2),
+    deviation('disruptionPct', 5),
+  ];
+}
 const SIGNAL_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const NEWS_WINDOW_MS = 15 * 60 * 1000;
 const CHOKEPOINTS = [
@@ -37,13 +86,16 @@ const CHOKEPOINTS = [
 const THEATERS = {
   gulf: {
     label: 'Middle East',
+    shockType: 'SUPPLY_DISRUPTION',
     keywords: /\b(iran|iranian|tehran|israel|hormuz|persian gulf|gulf of oman|gulf states|saudi|iraq|kuwait|qatar|bahrain|uae|emirates)\b/i,
     choke: 'hormuz',
     producers: ['iran', 'iraq', 'saudi', 'kuwait', 'qatar', 'uae', 'united arab emirates', 'bahrain', 'oman'],
     rule: {
       title: 'FUEL PRICE PRESSURE',
       summary: 'Conflict and supply-route signals coincide with rising fuel prices; this is a risk signal, not proof of causation.',
-      minScore: 7,
+      // Preserve the former ~54% cause threshold (7/13) after moving the
+      // coincident market tier out of cause evidence (5/9 ≈ 56%).
+      minScore: 5,
       effects: [
         { symbol: 'BZ=F', dir: 'up' }, { symbol: 'CL=F', dir: 'up' }, { symbol: 'RB=F', dir: 'up' },
         { symbol: 'HO=F', dir: 'up' }, { symbol: 'NG=F', dir: 'up' }, { symbol: 'XLE', dir: 'up' },
@@ -53,6 +105,7 @@ const THEATERS = {
   },
   redsea: {
     label: 'Red Sea / Yemen',
+    shockType: 'SUPPLY_DISRUPTION',
     keywords: /\b(yemen|houthi|houthis|red sea|bab el-mandeb|bab al-mandeb|aden|sanaa)\b/i,
     choke: 'redsea',
     producers: ['yemen', 'saudi', 'egypt', 'sudan', 'eritrea', 'djibouti'],
@@ -69,6 +122,7 @@ const THEATERS = {
   },
   ukraine: {
     label: 'Russia / Ukraine',
+    shockType: 'SUPPLY_DISRUPTION',
     keywords: /\b(ukraine|ukrainian|russia|russian|kyiv|kiev|moscow|crimea|donetsk|luhansk|zaporizhzhia|kharkiv)\b/i,
     choke: 'blacksea',
     producers: ['russia', 'ukraine', 'kazakhstan'],
@@ -84,6 +138,7 @@ const THEATERS = {
   },
   taiwan: {
     label: 'Taiwan / China',
+    shockType: 'MACRO_AND_SUPPLY_CHAIN',
     keywords: /\b(taiwan|taiwanese|beijing|pla |people.s liberation|south china sea|strait of taiwan)\b/i,
     choke: 'taiwan',
     producers: ['taiwan', 'china'],
@@ -133,8 +188,13 @@ function matchesSelectedTopics(item) {
   return matchesTopicText(rowText(item));
 }
 function matchesTopicText(text) {
-  const terms = String(state.alertSettings.keywords || '').split(',').map((term) => term.trim().toLocaleLowerCase()).filter(Boolean);
-  return !terms.length || terms.some((term) => String(text).toLocaleLowerCase().includes(term));
+  const terms = String(state.alertSettings.keywords || '').split(',').map((term) => term.trim()).filter(Boolean);
+  if (!terms.length) return true;
+  const normalizedText = String(text).normalize('NFKC').toLocaleLowerCase();
+  return terms.some((term) => {
+    const escaped = term.normalize('NFKC').toLocaleLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+    return new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}($|[^\\p{L}\\p{N}])`, 'u').test(normalizedText);
+  });
 }
 
 function pointIn(box, lat, lon) {
@@ -177,11 +237,132 @@ function quoteLevelOf(symbol) {
   const level = Number(row.last);
   return Number.isFinite(level) ? level : null;
 }
-function volatilitySignal(direction, minimumLevel = 20, minimumMovePct = MOVE_FLOOR_PCT) {
+function moveThresholdOf(row) {
+  const threshold = Number(row?.moveThresholdPct);
+  return Number.isFinite(threshold) && threshold > 0 ? threshold : null;
+}
+function volatilitySignal(direction, minimumLevel = VIX_ELEVATED_LEVEL, minimumSigma = VIX_SIGNAL_SIGMA) {
   const level = quoteLevelOf('^VIX');
   const move = moveOf('^VIX');
-  if (level == null || move == null || level < minimumLevel || Math.abs(move) < minimumMovePct) return null;
+  const dailyVol = Number(quoteRow('^VIX')?.dailyVolatilityPct);
+  if (level == null || move == null || !Number.isFinite(dailyVol) || dailyVol <= 0
+    || level < minimumLevel || Math.abs(move) / dailyVol < minimumSigma) return null;
   return moveInDirection('^VIX', direction);
+}
+function symbolsForRequirement(label, effects = []) {
+  const text = label.toLocaleLowerCase();
+  const groups = [];
+  if (/volatility/.test(text)) groups.push(['^VIX']);
+  if (/gold/.test(text)) groups.push(['GC=F']);
+  if (/silver/.test(text)) groups.push(['SI=F']);
+  if (/equit/.test(text)) groups.push(['^GSPC']);
+  if (/wheat|grain|food/.test(text)) groups.push(['ZW=F']);
+  if (/semiconductor|technology|tech/.test(text)) groups.push(['TSM', 'SMH']);
+  if (/defense|airline|travel/.test(text)) groups.push(['RTX', 'LMT', 'DAL']);
+  if (/energy|fuel|oil/.test(text)) groups.push(['BZ=F', 'CL=F', 'RB=F', 'HO=F', 'NG=F', 'XLE', 'USO', 'UNG']);
+  if (/hedge demand/.test(text)) groups.push(['GC=F', '^VIX']);
+  if (!groups.length) return [];
+  let symbols = [...new Set(groups.flat())];
+  const ruleSymbols = new Set(effects.map((effect) => effect.symbol));
+  const relevantSymbols = symbols.filter((symbol) => ruleSymbols.has(symbol));
+  if (relevantSymbols.length) symbols = relevantSymbols;
+  return { symbols, mode: /\bor\b|either/.test(text) || /hedge demand|defense bid|defense names bid|energy market moving up|travel names selling off/.test(text) ? 'any' : 'all' };
+}
+function failedRequirementStatus(requirement, ctx = {}) {
+  if (/corroborated maritime disruption/i.test(requirement.label)) {
+    const route = [ctx.choke, ...(ctx.chokepoints || [])].filter(Boolean).find((item) => item.id === requirement.chokeId);
+    if (route && !route.routeBaseline?.incidents?.evaluable) return 'NOT_EVALUABLE';
+  }
+  const market = symbolsForRequirement(requirement.label, requirement.effects || []);
+  if (market?.symbols?.length) {
+    const usable = market.symbols.filter((symbol) => quoteUsability(quoteRow(symbol)).usable && moveThresholdOf(quoteRow(symbol)) != null);
+    const evaluable = market.mode === 'any' ? usable.length > 0 : usable.length === market.symbols.length;
+    return evaluable ? 'NOT_OBSERVED' : 'NOT_EVALUABLE';
+  }
+  const label = requirement.label.toLocaleLowerCase();
+  if (/conflict/.test(label)) return state.warCoverage?.sources?.GDELT?.status === 'UNAVAILABLE' ? 'NOT_EVALUABLE' : 'NOT_OBSERVED';
+  if (/headline/.test(label)) return state.errors.news ? 'NOT_EVALUABLE' : 'NOT_OBSERVED';
+  if (/route|maritime|ais|navigation|chokepoint/.test(label)) {
+    return state.warWorldMonitor?.source_status?.chokepoints === 'OK' ? 'NOT_OBSERVED' : 'NOT_EVALUABLE';
+  }
+  if (/outage/.test(label)) return state.warWorldMonitor?.source_status?.outages === 'OK' ? 'NOT_OBSERVED' : 'NOT_EVALUABLE';
+  return 'NOT_OBSERVED';
+}
+function minimalPath({ score, minScore, gatePassed, gateChecks, requirements }) {
+  const needed = Math.max(0, minScore - score);
+  const missing = requirements.filter((item) => !item.passed && item.dataStatus !== 'NOT_EVALUABLE');
+  let best = needed === 0 ? [] : null;
+  for (let mask = 1; mask < (1 << missing.length); mask += 1) {
+    const selected = missing.filter((_, index) => mask & (1 << index));
+    const points = selected.reduce((sum, item) => sum + item.weight, 0);
+    if (points < needed) continue;
+    if (!best || selected.length < best.length || (selected.length === best.length && points < best.reduce((sum, item) => sum + item.weight, 0))) best = selected;
+  }
+  const gatePath = describeGatePath(gatePassed, gateChecks);
+  const scorePath = best?.length ? best.map((item) => `${item.label} (+${item.weight})`) : [];
+  const unavailable = requirements.filter((item) => !item.passed && item.dataStatus === 'NOT_EVALUABLE').map((item) => item.label);
+  const prefix = !gatePassed ? 'Needs gate' : 'Needs';
+  const text = `${prefix}${!gatePassed && needed ? ` plus ${needed} points` : needed ? ` ${needed} points` : ''}${scorePath.length ? `: ${scorePath.join(' + ')}` : needed ? ': no fully evaluable point path' : ''}${gatePath.text ? ` · gate: ${gatePath.text}` : ''}${unavailable.length ? ` · not evaluable: ${unavailable.join(', ')}` : ''}`;
+  return { neededPoints: needed, gateRequired: !gatePassed, candidates: scorePath, gateOptions: gatePath.unmet, gateGroups: gatePath.groups, unevaluable: unavailable, text };
+}
+function ruleFeedHealth(rule) {
+  const routeAt = Date.parse(String(state.warWorldMonitor?.chokepoints_fetched_at || ''));
+  const routeFresh = state.warWorldMonitor?.source_status?.chokepoints === 'OK'
+    && Number.isFinite(routeAt) && Date.now() - routeAt >= 0 && Date.now() - routeAt <= 30 * 60 * 1000;
+  const quotes = [...new Set((rule.effects || []).map((effect) => effect.symbol))];
+  const checks = {
+    quotes: quotes.length > 0 && quotes.every((symbol) => quoteUsability(quoteRow(symbol)).usable && moveThresholdOf(quoteRow(symbol)) != null),
+    conflict: !state.errors.war && (state.warCoverage?.sources?.GDELT?.status === 'OK' || (!state.warCoverage && !state.errors.war)),
+    headlines: Boolean(state.timestamps.news) && !state.errors.news,
+    chokepoints: routeFresh,
+    outages: state.warWorldMonitor?.source_status?.outages === 'OK',
+    gpsjam: Boolean(state.warGpsJam?.features?.length) && Boolean(state.warGpsJam?.date),
+    outbreaks: !state.diseaseOutbreaksStale && Boolean(state.diseaseOutbreaksUpdatedAt),
+  };
+  const needed = rule.id.startsWith('theater-') ? ['quotes', 'conflict', 'headlines', 'chokepoints', 'outages']
+    : rule.id === 'outbreak-travel' ? ['quotes', 'headlines', 'outbreaks']
+      : rule.id === 'airspace-navigation-risk' ? ['quotes', 'conflict', 'chokepoints', 'gpsjam']
+        : rule.id === 'volatility-panic' || rule.id === 'risk-off' ? ['quotes', 'conflict', 'headlines']
+          : ['quotes', 'conflict', 'headlines', 'chokepoints', 'outages'];
+  const ready = needed.filter((feed) => checks[feed]).length;
+  const coveragePct = Math.round(100 * ready / needed.length);
+  const qualityFlags = [];
+  if (state.errors.war) qualityFlags.push('conflict feed partial or degraded');
+  if ((state.deductionQuotes || []).some((quote) => quote.changeReferenceConsistency?.status === 'METADATA_DISAGREEMENT')) {
+    qualityFlags.push('Yahoo chart metadata disagrees; scoring uses preceding daily bars');
+  }
+  const label = coveragePct >= 90 && qualityFlags.length === 0 ? 'HIGH' : coveragePct >= 60 ? 'MEDIUM' : 'LOW';
+  return {
+    label,
+    coveragePct,
+    qualityFlags,
+    meaning: 'Feed availability and known data-quality flags; not a probability that the rule is correct.',
+    feeds: needed.map((feed) => ({ feed, status: checks[feed] ? 'AVAILABLE' : 'DEGRADED_OR_MISSING' })),
+  };
+}
+function addRuleHistory(diagnostics) {
+  const now = Date.now();
+  diagnostics.forEach((rule) => {
+    const health = ruleFeedHealth(rule);
+    const samples = state.deductionHistory.filter((item) => item.rule === rule.id);
+    const last = samples.at(-1);
+    if (!last || now - last.at >= 4 * 60 * 1000) {
+      samples.push({ rule: rule.id, at: now, score: rule.score, status: rule.status, confidence: health.coveragePct });
+      state.deductionHistory = [...state.deductionHistory.filter((item) => item.rule !== rule.id), ...samples.slice(-RULE_HISTORY_LIMIT)];
+    }
+    const history = state.deductionHistory.filter((item) => item.rule === rule.id).slice(-RULE_HISTORY_LIMIT);
+    const recent = history.filter((item) => now - item.at <= 24 * 60 * 60 * 1000);
+    const first = recent[0];
+    const latest = recent.at(-1);
+    rule.confidence = health;
+    rule.scoreHistory = recent.map(({ at, score }) => ({ at: new Date(at).toISOString(), score }));
+    rule.trend = first && latest ? {
+      periodHours: Math.round((latest.at - first.at) / 3600000 * 10) / 10,
+      change: latest.score - first.score,
+      direction: latest.score > first.score ? 'RISING' : latest.score < first.score ? 'FALLING' : 'FLAT',
+    } : { periodHours: 0, change: 0, direction: 'INSUFFICIENT_HISTORY' };
+  });
+  saveStored('rialto_deduction_history_v1', state.deductionHistory);
 }
 function effectName(symbol) {
   return EFFECT_NAMES[symbol] || quoteRow(symbol)?.name || symbol;
@@ -189,18 +370,23 @@ function effectName(symbol) {
 
 function moveInDirection(symbol, direction) {
   const move = moveOf(symbol);
-  if (move == null || Math.abs(move) < MOVE_FLOOR_PCT) return null;
+  const threshold = moveThresholdOf(quoteRow(symbol));
+  if (move == null || threshold == null || Math.abs(move) < threshold) return null;
   if ((direction === 'up' && move <= 0) || (direction === 'down' && move >= 0)) return null;
   return `${effectName(symbol)} ${fmtPct(move)}`;
 }
 
 function moveWeight(symbol, direction) {
   const move = moveOf(symbol);
-  if (move == null || Math.abs(move) < MOVE_FLOOR_PCT) return 0;
+  const row = quoteRow(symbol);
+  const threshold = moveThresholdOf(row);
+  if (move == null || threshold == null || Math.abs(move) < threshold) return 0;
   if ((direction === 'up' && move <= 0) || (direction === 'down' && move >= 0)) return 0;
-  const magnitude = Math.abs(move);
-  if (magnitude >= 5) return 3;
-  if (magnitude >= 2) return 2;
+  const dailyVol = Number(row.dailyVolatilityPct);
+  if (!Number.isFinite(dailyVol) || dailyVol <= 0) return 0;
+  const magnitude = Math.abs(move) / dailyVol;
+  if (magnitude >= 2.5) return 3;
+  if (magnitude >= 1.5) return 2;
   return 1;
 }
 
@@ -210,7 +396,9 @@ function quoteDiagnostic(symbol, direction) {
   if (!usability.usable) return usability.reason;
   const move = Number(row.pct);
   const session = String(row.marketState || '').toUpperCase() === 'CLOSED' ? 'CLOSED · LAST SESSION · ' : '';
-  if (Math.abs(move) < MOVE_FLOOR_PCT) return `${session}FLAT · ${fmtPct(move)} · BELOW ${MOVE_FLOOR_PCT}% FLOOR`;
+  const threshold = moveThresholdOf(row);
+  if (threshold == null) return `${session}NOT EVALUABLE · VOLATILITY BASELINE UNAVAILABLE · ${fmtPct(move)}`;
+  if (Math.abs(move) < threshold) return `${session}FLAT · ${fmtPct(move)} · BELOW ${threshold.toFixed(2)}% VOLATILITY-SCALED FLOOR`;
   const directionMatches = direction === 'up' ? move > 0 : move < 0;
   return `${session}${directionMatches ? 'ALIGNED' : 'OPPOSITE'} · ${fmtPct(move)}`;
 }
@@ -244,8 +432,15 @@ function conflictEventWeight(report) {
 
 function conflictSignals(reports, theater) {
   const relevant = (Array.isArray(reports) ? reports : []).filter((report) => theater.keywords.test(rowText(report)));
+  const historical = (state.warWorldMonitor?.armed || []).filter((report) => {
+    const age = ageMs(report);
+    return age > 7 * 86400000 && age <= 365 * 86400000 && theater.keywords.test(rowText(report));
+  });
   const count = relevant.length;
-  const weight = relevant.reduce((sum, report) => sum + conflictEventWeight(report), 0);
+  // A single publisher's event may be a tip, a syndicated copy, or a weak
+  // topic match. It cannot independently provide full gate weight.
+  const adjusted = adjustConflictEvidence(relevant, conflictEventWeight);
+  const { rawWeight, sourceCount, sourceFamilies, weight } = adjusted;
   const previous = state.deductionBaseline.conflict[theater.label] ?? weight;
   state.deductionBaseline.conflict[theater.label] = weight;
   const examples = relevant.slice(0, 2).map((report) => {
@@ -254,16 +449,27 @@ function conflictSignals(reports, theater) {
       .filter(Boolean).join(' · ');
     return `${event || 'Report details unavailable'}${properties.event_id ? ` · ID ${properties.event_id}` : properties.id ? ` · ID ${properties.id}` : ''}`;
   }).join(' / ');
+  const historicalLatest = historical.map((report) => {
+    const properties = report?.properties || report || {};
+    return properties.event_date || report.occurredAt || report.dateStart || report.date || '';
+  }).filter(Boolean).sort().at(-1) || '';
+  const historicalContext = historical.length
+    ? `Historical context · ${historical.length} older event records in the last 12 months${historicalLatest ? ` · latest ${historicalLatest}` : ''} · context only`
+    : '';
   return {
     count,
     weight,
+    rawWeight,
+    sourceCount,
+    sourceFamilies,
     rising: weight > previous && previous >= 0,
-    detail: count ? `${count} ${theater.label} ${count === 1 ? 'event' : 'events'} reported (severity weight ${weight})${weight > previous ? ' · activity rising' : ''} · ${examples}` : '',
+    detail: count ? `${count} ${theater.label} ${count === 1 ? 'event' : 'events'} reported (source-adjusted severity ${weight}; raw ${rawWeight}; ${sourceCount} publisher domains${sourceCount < 2 ? ', single-source cap 2' : ''})${weight > previous ? ' · activity rising' : ''} · ${examples}` : '',
+    historicalContext,
   };
 }
 
 function newsSignals(rows, theater) {
-  const relevant = rows.filter((x) => theater.keywords.test(x.title || ''));
+    const relevant = rows.filter((x) => theater.keywords.test(x.title || ''));
   const hits = relevant.filter((x) => ageMs(x) <= NEWS_WINDOW_MS).length;
   const previous = relevant.filter((x) => ageMs(x) > NEWS_WINDOW_MS && ageMs(x) <= NEWS_WINDOW_MS * 2).length;
   const rising = hits >= 4 && hits - previous >= 2;
@@ -276,8 +482,9 @@ function newsSignals(rows, theater) {
 }
 function chokepointSignals(rows) {
   const newsTexts = rows.filter((x) => ageMs(x) <= SIGNAL_MAX_AGE_MS).map(rowText);
-  const reportTexts = [...state.warReports, ...(state.warWorldMonitor?.armed || [])]
-    .filter((x) => ageMs(x) <= SIGNAL_MAX_AGE_MS && matchesSelectedTopics(x)).map(rowText);
+  const reports = [...state.warReports, ...(state.warWorldMonitor?.armed || [])]
+    .filter((x) => ageMs(x) <= SIGNAL_MAX_AGE_MS && matchesSelectedTopics(x));
+  const reportTexts = reports.map(rowText);
   const threatVerbs = /\b(closed|closure|blocked|attack(?:s|ed)?|struck|mined|seized|disrupt(?:ed|ion)?|halted|suspended)\b/i;
   return CHOKEPOINTS.map((choke) => {
     const signals = [];
@@ -286,6 +493,16 @@ function chokepointSignals(rows) {
     const evidenceFamilies = new Set();
     const context = [];
     const keyword = new RegExp(choke.keywords.join('|'), 'i');
+    const matchingReportingDomains = new Set();
+    rows.filter((item) => keyword.test(rowText(item)) && threatVerbs.test(rowText(item)))
+      .forEach((item) => {
+        const primary = String(item.publisherDomain || item.domain || item.source || item.publisher || 'news').toLowerCase();
+        // A row represents one headline cluster even when the backend retained
+        // several exact-title syndicating outlets in publisherDomains.
+        matchingReportingDomains.add(primary);
+      });
+    reports.filter((item) => keyword.test(rowText(item)) && threatVerbs.test(rowText(item)))
+      .forEach((item) => matchingReportingDomains.add(String(item.domain || item.source || 'conflict feed').toLowerCase()));
     [...newsTexts, ...reportTexts].forEach((text) => {
       if (keyword.test(text) && threatVerbs.test(text)) {
         signals.push('reported route disruption');
@@ -301,7 +518,16 @@ function chokepointSignals(rows) {
       const text = `${point.id || ''} ${point.name || ''}`.toLocaleLowerCase();
       return choke.keywords.some((term) => text.includes(term));
     }) : null;
-    const topicMatchedWmPoint = wmPoint && matchesTopicText(`${wmPoint.name || ''} ${(wmPoint.affectedRoutes || []).join(' ')} ${wmPoint.description || ''}`);
+    const baselineMetrics = wmPoint ? recordChokepointSample(wmPoint, sourceAt) : [];
+    const routeBaseline = {
+      historySamples: baselineMetrics[0]?.historySamples || 0,
+      requiredSamples: 24,
+      sampleCadenceSeconds: baselineMetrics[0]?.sampleCadenceSeconds ?? null,
+      estimatedSecondsUntilReady: baselineMetrics[0]?.estimatedSecondsUntilReady ?? null,
+      incidents: baselineMetrics[0] || { evaluable: false },
+      disruption: baselineMetrics[1] || { evaluable: false },
+    };
+    const topicMatchedWmPoint = wmPoint;
     if (topicMatchedWmPoint) {
       const ais = Number(wmPoint.aisDisruptions) || 0;
       const warnings = Number(wmPoint.activeWarnings) || 0;
@@ -314,19 +540,24 @@ function chokepointSignals(rows) {
       const transit = wmPoint.transitSummary || {};
       const transitIncidents = Number(transit.incidentCount7d);
       const transitDisruption = Number(transit.disruptionPct);
-      const transitAnomaly = transit.dataAvailable === true && transitIncidents >= 2 && transitDisruption >= 20;
+      const transitAnomaly = transit.dataAvailable === true
+        && (routeBaseline.incidents.anomalous || routeBaseline.disruption.anomalous);
       const flow = wmPoint.flowEstimate || {};
-      const flowAnomaly = flow.disrupted === true || /^(red|orange|critical|severe)$/i.test(String(flow.hazardAlertLevel || ''));
+      const ratio = Number(flow.flowRatio);
+      const flowAnomaly = flow.disrupted === true || (Number.isFinite(ratio) && ratio < 0.5)
+        || /^(red|orange|critical|severe)$/i.test(String(flow.hazardAlertLevel || ''));
       if (flowAnomaly) {
-        const ratio = Number(flow.flowRatio);
         const detail = [flow.disrupted === true ? 'flow estimate marked disrupted' : '', Number.isFinite(ratio) ? `flow at ${Math.round(ratio * 100)}% of baseline` : '', flow.hazardAlertLevel ? `${flow.hazardAlertLevel} hazard alert${flow.hazardAlertName ? ` ${flow.hazardAlertName}` : ''}` : ''].filter(Boolean).join(' · ');
         flowSignals.push(detail);
         signals.push(`World Monitor supply-flow estimate: ${detail}`);
       }
       if (transit.dataAvailable === true) {
-        context.push(`World Monitor 7-day transit context: ${transit.incidentCount7d ?? 'incident count unavailable'} incidents · ${transit.disruptionPct ?? 'disruption unavailable'}% disruption · ${transit.riskLevel || 'risk level unavailable'}`);
+        const cadenceText = routeBaseline.sampleCadenceSeconds == null
+          ? 'cadence not yet measurable'
+          : `median cadence ${Math.round(routeBaseline.sampleCadenceSeconds / 60)}m · estimated ${(routeBaseline.estimatedSecondsUntilReady / 3600).toFixed(1)}h to ready`;
+        context.push(`World Monitor 7-day transit: ${transit.incidentCount7d ?? 'unreported'} incidents · ${transit.disruptionPct ?? 'unreported'}% disruption · route baseline ${routeBaseline.incidents.evaluable ? `${routeBaseline.historySamples} prior samples` : `warming (${routeBaseline.historySamples}/24; ${cadenceText})`}`);
       }
-      const repeatedDirectSignals = ais >= 3 || (ais > 0 && warnings >= 3);
+      const repeatedDirectSignals = ais >= 2 || (ais >= 1 && warnings >= 3);
       const corroboratedDirectSignal = transitAnomaly && (ais > 0 || warnings > 0 || elevatedCongestion);
       const observedDisruption = flowAnomaly || repeatedDirectSignals || corroboratedDirectSignal;
       if (observedDisruption) {
@@ -344,7 +575,14 @@ function chokepointSignals(rows) {
       if (Number.isFinite(Number(wmPoint.disruptionScore))) {
         context.push(`World Monitor baseline-influenced status ${wmPoint.status || 'unknown'} · score ${Number(wmPoint.disruptionScore)}`);
       }
+      if (matchingReportingDomains.size >= 2) evidenceFamilies.add('independent reporting');
     }
+    const flowRatio = Number(wmPoint?.flowEstimate?.flowRatio);
+    const publicNormalization = [...newsTexts, ...reportTexts].some((text) => (keyword.test(text)
+      || (choke.id === 'hormuz' && /\b(gulf|iran|iranian|persian gulf)\b/i.test(text)))
+      && /\b(exports?|flows?|shipping|transits?)\b.{0,60}\b(normal|normalized|normalised|restored|returned|recovered|reopened|prewar)\b/i.test(text));
+    const flowConflict = Boolean(wmPoint && (wmPoint.flowEstimate?.disrupted === true || (Number.isFinite(flowRatio) && flowRatio < 0.5)) && publicNormalization);
+    if (flowConflict) context.push(`SOURCE DISAGREEMENT · World Monitor flow ${Number.isFinite(flowRatio) ? `${Math.round(flowRatio * 100)}% of baseline` : 'marked disrupted'} vs public reporting describing normalized flows; flow evidence downweighted.`);
     const jamDate = Date.parse(String(state.warGpsJam?.date || ''));
     const jamIsRecent = Number.isFinite(jamDate) && Date.now() - jamDate <= 2 * SIGNAL_MAX_AGE_MS;
     (jamIsRecent ? state.warGpsJam?.features || [] : []).some((feature) => {
@@ -363,18 +601,23 @@ function chokepointSignals(rows) {
       }
       return false;
     });
-    const evidenceWeight = (observations.length ? 3 : 0)
-      + (flowSignals.length ? 2 : 0)
+    const aisCount = Number(wmPoint?.aisDisruptions) || 0;
+    const evidenceWeight = (observations.length ? (aisCount > 1 ? 3 : 2) : 0)
+      + (flowSignals.length ? (flowConflict ? 1 : 2) : 0)
       + (evidenceFamilies.has('reporting') ? 1 : 0)
-      + (evidenceFamilies.has('maritime observations') ? 1 : 0);
+      + (evidenceFamilies.has('maritime observations') ? 1 : 0)
+      + (evidenceFamilies.has('independent reporting') ? 1 : 0);
     return {
       ...choke,
       weight: evidenceWeight,
       signals: [...new Set(signals)].slice(0, 4),
       observations: [...new Set(observations)],
+      observationWeight: observations.length ? (aisCount > 1 ? 2 : 1) : 0,
       flowSignals: [...new Set(flowSignals)],
       evidenceFamilies: [...evidenceFamilies],
-      context: [...new Set(context)].slice(0, 3),
+      routeBaseline,
+      sourceDisagreement: flowConflict ? context.find((note) => note.startsWith('SOURCE DISAGREEMENT')) : '',
+      context: [...new Set(context)].slice(0, 5),
     };
   });
 }
@@ -409,7 +652,7 @@ function outageSignals(producers = null) {
 
 function inputVisibility() {
   const topics = String(state.alertSettings.keywords || '').split(',').map((term) => term.trim()).filter(Boolean);
-  const rawHeadlines = state.news.slice(0, 120).filter((x) => ageMs(x) <= SIGNAL_MAX_AGE_MS);
+  const rawHeadlines = state.news.filter((x) => ageMs(x) <= SIGNAL_MAX_AGE_MS);
   const rawReports = [...state.warReports, ...(state.warWorldMonitor?.armed || [])]
     .filter((x) => ageMs(x) <= 7 * 86400000);
   const topicReports = topics.length ? rawReports.filter(matchesSelectedTopics) : rawReports;
@@ -429,26 +672,60 @@ function inputVisibility() {
   const severeOutbreak = (x) => /^(high|severe|emergency|(?:who\s+)?grade\s*[34])\b/i.test(String(x.alertLevel || '').trim());
   const topicOutbreaks = topics.length ? rawOutbreaks.filter(matchesSelectedTopics) : rawOutbreaks;
   return {
-    headlines: { available: state.news.length, considered: Math.min(state.news.length, 120), truncated: state.news.length > 120, fresh: rawHeadlines.length, topicMatched: topicMatched(rawHeadlines) },
+    headlines: {
+      available: Number(state.newsMeta?.availableCount) || state.news.length,
+      returned: Number(state.newsMeta?.returnedCount) || state.news.length,
+      considered: rawHeadlines.length,
+      truncated: Boolean(state.newsMeta?.truncated),
+      fresh: rawHeadlines.length,
+      topicMatched: topicMatched(rawHeadlines),
+      publisherDomainCount: Number(state.newsMeta?.publisherDomainCount) || new Set(state.news.map((item) => item.publisherDomain).filter(Boolean)).size,
+      ranking: state.newsMeta?.ranking || 'Ranking metadata unavailable; returned headlines are ordered by recency.',
+    },
     conflictReports: {
       fresh: rawReports.length,
       topicMatched: topicReports.length,
       uniqueTopicMatched: new Set(topicReports.map((x) => String(x.id || x.url || x.sourceUrl || `${x.date || x.dateStart || x.occurredAt || ''}-${x.name || x.title || x.location || ''}`))).size,
+      publisherDomainCount: new Set(topicReports.map((x) => String(x.properties?.domain || x.domain || '').toLowerCase()).filter(Boolean)).size,
+      userTopicFilter: topics.length ? 'ACTIVE · normalized token-boundary OR match' : 'OFF · all fresh reports considered',
+      scoringPolicy: 'One publisher domain is capped at severity weight 2; ≥2 distinct domains may contribute full event weight. Domain diversity is not proof of independent ownership.',
+      sources: ['ucdp', 'acled'].map((source) => ({
+        source: source.toUpperCase(),
+        status: state.warWorldMonitor?.source_status?.[source] || 'UNAVAILABLE',
+        records: state.warWorldMonitor?.[source]?.length || 0,
+        reason: state.warWorldMonitor?.source_status_detail?.[source] || '',
+      })),
     },
     outages: {
       received: allOutages.length,
       fresh: freshOutages.length,
       expired: allOutages.length - freshOutages.length,
       topicMatched: matchedOutages.length,
+      expiryWindowHours: SIGNAL_MAX_AGE_MS / 3600000,
+      expiredItems: allOutages.filter((x) => ageMs(x) > SIGNAL_MAX_AGE_MS).map((x) => ({
+        id: x.id || null,
+        country: x.country || null,
+        detectedAt: x.detectedAt || null,
+        endedAt: x.endedAt || null,
+        expiryReason: x.endedAt && Number(x.endedAt) <= Date.now() ? 'ENDED' : 'OLDER THAN 24H WINDOW',
+      })),
     },
     chokepointStatus: {
       status: chokepointFresh ? 'CURRENT' : 'STALE / UNAVAILABLE',
       expectedRoutes: chokepoints.length,
-      observedRoutes: chokepointFresh ? chokepoints.filter((point) => matchesTopicText(`${point.name || ''} ${(point.affectedRoutes || []).join(' ')} ${point.description || ''}`)
-        && (Number(point.aisDisruptions) > 0
+      observedRoutes: chokepointFresh ? chokepoints.filter((point) => Number(point.aisDisruptions) > 0
         || Number(point.activeWarnings) > 0
         || ['high', 'severe', 'critical'].includes(String(point.congestionLevel || '').toLocaleLowerCase())
-        || point.flowEstimate?.disrupted === true)).length : 0,
+        || point.flowEstimate?.disrupted === true).length : 0,
+      unobservedRoutes: chokepointFresh ? chokepoints.filter((point) => !(Number(point.aisDisruptions) > 0
+        || Number(point.activeWarnings) > 0
+        || ['high', 'severe', 'critical'].includes(String(point.congestionLevel || '').toLocaleLowerCase())
+        || point.flowEstimate?.disrupted === true)).map((point) => ({
+        id: point.id || null,
+        name: point.name || 'UNNAMED ROUTE',
+        reason: `No positive raw indicator: AIS ${Number(point.aisDisruptions) || 0}, warnings ${Number(point.activeWarnings) || 0}, congestion ${point.congestionLevel || 'unknown'}, flow disrupted ${Boolean(point.flowEstimate?.disrupted)}`,
+      })) : [],
+      missingRouteReason: chokepointFresh ? 'The provider returned route records but does not provide an omission reason for routes without positive indicators.' : 'Route feed is not current.',
     },
     outbreaks: {
       fresh: rawOutbreaks.length,
@@ -476,39 +753,74 @@ function theaterGateChecks(context) {
   const routeContext = context.choke.context.length
     ? ` · Context only (not scored): ${context.choke.context.join(' · ')}` : '';
   return [
-    { passed: conflictPass || headlinesPass, detail: `New conflict severity weight ≥3 (${context.conflict.weight} from ${context.conflict.count} reports${context.conflict.rising ? ', rising' : ', not rising'}) OR headlines ≥4 and +2 vs prior 15m (${context.news.hits} vs ${context.news.previousHits}${context.news.rising ? ', rising' : ', not rising'})` },
-    { passed: chokepointPass || outagePass, detail: `Route evidence weight ≥2 (${routeWeight}; ${context.choke.evidenceFamilies.length} source families, ${context.choke.signals.length} records) OR producer-outage weight ≥2 (${outageWeight} from ${context.outages.length} outages)${routeContext}` },
+    { passed: conflictPass || headlinesPass, operator: 'OR', alternatives: [
+      { label: 'rising conflict severity ≥3', passed: conflictPass, detail: `${context.conflict.weight} adjusted from ${context.conflict.rawWeight} raw across ${context.conflict.sourceCount} publisher domains; ${context.conflict.count} reports${context.conflict.rising ? ', rising' : ', not rising'}` },
+      { label: 'accelerating headlines ≥4', passed: headlinesPass, detail: `${context.news.hits} vs ${context.news.previousHits}${context.news.rising ? ', rising' : ', not rising'}` },
+    ], detail: `New conflict severity weight ≥3 (${context.conflict.weight} adjusted from ${context.conflict.rawWeight} raw across ${context.conflict.sourceCount} publisher domains; ${context.conflict.count} reports${context.conflict.rising ? ', rising' : ', not rising'}) OR headlines ≥4 and +2 vs prior 15m (${context.news.hits} vs ${context.news.previousHits}${context.news.rising ? ', rising' : ', not rising'})` },
+    { passed: chokepointPass || outagePass, operator: 'OR', alternatives: [
+      { label: 'route evidence weight ≥2', passed: chokepointPass, detail: `${routeWeight}; ${context.choke.evidenceFamilies.length} source families, ${context.choke.signals.length} records` },
+      { label: 'producer outage weight ≥2', passed: outagePass, detail: `${outageWeight} from ${context.outages.length} outages` },
+    ], detail: `Route evidence weight ≥2 (${routeWeight}; ${context.choke.evidenceFamilies.length} source families, ${context.choke.signals.length} records) OR producer-outage weight ≥2 (${outageWeight} from ${context.outages.length} outages)${routeContext}` },
   ];
 }
 
 function theaterRequires(theater, choke) {
-  const coreEffects = theater.rule.effects.filter((effect) => ['BZ=F', 'CL=F', 'RB=F', 'HO=F', 'NG=F'].includes(effect.symbol));
-  if (!coreEffects.length && theater.rule.effects.some((effect) => effect.symbol === 'TSM')) {
-    coreEffects.push(...theater.rule.effects.filter((effect) => ['TSM', 'SMH'].includes(effect.symbol)));
-  }
   return [
     { label: 'Severity-weighted conflict activity', weight: 2, test: (c) => c.conflict.weight >= 3 && c.conflict.detail },
     { label: 'Headline acceleration', weight: 1, test: (c) => (c.news.hits >= 4 && c.news.rising) && c.news.detail },
-    { label: 'Corroborated maritime disruption', weight: 2, test: () => choke.observations.length ? choke.observations.join(' · ') : null },
-    { label: 'World Monitor supply-flow disruption', weight: 1, test: () => choke.flowSignals[0] || null },
-    { label: 'Independent reporting corroborates maritime observations', weight: 2, test: () => choke.evidenceFamilies.includes('reporting') && choke.evidenceFamilies.includes('maritime observations') ? choke.signals.join(' · ') : null },
+    { label: 'Corroborated maritime disruption', chokeId: choke.id, weight: () => choke.observationWeight || 2, test: () => choke.observations.length ? choke.observations.join(' · ') : null },
+    { label: 'World Monitor supply-flow disruption', weight: (c) => choke.sourceDisagreement ? 0.5 : 1, test: () => choke.flowSignals[0] || null },
+    { label: 'Independent reporting corroborates maritime observations', weight: 2, test: () => choke.evidenceFamilies.includes('independent reporting') && choke.evidenceFamilies.includes('maritime observations') ? choke.signals.join(' · ') : null },
     { label: 'Producer-region outage', weight: 1, test: (c) => c.outages.length ? (c.outages.map((o) => `${o.text} (weight ${o.weight})`).join(' · ')) : null },
-    { label: 'Core market quotes moving in the expected direction', weight: 3, test: () => {
-      const weightedMoves = coreEffects
-        .map((effect) => ({ effect, weight: moveWeight(effect.symbol, effect.dir), label: moveInDirection(effect.symbol, effect.dir) }))
-        .filter((item) => item.weight > 0);
-      const totalWeight = weightedMoves.reduce((sum, item) => sum + item.weight, 0);
-      return totalWeight >= 3 ? weightedMoves.slice(0, 3).map((item) => item.label).join(' · ') : null;
-    } },
     { label: 'Hedge demand moving in the expected direction', weight: 1, test: () => theater.rule.effects
       .filter((effect) => ['GC=F', '^VIX'].includes(effect.symbol))
-      .map((effect) => effect.symbol === '^VIX' ? volatilitySignal(effect.dir, 20) : moveInDirection(effect.symbol, effect.dir)).find(Boolean) || null },
+      .map((effect) => effect.symbol === '^VIX' ? volatilitySignal(effect.dir) : moveInDirection(effect.symbol, effect.dir)).find(Boolean) || null },
   ];
+}
+
+function brentSpreadConfirmation() {
+  const brent = quoteRow('BZ=F');
+  const wti = quoteRow('CL=F');
+  const currentSpread = Number(brent?.last) - Number(wti?.last);
+  const priorSpread = Number(brent?.changeReferencePrice) - Number(wti?.changeReferencePrice);
+  const spreadMove = currentSpread - priorSpread;
+  const brentVol = Number(brent?.dailyVolatilityPct);
+  const wtiVol = Number(wti?.dailyVolatilityPct);
+  if (![currentSpread, priorSpread, spreadMove, brentVol, wtiVol].every(Number.isFinite) || priorSpread === 0) return null;
+  const threshold = Math.abs(priorSpread) * Math.hypot(brentVol, wtiVol) / 100 * 0.5;
+  if (spreadMove <= threshold) return null;
+  return `Brent–WTI spread widened ${spreadMove.toFixed(2)} per barrel (threshold ${threshold.toFixed(2)})`;
+}
+
+function theaterMarketConfirmation(theater) {
+  if (theater.choke === 'hormuz') {
+    const benchmarks = [
+      { label: 'Brent', symbol: 'BZ=F', direction: 'up', weight: 2 },
+      { label: 'Brent–WTI spread widening', symbol: null, direction: 'up', weight: 2 },
+      { label: 'WTI', symbol: 'CL=F', direction: 'up', weight: 1 },
+    ];
+    const signals = benchmarks.map((benchmark) => {
+      const detail = benchmark.symbol ? moveInDirection(benchmark.symbol, benchmark.direction) : brentSpreadConfirmation();
+      return { ...benchmark, passed: Boolean(detail), detail: detail || '' };
+    });
+    return { score: signals.reduce((sum, signal) => sum + (signal.passed ? signal.weight : 0), 0), maxScore: 5, signals,
+      basis: 'Separate coincident market confirmation tier; excluded from cause-evidence score.' };
+  }
+  const effects = theater.rule.effects.filter((effect) => ['BZ=F', 'CL=F', 'RB=F', 'HO=F', 'NG=F', 'ZW=F', 'TSM', 'SMH'].includes(effect.symbol));
+  const signals = effects.map((effect) => ({
+    symbol: effect.symbol,
+    direction: effect.dir,
+    passed: Boolean(moveInDirection(effect.symbol, effect.dir)),
+    detail: moveInDirection(effect.symbol, effect.dir) || '',
+  }));
+  return { score: signals.filter((signal) => signal.passed).length, maxScore: signals.length, signals,
+    basis: 'Separate coincident market confirmation tier; excluded from cause-evidence score.' };
 }
 
 function theaterWatchReason(context) {
   const details = [];
   if (context.conflict.count) details.push(`${context.conflict.count} conflict report${context.conflict.count === 1 ? '' : 's'}`);
+  if (context.conflict.historicalContext) details.push(context.conflict.historicalContext);
   if (context.news.hits) details.push(`${context.news.hits} headlines in 15m`);
   if (context.choke.signals.length) details.push(`${context.choke.signals.length} route signal${context.choke.signals.length === 1 ? '' : 's'}`);
   if (context.choke.observations.length) details.push('corroborated maritime observation');
@@ -528,7 +840,7 @@ const RULES = [
     ],
     requires: [
       { label: 'Conflict activity rising in at least two theaters', weight: 2, test: (c) => Object.values(c.conflicts).filter((x) => x.rising && (x.weight || 0) >= 3).length >= 2 && 'Reported activity increased in at least two theaters' },
-      { label: 'Volatility up (VIX ≥20)', weight: 1, test: () => volatilitySignal('up', 20) },
+      { label: 'Elevated volatility (VIX ≥20 and ≥0.5 daily σ move)', weight: 1, test: () => volatilitySignal('up') },
       { label: 'Gold up · equities down', weight: 2, test: () => {
         const gold = moveInDirection('GC=F', 'up');
         const equities = moveInDirection('^GSPC', 'down');
@@ -536,10 +848,10 @@ const RULES = [
       } },
     ],
     watch: (c) => Object.values(c.conflicts).some((x) => x.count > 0)
-      || [moveInDirection('^VIX', 'up'), moveInDirection('GC=F', 'up'), moveInDirection('^GSPC', 'down')].filter(Boolean).length >= 2,
+      || [volatilitySignal('up'), moveInDirection('GC=F', 'up'), moveInDirection('^GSPC', 'down')].filter(Boolean).length >= 2,
     watchReason: (c) => [
       ...Object.entries(c.conflicts).filter(([, x]) => x.count > 0).map(([name, x]) => `${name}: ${x.count} report${x.count === 1 ? '' : 's'}`),
-      moveInDirection('^VIX', 'up'), moveInDirection('GC=F', 'up'), moveInDirection('^GSPC', 'down'),
+      volatilitySignal('up'), moveInDirection('GC=F', 'up'), moveInDirection('^GSPC', 'down'),
     ].filter(Boolean).join(' · '),
   },
   {
@@ -579,16 +891,25 @@ const RULES = [
         const lmt = moveInDirection('LMT', 'up');
         return rtx || lmt ? [rtx, lmt].filter(Boolean).join(' · ') : null;
       } },
-      { label: 'Volatility or gold up', weight: 1, test: () => moveInDirection('^VIX', 'up') || moveInDirection('GC=F', 'up') },
+      { label: 'Volatility or gold up', weight: 1, test: () => volatilitySignal('up') || moveInDirection('GC=F', 'up') },
     ],
     watch: (c) => Object.values(c.conflicts).some((x) => x.count > 0)
       || Boolean(moveInDirection('RTX', 'up')) || Boolean(moveInDirection('LMT', 'up')),
     watchReason: (c) => [
       ...Object.entries(c.conflicts).filter(([, x]) => x.count > 0).map(([name, x]) => `${name}: ${x.count} report${x.count === 1 ? '' : 's'}`),
-      moveInDirection('RTX', 'up'), moveInDirection('LMT', 'up'), moveInDirection('^VIX', 'up'),
+      moveInDirection('RTX', 'up'), moveInDirection('LMT', 'up'), volatilitySignal('up'),
     ].filter(Boolean).join(' · '),
+    gateDescription: 'Rising severity-weighted conflict activity and either a rising defense name or elevated VIX.',
+    gateChecks: (c) => [
+      { label: 'Conflict severity ≥3 and rising in any theater', passed: Object.values(c.conflicts).some((x) => x.rising && x.weight >= 3), operator: 'AND' },
+      { label: 'RTX up OR LMT up OR elevated VIX', passed: Boolean(moveInDirection('RTX', 'up') || moveInDirection('LMT', 'up') || volatilitySignal('up')), operator: 'AND', alternatives: [
+        { label: 'RTX up', passed: Boolean(moveInDirection('RTX', 'up')) },
+        { label: 'LMT up', passed: Boolean(moveInDirection('LMT', 'up')) },
+        { label: 'Elevated VIX', passed: Boolean(volatilitySignal('up')) },
+      ] },
+    ],
     gate: (c) => Object.values(c.conflicts).some((x) => x.rising && x.weight >= 3)
-      && (Boolean(moveInDirection('RTX', 'up')) || Boolean(moveInDirection('LMT', 'up')) || Boolean(moveInDirection('^VIX', 'up'))),
+      && (Boolean(moveInDirection('RTX', 'up')) || Boolean(moveInDirection('LMT', 'up')) || Boolean(volatilitySignal('up'))),
   },
   {
     id: 'food-security-risk',
@@ -616,6 +937,17 @@ const RULES = [
       (c.chokepoints || []).find((x) => x.id === 'blacksea')?.signals?.length ? 'Black Sea route signal' : '',
       moveInDirection('ZW=F', 'up'),
     ].filter(Boolean).join(' · '),
+    gateDescription: 'Rising Russia/Ukraine conflict activity and either Black Sea route disruption or rising wheat.',
+    gateChecks: (c) => {
+      const route = Boolean((c.chokepoints || []).find((x) => x.id === 'blacksea' && x.signals.length));
+      const wheat = Boolean(moveInDirection('ZW=F', 'up'));
+      return [
+        { label: 'Russia/Ukraine severity ≥3 and rising', passed: Boolean(c.conflicts['Russia / Ukraine']?.rising && c.conflicts['Russia / Ukraine']?.weight >= 3), operator: 'AND' },
+        { label: 'Black Sea route disruption OR wheat up', passed: route || wheat, operator: 'AND', alternatives: [
+          { label: 'Black Sea route disruption', passed: route }, { label: 'Wheat up', passed: wheat },
+        ] },
+      ];
+    },
     gate: (c) => Boolean(c.conflicts['Russia / Ukraine']?.rising && c.conflicts['Russia / Ukraine']?.weight >= 3)
       && (Boolean((c.chokepoints || []).find((x) => x.id === 'blacksea' && x.signals.length)) || Boolean(moveInDirection('ZW=F', 'up'))),
   },
@@ -645,6 +977,17 @@ const RULES = [
       (c.chokepoints || []).some((x) => x.signals.length) ? 'Route signal' : '',
       moveInDirection('BZ=F', 'up'), moveInDirection('CL=F', 'up'),
     ].filter(Boolean).join(' · '),
+    gateDescription: 'A fresh producer-region outage and either corroborated route disruption or rising Brent/WTI.',
+    gateChecks: (c) => {
+      const route = (c.chokepoints || []).some((x) => x.signals.length);
+      const energy = ['BZ=F', 'CL=F'].some((symbol) => Boolean(moveInDirection(symbol, 'up')));
+      return [
+        { label: 'Fresh producer-region outage', passed: c.outages.length > 0, operator: 'AND' },
+        { label: 'Route disruption OR Brent/WTI up', passed: route || energy, operator: 'AND', alternatives: [
+          { label: 'Route disruption', passed: route }, { label: 'Brent or WTI up', passed: energy },
+        ] },
+      ];
+    },
     gate: (c) => c.outages.length > 0
       && (Boolean((c.chokepoints || []).some((x) => x.signals.length)) || ['BZ=F', 'CL=F'].some((symbol) => moveInDirection(symbol, 'up'))),
   },
@@ -667,7 +1010,7 @@ const RULES = [
         const dal = moveInDirection('DAL', 'down');
         return rtx || lmt || dal ? [rtx, lmt, dal].filter(Boolean).join(' · ') : null;
       } },
-      { label: 'Volatility up (VIX ≥20)', weight: 1, test: () => volatilitySignal('up', 20) },
+      { label: 'Elevated volatility (VIX ≥20 and ≥0.5 daily σ move)', weight: 1, test: () => volatilitySignal('up') },
     ],
     watch: (c) => (c.chokepoints || []).some((choke) => (choke.context || []).some((note) => /GPSJam/i.test(note)))
       || Object.values(c.conflicts).some((x) => x.count > 0),
@@ -676,6 +1019,11 @@ const RULES = [
       ...Object.entries(c.conflicts).filter(([, x]) => x.count > 0).slice(0, 1).map(([name, x]) => `${name}: ${x.count}`),
       moveInDirection('RTX', 'up'), moveInDirection('DAL', 'down'),
     ].filter(Boolean).join(' · '),
+    gateDescription: 'GPS jamming/interference in a monitored area and severity-weighted conflict activity rising.',
+    gateChecks: (c) => [
+      { label: 'GPS jamming observed in a monitored area', passed: (c.chokepoints || []).some((choke) => (choke.context || []).some((note) => /GPSJam/i.test(note))), operator: 'AND' },
+      { label: 'Conflict severity ≥3 and rising', passed: Object.values(c.conflicts).some((x) => x.rising && x.weight >= 3), operator: 'AND' },
+    ],
     gate: (c) => (c.chokepoints || []).some((choke) => (choke.context || []).some((note) => /GPSJam/i.test(note)))
       && Object.values(c.conflicts).some((x) => x.rising && x.weight >= 3),
   },
@@ -689,16 +1037,21 @@ const RULES = [
       { symbol: '^GSPC', dir: 'down' },
     ],
     requires: [
-      { label: 'Volatility stress (VIX ≥25 and up ≥5%)', weight: 2, test: () => volatilitySignal('up', 25, 5) },
+      { label: 'Volatility stress (VIX ≥25 and ≥1.5 daily σ move)', weight: 2, test: () => volatilitySignal('up', VIX_EXTREME_LEVEL, VIX_PANIC_SIGMA) },
       { label: 'Gold and silver up', weight: 2, test: () => (moveInDirection('GC=F', 'up') && moveInDirection('SI=F', 'up')) ? `${moveInDirection('GC=F', 'up')} · ${moveInDirection('SI=F', 'up')}` : null },
       { label: 'Equities down', weight: 2, test: () => moveWeight('^GSPC', 'down') >= 2 ? moveInDirection('^GSPC', 'down') : null },
       { label: 'New severity-weighted conflict activity', weight: 1, test: (c) => Object.values(c.conflicts).some((x) => x.rising && (x.weight || 0) >= 3) && 'Conflict severity weight ≥3 and rising' },
     ],
-    watch: () => Boolean(moveInDirection('^VIX', 'up')) || Boolean(moveInDirection('GC=F', 'up')),
+    watch: () => Boolean(volatilitySignal('up')) || Boolean(moveInDirection('GC=F', 'up')),
     watchReason: () => [
-      moveInDirection('^VIX', 'up'), moveInDirection('GC=F', 'up'), moveInDirection('^GSPC', 'down'),
+      volatilitySignal('up'), moveInDirection('GC=F', 'up'), moveInDirection('^GSPC', 'down'),
     ].filter(Boolean).join(' · '),
-    gate: () => Boolean(moveInDirection('^VIX', 'up')) && Boolean(moveInDirection('^GSPC', 'down')),
+    gateDescription: 'VIX stress signal and S&P 500 moving down beyond its volatility-scaled floor.',
+    gateChecks: () => [
+      { label: 'VIX ≥25 and ≥1.5 daily σ move', passed: Boolean(volatilitySignal('up', VIX_EXTREME_LEVEL, VIX_PANIC_SIGMA)), operator: 'AND' },
+      { label: 'S&P 500 down beyond its move threshold', passed: Boolean(moveInDirection('^GSPC', 'down')), operator: 'AND' },
+    ],
+    gate: () => Boolean(volatilitySignal('up', VIX_EXTREME_LEVEL, VIX_PANIC_SIGMA)) && Boolean(moveInDirection('^GSPC', 'down')),
   },
 ];
 
@@ -708,7 +1061,7 @@ const RULES = [
  * a deduction fires fresh or re-fires after its cooldown.
  */
 function evaluateDeductions(notify = null) {
-  const headlineRows = state.news.slice(0, 120).filter((x) => ageMs(x) <= SIGNAL_MAX_AGE_MS && matchesSelectedTopics(x));
+  const headlineRows = state.news.filter((x) => ageMs(x) <= SIGNAL_MAX_AGE_MS && matchesSelectedTopics(x));
   const reportCandidates = [...state.warReports, ...(state.warWorldMonitor?.armed || [])]
     .filter((x) => ageMs(x) <= 7 * 86400000 && matchesSelectedTopics(x));
   const reportRows = [...new Map(reportCandidates.map((x) => [
@@ -744,6 +1097,7 @@ function evaluateDeductions(notify = null) {
       id: `theater-${theater.choke}`,
       title: theater.rule.title,
       summary: theater.rule.summary,
+      shockType: theater.shockType,
       gateDescription: 'New conflict activity with severity weight ≥3, or 4+ theater headlines rising by at least 2 versus the prior 15m; plus route evidence or a producer-region outage.',
       gateChecks: theaterGateChecks,
       effects: theater.rule.effects,
@@ -751,6 +1105,7 @@ function evaluateDeductions(notify = null) {
       gate: (c) => ((c.conflict.weight >= 3 && c.conflict.rising) || (c.news.hits >= 4 && c.news.rising))
         && (c.choke.signals.length > 0 || c.outages.length > 0),
       requires: theaterRequires(theater, choke),
+      marketConfirmation: () => theaterMarketConfirmation(theater),
       watch: (c) => c.conflict.count > 0 || c.news.hits >= 2 || c.choke.signals.length > 0 || c.choke.observations.length > 0 || c.outages.length > 0,
       watchReason: theaterWatchReason,
     }, context, diagnostics));
@@ -761,15 +1116,43 @@ function evaluateDeductions(notify = null) {
   for (const id of ['defense-escalation', 'food-security-risk', 'critical-infrastructure', 'airspace-navigation-risk', 'volatility-panic']) {
     fired.push(...runRule(RULES.find((r) => r.id === id), ctx, diagnostics));
   }
+  addRuleHistory(diagnostics);
   state.deductionDiagnostics = {
     evaluatedAt: Date.now(),
     selectedTopics: String(state.alertSettings.keywords || '').split(',').map((term) => term.trim()).filter(Boolean),
     inputs: inputVisibility(),
+    routeEvidence: chokepoints.map((choke) => ({
+      id: choke.id,
+      name: choke.name,
+      weight: choke.weight,
+      signals: choke.signals,
+      observations: choke.observations,
+      baseline: choke.routeBaseline,
+      sourceDisagreement: choke.sourceDisagreement || '',
+    })),
     rules: diagnostics,
   };
   emit('deduction:updated', state.deductionDiagnostics);
   commitDeductions(fired, notify);
 }
+function deductionEventFingerprint(ruleId, causes) {
+  const evidence = (causes || []).map((cause) => {
+    const detail = String(cause.detail || '')
+      .toLocaleLowerCase()
+      .replace(/\b\d{4}-\d\d-\d\d(?:[t ]\d\d:\d\d(?::\d\d)?z?)?\b/gi, '')
+      .replace(/\b\d+(?:[.,]\d+)?\s*(?:%|points?|per barrel|barrels?|reports?|events?|outages?)(?![\p{L}\p{N}])/giu, '#')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return `${cause.source || ''}:${detail}`;
+  }).sort().join('|');
+  let hash = 2166136261;
+  for (let index = 0; index < evidence.length; index += 1) {
+    hash ^= evidence.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return { fingerprint: `${ruleId}:${(hash >>> 0).toString(16)}`, evidenceSignature: evidence.slice(0, 600) };
+}
+
 function runRule(rule, ctx, diagnostics = null) {
   if (!rule) return [];
   let gatePassed;
@@ -780,16 +1163,18 @@ function runRule(rule, ctx, diagnostics = null) {
   let score = 0;
   let maxScore = 0;
   for (const requirement of rule.requires) {
-    maxScore += requirement.weight;
+    const weight = typeof requirement.weight === 'function' ? requirement.weight(ctx) : requirement.weight;
+    maxScore += weight;
     let detail = null;
     try {
       detail = requirement.test(ctx);
     } catch { /* a broken signal collector must not kill the pass */ }
     const passed = Boolean(detail);
-    requirements.push({ label: requirement.label, weight: requirement.weight, passed, detail: detail ? String(detail) : '' });
+    const dataStatus = passed ? 'OBSERVED' : failedRequirementStatus({ ...requirement, effects: rule.effects }, ctx);
+    requirements.push({ label: requirement.label, weight, passed, dataStatus, detail: detail ? String(detail) : '' });
     if (passed) {
-      score += requirement.weight;
-      causes.push({ source: requirement.label, detail, weight: requirement.weight });
+      score += weight;
+      causes.push({ source: requirement.label, detail, weight });
     }
   }
   const effects = rule.effects
@@ -804,6 +1189,8 @@ function runRule(rule, ctx, diagnostics = null) {
       };
     });
   const fired = gatePassed && score >= rule.minScore;
+  let marketConfirmation = null;
+  try { marketConfirmation = rule.marketConfirmation?.(ctx) || null; } catch { marketConfirmation = null; }
   // Evaluate the watch signal even when the rule has already fired. A fired
   // rule is the most interesting thing in the watch list, and the reason text
   // explains which evidence carried it there.
@@ -816,10 +1203,12 @@ function runRule(rule, ctx, diagnostics = null) {
   // A gate is a hard activation condition. Keep watch evidence available as
   // context, but never label a blocked rule as an ordinary WATCH candidate.
   const status = fired ? 'FIRED' : !gatePassed ? 'GATE CLOSED' : watchReason ? 'BUILDING' : 'BELOW THRESHOLD';
+  const nextPath = minimalPath({ score, minScore: rule.minScore, gatePassed, gateChecks, requirements });
   diagnostics?.push({
     id: rule.id,
     title: rule.title,
     summary: rule.summary,
+    shockType: rule.shockType || null,
     gateDescription: rule.gateDescription || (rule.gate ? 'Rule-specific activation conditions.' : 'No separate gate.'),
     gateRequired: Boolean(rule.gate),
     gatePassed,
@@ -832,12 +1221,17 @@ function runRule(rule, ctx, diagnostics = null) {
     status,
     watchReason,
     contextReason,
+    minimalPath: nextPath,
     requirements,
     effects: effects.map((effect, index) => ({ ...effect, dir: rule.effects[index].dir })),
+    marketConfirmation,
   });
   if (!fired) return [];
+  const dedupe = deductionEventFingerprint(rule.id, causes);
   return [{
-    fingerprint: rule.id,
+    fingerprint: dedupe.fingerprint,
+    evidenceSignature: dedupe.evidenceSignature,
+    dedupeBasis: 'rule ID plus normalized cause evidence; cooldown applies to this evidence signature',
     rule: rule.id,
     title: rule.title,
     summary: rule.summary,
@@ -852,7 +1246,10 @@ function runRule(rule, ctx, diagnostics = null) {
 }
 function commitDeductions(candidates, notify) {
   candidates.forEach((candidate) => {
+    const now = Date.now();
     const existing = state.deductions.find((x) => x.fingerprint === candidate.fingerprint);
+    const lastNotified = Number(state.deductionDelivery[candidate.fingerprint] || existing?.lastNotified || 0);
+    const canDeliver = now - lastNotified > DEDUCTION_COOLDOWN_MS;
     if (existing) {
       existing.causes = candidate.causes;
       existing.effects = candidate.effects;
@@ -861,21 +1258,29 @@ function commitDeductions(candidates, notify) {
       existing.maxScore = candidate.maxScore;
       existing.minScore = candidate.minScore;
       existing.lastAt = Date.now();
-      if (Date.now() - existing.lastNotified > DEDUCTION_COOLDOWN_MS) {
+      if (canDeliver) {
         existing.hits += 1;
-        existing.lastNotified = Date.now();
+        existing.lastNotified = now;
+        existing.deliveryAttemptAt = now;
+        state.deductionDelivery[candidate.fingerprint] = now;
+        saveStored('rialto_deduction_delivery_v1', state.deductionDelivery);
         emitNotification(existing, notify);
       }
     } else {
       state.deductions.unshift({
         ...candidate,
-        firstAt: Date.now(),
-        lastAt: Date.now(),
-        lastNotified: Date.now(),
+        firstAt: now,
+        lastAt: now,
+        lastNotified: canDeliver ? now : lastNotified,
+        deliveryAttemptAt: canDeliver ? now : lastNotified,
         hits: 1,
       });
       state.deductions = state.deductions.slice(0, DEDUCTION_LIMIT);
-      emitNotification(candidate, notify);
+      if (canDeliver) {
+        state.deductionDelivery[candidate.fingerprint] = now;
+        saveStored('rialto_deduction_delivery_v1', state.deductionDelivery);
+        emitNotification(candidate, notify);
+      }
     }
   });
 }
@@ -939,7 +1344,7 @@ function deductionNotificationText(deduction) {
 function emitNotification(deduction, notify) {
   if (!notify) return;
   const { title, body } = deductionNotificationText(deduction);
-  notify(title, body, '');
+  notify(title, body, '', '', deduction.fingerprint ? `${deduction.fingerprint}:${deduction.deliveryAttemptAt || deduction.lastNotified || Date.now()}` : '');
 }
 
 async function refreshQuotes() {

@@ -48,7 +48,7 @@ VESSELS_MAX_SQ_DEG = 100
 VESSELS_TTL_S = 60  # align AIS snapshots with the UI poll; provider allows 120/min
 
 YAHOO_CHART_URL = (
-    "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?range=1d&interval=1m"
+    "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?range=1mo&interval=1d"
 )
 YAHOO_SEARCH_URL = "https://query1.finance.yahoo.com/v1/finance/search?q={query}&quotesCount=8&newsCount=0"
 SEARCH_TTL_S = 3600

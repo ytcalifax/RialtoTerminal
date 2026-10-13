@@ -5,6 +5,7 @@ from collections.abc import Callable
 
 from ..core.external_metrics import debug_snapshot
 from ..services.airinfo import aircraft_info
+from ..services.alert_activity import list_activity, save_activity
 from ..services.conflict import disease_outbreak_snapshot, market_sentiment_snapshot, war_snapshot
 from ..services.marketplace import listing_search
 from ..services.markets.quotes import (
@@ -120,3 +121,14 @@ API_ROUTES: dict[str, RouteHandler] = {
     "/api/health/outbreaks": _disease_outbreaks,
     "/api/debug/stats": _debug_stats,
 }
+
+
+def _alert_activity(params: Params) -> tuple[int, dict]:
+    return 200, list_activity()
+
+
+def save_alert_activity(payload: object) -> tuple[int, dict]:
+    return save_activity(payload)
+
+
+API_ROUTES["/api/alerts/activity"] = _alert_activity

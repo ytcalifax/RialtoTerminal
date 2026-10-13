@@ -218,6 +218,8 @@
   color: #778186;
   font: 9px Roboto Mono, monospace;
 }
+.story-meta em { font-style: normal; color: #d3ad59; }
+.story-meta em.news-stale { color: #ed947e; }
 
 .story-time {
   text-align: right;

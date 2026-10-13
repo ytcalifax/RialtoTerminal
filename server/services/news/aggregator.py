@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import threading
 import time
+from collections import defaultdict
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from ...config import GOOGLE_NEWS_SEARCH_URL, NEWS_TTL_S
@@ -24,6 +25,81 @@ _google_query_cache: TTLCache[list[dict]] = TTLCache(300, max_entries=128)
 # term filter below cannot discard them even when the term is absent from the
 # headline itself.
 _DIRECT_QUERY_TAG = "directQuery"
+
+# This ranks stories for a risk-monitor terminal; it is a deterministic display
+# heuristic, not an assessment of truth or a market forecast.
+_RISK_TERMS = re.compile(
+    r"\b(attack|attacked|strike|strikes|missile|drone|war|conflict|clash|"
+    r"ceasefire|invasion|sanction|sanctions|shipping|tanker|strait|port|"
+    r"blockade|disruption|outage|cyberattack|explosion|evacuat|casualt|"
+    r"oil|crude|gas|brent|energy|pipeline|nuclear|earthquake|flood|"
+    r"wildfire|epidemic|outbreak|pandemic|central bank|inflation|tariff)\b",
+    re.IGNORECASE,
+)
+_HIGH_URGENCY_TERMS = re.compile(
+    r"\b(attack|attacked|strike|missile|drone|explosion|killed|dead|"
+    r"emergency|evacuat|blockade|closed|halt|outage|breaking)\b",
+    re.IGNORECASE,
+)
+
+
+def _rank_news(rows: list[dict], now: float | None = None) -> list[dict]:
+    """Rank risk-monitor headlines by topical relevance and freshness.
+
+    The rank is an ordering aid only. The reason tags are exported with each
+    item so the UI can explain why a story was promoted.
+    """
+    now = time.time() if now is None else now
+    ranked: list[tuple[float, float, dict]] = []
+    for row in rows:
+        title = str(row.get("title") or "")
+        category = str(row.get("category") or "")
+        published = parse_timestamp(row.get("published", ""))
+        age_hours = max(0.0, (now - published) / 3600) if published else float("inf")
+        reasons: list[str] = []
+        topical = bool(_RISK_TERMS.search(title))
+        urgency = bool(_HIGH_URGENCY_TERMS.search(title))
+        category_relevant = bool(re.search(r"conflict|security|energy|markets|business|health|disaster", category, re.I))
+        if topical:
+            reasons.append("RISK TOPIC")
+        if urgency:
+            reasons.append("URGENT WORDING")
+        if category_relevant:
+            reasons.append("RELEVANT SECTION")
+        if age_hours <= 1:
+            freshness = 4
+        elif age_hours <= 6:
+            freshness = 3
+        elif age_hours <= 24:
+            freshness = 2
+        elif age_hours <= 72:
+            freshness = 1
+        else:
+            freshness = 0
+        if freshness:
+            reasons.append("FRESH")
+        score = (2 * topical) + (2 * urgency) + category_relevant + freshness
+        row["priorityScore"] = int(score)
+        row["priorityReasons"] = reasons or ["RECENCY ONLY"]
+        host = (urlsplit(str(row.get("url") or "")).hostname or "").lower()
+        row["publisherDomain"] = host.removeprefix("www.") or "UNKNOWN"
+        ranked.append((score, published or 0, row))
+    # Keep relevance tiers intact; within a tier, rotate publisher domains so
+    # one prolific outlet does not occupy every adjacent slot.
+    buckets: dict[int, list[tuple[float, float, dict]]] = defaultdict(list)
+    for item in ranked:
+        buckets[int(item[0])].append(item)
+    output: list[dict] = []
+    for score in sorted(buckets, reverse=True):
+        domains: dict[str, list[tuple[float, float, dict]]] = defaultdict(list)
+        for item in sorted(buckets[score], key=lambda entry: entry[1], reverse=True):
+            domains[item[2]["publisherDomain"]].append(item)
+        while domains:
+            for domain in sorted(tuple(domains)):
+                output.append(domains[domain].pop(0)[2])
+                if not domains[domain]:
+                    del domains[domain]
+    return output
 
 
 def google_news(
@@ -109,8 +185,8 @@ def _deduplicate(rows: list[dict]) -> list[dict]:
     Tracking parameters are stripped so publishers' campaign links collapse
     onto one canonical form.
     """
-    seen_urls: set[str] = set()
-    seen_titles: set[str] = set()
+    seen_urls: dict[str, dict] = {}
+    seen_titles: dict[str, dict] = {}
     output: list[dict] = []
     for row in rows:
         parts = urlsplit(row["url"])
@@ -122,15 +198,30 @@ def _deduplicate(rows: list[dict]) -> list[dict]:
         ]
         canonical = urlunsplit((parts.scheme.casefold(), parts.netloc.casefold(), parts.path.rstrip("/"), urlencode(sorted(query), doseq=True), ""))
         title_key = re.sub(r"[^\w]+", "", row["title"].casefold())
-        if (
-            canonical in seen_urls
-            or title_key in seen_titles
-        ):
+        domain = (parts.hostname or "").lower().removeprefix("www.") or "UNKNOWN"
+        duplicate = seen_urls.get(canonical) or seen_titles.get(title_key)
+        if duplicate:
+            # Keep exact-title syndications as one story for scoring while
+            # retaining the publisher provenance for inspection. Multiple
+            # copies of one headline do not count as independent reports.
+            domains = set(duplicate.get("publisherDomains", []))
+            if domain != "UNKNOWN":
+                domains.add(domain)
+            duplicate["publisherDomains"] = sorted(domains)
+            labels = set(duplicate.get("syndicatedSources", []))
+            if row.get("source"):
+                labels.add(str(row["source"]))
+            duplicate["syndicatedSources"] = sorted(labels)
+            duplicate["syndicationCount"] = len(domains)
             continue
-        seen_urls.add(canonical)
-        seen_titles.add(title_key)
         row["url"] = url
+        row["publisherDomain"] = domain
+        row["publisherDomains"] = [domain] if domain != "UNKNOWN" else []
+        row["syndicatedSources"] = [str(row["source"])] if row.get("source") else []
+        row["syndicationCount"] = len(row["publisherDomains"])
         output.append(row)
+        seen_urls[canonical] = row
+        seen_titles[title_key] = row
     return output
 
 
@@ -205,8 +296,19 @@ def aggregate_news(feed: str = "global", query: str = "", country: str = "") -> 
         output = [row for rank in range(16) for code in BALKAN_COUNTRIES if len(by_country[code]) > rank for row in [by_country[code][rank]]]
         output.extend(general)
         output.sort(key=lambda item: parse_timestamp(item.get("published", "")), reverse=True)
+    output = _rank_news(output)
+    available_count = len(output)
+    # Retain the complete deduplicated set. Ranking changes display order, but
+    # threshold signals compare adjacent time windows and must see the same
+    # population instead of a relevance-filtered prefix.
+    returned = output
     return {
-        "items": output[:240 if feed == "balkans" else 160],
+        "items": returned,
+        "availableCount": available_count,
+        "returnedCount": len(returned),
+        "truncated": available_count > len(returned),
+        "publisherDomainCount": len({domain for item in returned for domain in item.get("publisherDomains", [item["publisherDomain"]]) if domain != "UNKNOWN"}),
+        "ranking": "risk-topic relevance, urgent wording, freshness, then publisher-domain rotation within equal relevance tiers; reasons attached to each row; deterministic display heuristic, not a forecast",
         "feed": feed,
         "country": country,
         "query": term,

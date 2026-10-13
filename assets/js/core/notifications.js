@@ -2,31 +2,57 @@ import { $, esc, safeExternalUrl } from './dom.js';
 import { state } from './state.js';
 import { evaluateDeductions } from './deduction.js';
 import { on } from './hooks.js';
+import { notificationDedupeKey, notificationFingerprint } from './notificationIdentity.js';
+import { decisionWatchRules } from './decisionWatch.js';
 
 const STORAGE_KEY = 'rialto_alert_settings_v1';
+const NOTIFICATIONS_STORAGE_KEY = 'rialto_notifications_v1';
 let initialized = false;
 let alertSound;
 let activityTab = 'activity';
 const HEADLINE_STOP_WORDS = new Set('a an and are as at be by for from has have in into is it its of on or our over says said the their this to up was were will with after amid new first more near'.split(' '));
 const DEDUCTION_STOP_WORDS = new Set([...HEADLINE_STOP_WORDS, 'event', 'report', 'reports', 'news', 'latest', 'update', 'updates', 'world', 'global', 'breaking', 'source', 'public', 'official', 'according', 'people', 'country', 'government', 'officials', 'should', 'would', 'could', 'your', 'you', 'how', 'soon']);
-const fingerprintOf = (title, detail) => `${title}|${detail}`
-  .toLowerCase()
-  .replace(/[^\p{L}\p{N}]+/gu, ' ')
-  .trim()
-  .replace(/\s+/g, ' ');
+const fingerprintOf = notificationFingerprint;
 
 function saveSettings() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.alertSettings));
 }
 
-function addNotification(title, detail, link = '', relatedHeadline = '') {
+function saveNotifications() {
+  try { localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(state.notifications.slice(0, 100))); } catch { /* server history remains available if browser storage is unavailable */ }
+}
+
+function persistActivity(item) {
+  fetch('/api/alerts/activity', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(item),
+    keepalive: true,
+  }).catch(() => {});
+}
+
+async function hydrateActivity() {
+  try {
+    const response = await fetch('/api/alerts/activity');
+    if (!response.ok) return;
+    const payload = await response.json();
+    const merged = new Map([...(payload.items || []), ...state.notifications].map((item) => [item.id, item]));
+    state.notifications = [...merged.values()].sort((a, b) => Number(b.at) - Number(a.at)).slice(0, 500);
+    state.notifications.slice(0, 100).forEach(persistActivity);
+    saveNotifications();
+    renderNotifications();
+  } catch { /* browser-local history remains the offline fallback */ }
+}
+
+function addNotification(title, detail, link = '', relatedHeadline = '', deliveryKey = '') {
   const relatedKey = fingerprintOf(title === 'NEW HEADLINE' ? detail : relatedHeadline, '');
   if (title === 'NEW HEADLINE' && relatedKey && state.notifications.some((item) =>
     item.title !== 'NEW HEADLINE' && fingerprintOf(item.detail, '').includes(relatedKey))) return;
   // Same title+detail arriving through several feed pipelines is one alert.
   const fingerprint = fingerprintOf(title, detail);
-  if (state.alertBaselines.seenAlerts.includes(fingerprint)) return;
-  state.alertBaselines.seenAlerts.push(fingerprint);
+  const dedupeFingerprint = notificationDedupeKey(title, detail, deliveryKey);
+  if (state.alertBaselines.seenAlerts.includes(dedupeFingerprint)) return;
+  state.alertBaselines.seenAlerts.push(dedupeFingerprint);
   state.alertBaselines.seenAlerts = state.alertBaselines.seenAlerts.slice(-300);
   const safeLink = safeExternalUrl(link);
   const item = { id: `${Date.now()}-${Math.random()}`, title, detail, link: safeLink, at: Date.now() };
@@ -40,7 +66,9 @@ function addNotification(title, detail, link = '', relatedHeadline = '') {
   // baselines re-observing the same event within one refresh cycle).
   state.notifications = state.notifications.filter((x) => fingerprintOf(x.title, x.detail) !== fingerprint);
   state.notifications.unshift(item);
-  state.notifications = state.notifications.slice(0, 100);
+  state.notifications = state.notifications.slice(0, 500);
+  saveNotifications();
+  persistActivity(item);
   renderNotifications();
   playAlertSound();
   if (state.alertSettings.browserNotifications && 'Notification' in window && Notification.permission === 'granted') {
@@ -357,36 +385,50 @@ function observeVessels(items) { return observeTracks('vessels', items); }
 function observeAircraft(items) { return observeTracks('aircraft', items); }
 
 function renderNotifications() {
-  const watchRules = (state.deductionDiagnostics?.rules || [])
-    .filter((rule) => ['BUILDING', 'FIRED', 'GATE CLOSED'].includes(rule.status))
-    // Fired rules first: they are the ones that cleared their threshold.
-    .sort((a, b) => (a.status === 'FIRED' ? 0 : 1) - (b.status === 'FIRED' ? 0 : 1));
+  const watchRules = decisionWatchRules(state.deductionDiagnostics?.rules || []);
   const watchSection = $('#decisionWatch');
   const watchList = $('#decisionWatchList');
   if (watchSection && watchList) {
     watchList.innerHTML = watchRules.length
       ? watchRules.map((rule) => {
-        const effects = Array.isArray(rule.effects) ? rule.effects : [];
-        const upCount = effects.filter((effect) => effect.dir === 'up' && effect.observed).length;
-        const downCount = effects.filter((effect) => effect.dir === 'down' && effect.observed).length;
-        const trendArrow = upCount > downCount ? '↑' : downCount > upCount ? '↓' : '=';
+        const trend = rule.trend || {};
+        const trendArrow = trend.direction === 'RISING' ? '↑' : trend.direction === 'FALLING' ? '↓' : trend.direction === 'FLAT' ? '=' : '·';
         const fired = rule.status === 'FIRED';
         const building = rule.status === 'BUILDING';
         const gateClosed = rule.status === 'GATE CLOSED';
         const scoreLine = fired
           ? `FIRED · ${rule.score}/${rule.maxScore} (needs ${rule.minScore})`
-          : `${gateClosed ? 'GATE CLOSED · ' : building ? 'BUILDING · ' : ''}SCORE ${rule.score}/${rule.maxScore} · FIRE AT ${rule.minScore}`;
+          : `${gateClosed ? 'GATE CLOSED · ' : building ? 'BUILDING · ' : rule.status === 'BELOW THRESHOLD' ? 'BELOW THRESHOLD · ' : ''}SCORE ${rule.score}/${rule.maxScore} · FIRE AT ${rule.minScore}`;
         // A fired rule's own reason text is thin, so fall back to the evidence
         // that actually carried it over the line.
-        const gateReason = (rule.gateChecks || []).filter((x) => !x.passed).map((x) => x.detail).join(' · ')
+        const gateReason = (rule.gateChecks || []).filter((x) => !x.passed)
+          .map((x) => x.detail || x.label).filter(Boolean).join(' · ')
           || rule.gateDescription;
         const reason = gateClosed
           ? [rule.contextReason && `SIGNALS · ${rule.contextReason}`, `GATE · ${gateReason}`].filter(Boolean).join(' · ')
           : rule.contextReason
             || (fired ? (rule.requirements || []).filter((x) => x.passed).map((x) => x.detail || x.label).slice(0, 3).join(' · ') : '');
-        return `<article class="decision-watch-item${fired ? ' fired' : ''}${gateClosed ? ' closed' : ''}"><div><b>${esc(rule.title)} <span class="trend-arrow">${esc(trendArrow)}</span></b><span class="${fired ? 'fired-score' : gateClosed ? 'closed-score' : ''}">${esc(scoreLine)}</span></div><p>${esc(reason)}</p></article>`;
+        const confidence = rule.confidence;
+        const history = rule.scoreHistory || [];
+        const historyLine = history.length > 1
+          ? `24H SCORE ${history[0].score} → ${history.at(-1).score} · ${history.length} SAMPLES · ${trend.direction || 'FLAT'}`
+          : 'SCORE TREND · INSUFFICIENT HISTORY';
+        const requirements = (rule.requirements || []).filter((item) => !item.passed).slice(0, 4);
+        const evidenceLine = requirements.length
+          ? requirements.map((item) => `${item.dataStatus || 'NOT_OBSERVED'} · ${item.label}`).join(' | ')
+          : (rule.requirements || []).filter((item) => item.passed).slice(0, 3).map((item) => `OBSERVED · ${item.label}`).join(' | ');
+        const market = rule.marketConfirmation;
+        const marketLine = market
+          ? `MARKET CONFIRMATION ${market.score}/${market.maxScore} · ${(market.signals || []).filter((item) => item.passed).map((item) => item.label || item.symbol || item.detail).filter(Boolean).join(', ') || 'NO BENCHMARK CONFIRMED'} · SEPARATE FROM CAUSE SCORE`
+          : '';
+        const chokeId = rule.id?.replace(/^theater-/, '');
+        const disagreement = (state.deductionDiagnostics?.routeEvidence || []).find((item) => item.id === chokeId)?.sourceDisagreement;
+        const sourceLine = disagreement ? `SOURCE DISAGREEMENT · ${disagreement}` : '';
+        const path = rule.minimalPath?.text || 'Threshold path unavailable';
+        const qualityFlags = confidence?.qualityFlags?.length ? ` · ${confidence.qualityFlags.join('; ')}` : '';
+        return `<article class="decision-watch-item${fired ? ' fired' : ''}${gateClosed ? ' closed' : ''}" data-rule-id="${esc(rule.id)}"><div><b>${esc(rule.title)} <span class="trend-arrow" aria-label="Score trend ${esc(trend.direction || 'unknown')}">${esc(trendArrow)}</span></b><span class="${fired ? 'fired-score' : gateClosed ? 'closed-score' : ''}">${esc(scoreLine)}</span></div><p>${esc(reason)}</p><div class="decision-watch-diagnostics"><span class="path"><b>THRESHOLD PATH</b> ${esc(path)}</span><span><b>INPUT HEALTH</b> ${esc(confidence?.label || 'UNKNOWN')} · ${Number.isFinite(confidence?.coveragePct) ? `${confidence.coveragePct}% available` : 'coverage not reported'}${esc(qualityFlags)} · not an alert probability</span><span><b>${esc(historyLine)}</b></span>${evidenceLine ? `<span><b>REQUIREMENTS</b> ${esc(evidenceLine)}</span>` : ''}${marketLine ? `<span><b>${esc(marketLine)}</b></span>` : ''}${sourceLine ? `<span class="source-disagreement"><b>${esc(sourceLine)}</b></span>` : ''}</div></article>`;
       }).join('')
-      : '<div class="notification-empty">NO FIRED, BUILDING OR GATE-CLOSED RULES</div>';
+      : '<div class="notification-empty">NO RULE EVALUATIONS AVAILABLE</div>';
   }
   const watchCount = $('#decisionWatchCount');
   if (watchCount) watchCount.textContent = String(watchRules.length);
@@ -514,6 +556,7 @@ function initNotifications() {
     if (hadFuelSettings) saveSettings();
   } catch { /* use defaults when storage is unavailable */ }
   renderNotifications();
+  hydrateActivity();
 }
 
 function initAlertsPage() {
@@ -642,12 +685,14 @@ function initAlertsPage() {
   });
   $('#clearNotifications').onclick = () => {
     state.notifications = [];
+    saveNotifications();
     renderNotifications();
   };
   $('#notificationList').onclick = (event) => {
     const button = event.target.closest('[data-remove-notification]');
     if (!button) return;
     state.notifications = state.notifications.filter((item) => item.id !== button.dataset.removeNotification);
+    saveNotifications();
     renderNotifications();
   };
 }

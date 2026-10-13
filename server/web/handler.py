@@ -7,7 +7,7 @@ from typing import cast
 from urllib.parse import parse_qs, unquote, urlparse
 
 from ..core.logging_config import logger
-from .routes import API_ROUTES
+from .routes import API_ROUTES, save_alert_activity
 
 # server/web/handler.py -> server/ -> project root (holds index.html, assets/).
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -82,3 +82,22 @@ class TerminalRequestHandler(SimpleHTTPRequestHandler):
             logger.exception("api.request_failed path=%s", parsed.path)
             status, payload = 500, {"error": "Internal server error."}
         self.send_json(payload, status)
+
+    def do_POST(self) -> None:
+        parsed = urlparse(self.path)
+        if parsed.path != "/api/alerts/activity":
+            self.send_json({"error": "Not found."}, 404)
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length <= 0 or length > 16_384:
+                self.send_json({"error": "Request body must be between 1 and 16384 bytes."}, 413)
+                return
+            payload = json.loads(self.rfile.read(length))
+            status, response = save_alert_activity(payload)
+        except (ValueError, json.JSONDecodeError):
+            status, response = 400, {"error": "Request body must be valid JSON."}
+        except Exception:
+            logger.exception("api.request_failed path=%s", parsed.path)
+            status, response = 500, {"error": "Internal server error."}
+        self.send_json(response, status)

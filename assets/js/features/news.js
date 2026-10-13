@@ -23,18 +23,33 @@ async function loadNews(feed = state.feed, query = state.newsQuery || '', countr
     const result = await req(`/api/news?feed=${encodeURIComponent(feed)}&q=${encodeURIComponent(query)}&country=${encodeURIComponent(state.newsCountry)}`);
     if (id !== state.request.news) return;
     state.newsSources = result.sources || [];
+    const incomingMeta = {
+      availableCount: Number(result.availableCount) || (result.items || []).length,
+      returnedCount: Number(result.returnedCount) || (result.items || []).length,
+      truncated: Boolean(result.truncated),
+      publisherDomainCount: Number(result.publisherDomainCount) || 0,
+      ranking: result.ranking || 'RECENCY ORDER · SERVER DID NOT PROVIDE RANKING METADATA',
+      fetched: result.fetched || null,
+    };
     const sourceCount = result.sourceCount || 0;
     const failed = state.newsSources.length - sourceCount;
+    state.newsStaleSources = state.newsSources.filter((source) => source.stale).map((source) => source.source || source.id);
     if (sourceCount || !state.news.length) {
-      state.news = (result.items || []).sort((a, b) => newsTimestamp(b.published) - newsTimestamp(a.published));
+      state.news = (result.items || []).sort((a, b) => (Number(b.priorityScore) || 0) - (Number(a.priorityScore) || 0)
+        || newsTimestamp(b.published) - newsTimestamp(a.published));
       observeDerivedSignals('news', observeNews(state.news));
       state.timestamps.news = Date.now();
+      state.newsDataStale = sourceCount === 0 && state.news.length > 0;
+      state.newsMeta = incomingMeta;
+    } else {
+      state.newsDataStale = state.news.length > 0;
     }
     state.errors.news = failed ? `${failed} FEED${failed === 1 ? '' : 'S'} UNAVAILABLE` : '';
     setHealth('news', failed ? 'delayed' : 'ok', state.errors.news);
     renderNews();
     const feedLabel = feed === 'bulgaria' ? 'BULGARIA · EN' : feed === 'balkans' ? `BALKANS${state.newsCountry ? ` · ${state.newsCountry}` : ''}` : 'GLOBAL';
-    const status = `${state.news.length} STORIES · ${sourceCount}/${state.newsSources.length} FEEDS · ${feedLabel} · ${fmtTime(state.timestamps.news)} · AUTO 3M`;
+    const meta = state.newsMeta || incomingMeta;
+    const status = `${state.news.length} STORIES · ${sourceCount}/${state.newsSources.length} FEEDS · ${meta.publisherDomainCount || 0} PUBLISHER DOMAINS · ${feedLabel} · ${fmtTime(state.timestamps.news)}${meta.truncated ? ` · ${meta.returnedCount}/${meta.availableCount} RANKED ITEMS SHOWN` : ''}${state.newsDataStale ? ' · LAST DATA STALE' : state.newsStaleSources.length ? ` · CACHED FROM ${state.newsStaleSources.length} FAILED FEEDS` : ''} · AUTO 3M`;
     updateNewsStatus(status);
     const lsh = $('#leadSubhead');
     if (lsh) lsh.textContent = `${feedLabel} HEADLINES · ${query ? 'SEARCH: ' + query.toUpperCase() : 'PUBLIC FEEDS'}`;
@@ -43,7 +58,8 @@ async function loadNews(feed = state.feed, query = state.newsQuery || '', countr
     state.errors.news = e.message;
     setHealth('news', 'error', e.message);
     renderNews();
-    updateNewsStatus(`FEED ERROR · ${e.message} · LAST DATA RETAINED · AUTO 3M`);
+    state.newsDataStale = state.news.length > 0;
+    updateNewsStatus(`FEED ERROR · ${e.message} · ${state.newsDataStale ? 'LAST DATA RETAINED · STALE' : 'NO CACHED DATA'} · AUTO 3M`);
     const lsh = $('#leadSubhead');
     if (lsh) lsh.textContent = 'PUBLIC FEED STATUS · LAST SUCCESSFUL HEADLINES RETAINED';
     setStatus(`NEWS FEED ERROR · ${e.message}`);
@@ -65,10 +81,18 @@ function renderNews() {
   const focusUrl = activeRow?.dataset.newsUrl;
   const focusHref = document.activeElement?.closest('a')?.href;
   const lead = $('#leadStories');
+  const renderStoryMeta = (item) => {
+    const reasons = Array.isArray(item.priorityReasons) ? item.priorityReasons : [];
+    const priority = Number(item.priorityScore) >= 5 ? 'HIGH RELEVANCE' : Number(item.priorityScore) >= 3 ? 'RELEVANT' : '';
+    const staleSource = state.newsStaleSources.some((name) => name && (item.source === name || item.source?.includes(name)));
+    const publisher = item.publisherDomain && item.publisherDomain !== 'UNKNOWN' ? ` · ${esc(item.publisherDomain)}` : '';
+    const syndication = Number(item.syndicationCount) > 1 ? ` · <em title="Exact headline also arrived from ${esc((item.publisherDomains || []).join(', '))}">SYNDICATED COPY ×${Number(item.syndicationCount)}</em>` : '';
+    return `${esc(item.source || 'NEWS')}${publisher} · ${esc(item.region || 'GLOBAL')} · ${esc(item.category || 'NEWS')}${priority ? ` · <em class="news-priority" title="${esc(reasons.join(', '))}">${priority}</em>` : ''}${syndication}${staleSource || state.newsDataStale ? ' · <em class="news-stale">CACHED / STALE</em>' : ''}`;
+  };
 
   if (lead) {
     lead.innerHTML = rows.length
-      ? rows.slice(0, 8).map((x, i) => `<div tabindex="0" class="story ${i === 0 ? 'featured' : ''} ${state.selectedNews === x.url ? 'selected' : ''}" data-news-url="${esc(x.url)}"><span class="story-num">${String(i + 1).padStart(2, '0')}</span><div><a href="${esc(safeExternalUrl(x.url) || '#')}" target="_blank" rel="noopener">${esc(x.title)}</a><span class="story-meta">${esc(x.source || 'NEWS')} · ${esc(x.region || 'GLOBAL')} · ${esc(x.category || 'NEWS')}</span></div><span class="story-time">${timeAgo(x.published)}</span></div>`).join('')
+      ? rows.slice(0, 8).map((x, i) => `<div tabindex="0" class="story ${i === 0 ? 'featured' : ''} ${state.selectedNews === x.url ? 'selected' : ''}" data-news-url="${esc(x.url)}"><span class="story-num">${String(i + 1).padStart(2, '0')}</span><div><a href="${esc(safeExternalUrl(x.url) || '#')}" target="_blank" rel="noopener">${esc(x.title)}</a><span class="story-meta">${renderStoryMeta(x)}</span></div><span class="story-time">${timeAgo(x.published)}</span></div>`).join('')
       : `<div class="empty-state">${state.errors.news ? 'NEWS SERVICE UNAVAILABLE · ' + esc(state.errors.news) : 'NO MATCHING HEADLINES · CHANGE FEED OR QUERY'}</div>`;
   }
 
@@ -79,7 +103,7 @@ function renderNews() {
     : rows.filter((x) => TOPIC_TERMS[state.filter]?.test(x.title) || String(x.category || '').toLowerCase() === state.filter);
 
   if (compact) {
-    compact.innerHTML = visible.slice(0, 12).map((x) => `<div tabindex="0" class="compact-row ${state.selectedNews === x.url ? 'selected' : ''}" data-news-url="${esc(x.url)}"><span class="source">${esc((x.source || 'NEWS').slice(0, 12))}</span><a href="${esc(safeExternalUrl(x.url) || '#')}" target="_blank" rel="noopener">${esc(x.title)}</a><time>${timeAgo(x.published)}</time></div>`).join('')
+    compact.innerHTML = visible.slice(0, 12).map((x) => `<div tabindex="0" class="compact-row ${state.selectedNews === x.url ? 'selected' : ''}" data-news-url="${esc(x.url)}"><span class="source">${esc((x.source || 'NEWS').slice(0, 12))}${Number(x.priorityScore) >= 5 ? ' · TOPIC' : ''}${state.newsDataStale ? ' · STALE' : ''}</span><a href="${esc(safeExternalUrl(x.url) || '#')}" target="_blank" rel="noopener">${esc(x.title)}</a><time>${timeAgo(x.published)}</time></div>`).join('')
       || `<div class="empty-state">${state.errors.news ? 'PUBLIC FEED ERROR · ' + esc(state.errors.news) : 'NO HEADLINES MATCH THIS FILTER'}</div>`;
   }
 
@@ -122,12 +146,19 @@ function renderNewsModuleRows() {
   const focusUrl = active?.dataset.newsUrl;
   const focusHref = document.activeElement?.closest('a')?.href;
 
-  body.innerHTML = state.news.map((x) => `<div tabindex="0" class="article-row ${state.selectedNews === x.url ? 'selected' : ''}" data-news-url="${esc(x.url)}"><span class="src">${esc(x.source || 'NEWS')}</span><div><a href="${esc(safeExternalUrl(x.url) || '#')}" target="_blank" rel="noopener">${esc(x.title)}</a><small>${esc(x.region || 'GLOBAL')} · ${esc(x.category || 'NEWS')} · ${esc(x.language || '')} · ${esc(x.timeType || 'PUBLISHED')}</small></div><time>${timeAgo(x.published)}</time></div>`).join('')
+  body.innerHTML = state.news.map((x) => {
+    const tags = [...(Array.isArray(x.priorityReasons) ? x.priorityReasons : []),
+      Number(x.syndicationCount) > 1 ? `EXACT HEADLINE ALSO ARRIVED VIA ${(x.publisherDomains || []).join(', ')}` : '',
+      state.newsStaleSources.some((name) => name && (x.source === name || x.source?.includes(name))) || state.newsDataStale ? 'CACHED / STALE' : '']
+      .filter(Boolean).join(' · ');
+    const publisher = x.publisherDomain && x.publisherDomain !== 'UNKNOWN' ? ` · ${x.publisherDomain}` : '';
+    return `<div tabindex="0" class="article-row ${state.selectedNews === x.url ? 'selected' : ''}" data-news-url="${esc(x.url)}"><span class="src">${esc(x.source || 'NEWS')}</span><div><a href="${esc(safeExternalUrl(x.url) || '#')}" target="_blank" rel="noopener">${esc(x.title)}</a><small>${esc(x.region || 'GLOBAL')} · ${esc(x.category || 'NEWS')}${esc(publisher)} · ${esc(x.language || '')} · ${esc(x.timeType || 'PUBLISHED')}${tags ? ` · ${esc(tags)}` : ''}</small></div><time>${timeAgo(x.published)}</time></div>`;
+  }).join('')
     || '<div class="empty-state">No active publisher headlines. Source failures are isolated; retry after the next feed interval or broaden search.</div>';
   body.scrollTop = scrollTop;
 
   const count = $('#newsResultsCount');
-  if (count) count.textContent = `${state.news.length} RESULTS · ${state.newsSources.filter((x) => x.ok).length}/${state.newsSources.length} FEEDS`;
+  if (count) count.textContent = `${state.news.length} RESULTS · ${state.newsSources.filter((x) => x.ok).length}/${state.newsSources.length} FEEDS${state.newsDataStale ? ' · STALE CACHE' : ''}`;
   const detail = $('#newsDetail');
   const selected = state.news.find((x) => x.url === state.selectedNews);
   if (detail && selected) {
@@ -137,7 +168,8 @@ function renderNewsModuleRows() {
   if (footer) {
     const good = state.newsSources.filter((x) => x.ok).length;
     const bad = state.newsSources.length - good;
-    footer.textContent = `${good}/${state.newsSources.length} FEEDS RESPONDING${bad ? ` · ${bad} OFFLINE` : ' · ALL AVAILABLE'} · PUBLIC RSS / GOOGLE NEWS · POLL 3M`;
+    const stale = state.newsStaleSources.length ? ` · ${state.newsStaleSources.length} CACHED FEED${state.newsStaleSources.length === 1 ? '' : 'S'}` : '';
+    footer.textContent = `${good}/${state.newsSources.length} FEEDS RESPONDING${bad ? ` · ${bad} OFFLINE` : ' · ALL AVAILABLE'}${stale}${state.newsDataStale ? ' · DISPLAYED SET IS STALE' : ''} · PUBLIC RSS / GOOGLE NEWS · POLL 3M`;
   }
   bindNewsRows();
   if (focusUrl) {

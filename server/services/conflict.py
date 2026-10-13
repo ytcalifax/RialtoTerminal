@@ -144,6 +144,7 @@ def _worldmonitor_layers() -> dict:
 
     layers: dict = {}
     statuses = {}
+    status_details = {}
     for name, _, key in operations:
         result = results.get(name) or {}
         body = result.get("body")
@@ -156,8 +157,16 @@ def _worldmonitor_layers() -> dict:
         else:
             valid = valid and isinstance(value, list)
             layers[name] = value if valid else []
-        statuses[name] = "OK" if valid else "UNAVAILABLE"
+        empty = valid and key in {"events", "outages"} and not value
+        statuses[name] = "EMPTY_UNVERIFIED" if empty else "OK" if valid else "UNAVAILABLE"
+        if empty:
+            status_details[name] = "World Monitor returned a valid empty array. Its response does not include ACLED query bounds, last-ingest time, or empty-result semantics; treat this as no records returned, not evidence that no incidents occurred."
+        elif not valid:
+            status_details[name] = "Request, status code, or response schema was unavailable."
+        else:
+            status_details[name] = "Response parsed successfully."
     layers["source_status"] = statuses
+    layers["source_status_detail"] = status_details
     layers["armed"] = [
         {**event, "source": "UCDP"}
         for event in layers["ucdp"]
@@ -210,7 +219,11 @@ def _war_coverage(reports: list, frontline: list, gpsjam: dict | None, worldmoni
             "date": (gpsjam or {}).get("date", ""),
         },
         **{
-            f"World Monitor {name}": {"status": status, "records": len(worldmonitor.get(name, []))}
+            f"World Monitor {name}": {
+                "status": status,
+                "records": len(worldmonitor.get(name, [])),
+                "detail": (worldmonitor.get("source_status_detail") or {}).get(name, ""),
+            }
             for name, status in (worldmonitor.get("source_status") or {}).items()
         },
     }

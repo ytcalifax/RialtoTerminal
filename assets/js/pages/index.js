@@ -6,6 +6,7 @@ import { renderTrackingPage } from './trackingPage.js';
 import { renderMarketplacePage } from './marketplacePage.js';
 import { renderWarPage } from './warPage.js';
 import { renderAlertsPage } from './alertsPage.js';
+import { renderChatPage } from './chatPage.js';
 export function renderModule() {
   const root = $('#module');
   if (state.page === 'top') return;
@@ -28,6 +29,9 @@ export function renderModule() {
       break;
     case 'alerts':
       renderAlertsPage(root);
+      break;
+    case 'chat':
+      renderChatPage(root);
       break;
   }
 }

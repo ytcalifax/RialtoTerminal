@@ -40,7 +40,7 @@
     </header>
     <div class="command-row">
       <button class="menu-btn" id="menuBtn">≡ MENU</button>
-      <div class="command-wrap"><span class="cmd-label">COMMAND</span><input id="command" autocomplete="off" spellcheck="false" placeholder="Enter function (TOP, NEWS, MKT, CON, SHIP, AIR, ALT, MPL)" aria-label="Command line"><button id="goBtn" class="go-btn">GO ↵</button><div id="suggestions" class="suggestions"></div></div>
+      <div class="command-wrap"><span class="cmd-label">COMMAND</span><input id="command" autocomplete="off" spellcheck="false" placeholder="Enter function (TOP, NEWS, MKT, CON, SHIP, AIR, ALT, MPL, CHAT)" aria-label="Command line"><button id="goBtn" class="go-btn">GO ↵</button><div id="suggestions" class="suggestions"></div></div>
       <div class="cmd-hint">F2 HELP &nbsp; <kbd>↑</kbd> HISTORY &nbsp; <kbd>ESC</kbd> CANCEL</div>
     </div>
     <nav class="function-nav" aria-label="Terminal functions">
@@ -52,6 +52,7 @@
       <button data-page="air"><span class="key yellow">AIR</span> AIRCRAFT</button>
       <button data-page="alerts"><span class="key yellow">ALT</span> ALERTS <b class="nav-alert-count" id="notificationCount">0</b></button>
       <button data-page="marketplace"><span class="key yellow">MPL</span> MARKETPLACE</button>
+      <button data-page="chat"><span class="key yellow">LLM</span> CHAT</button>
       <div class="nav-spacer"></div><button class="tab-small selected" data-screen="1" title="Screen 1 · Home">1</button><button class="tab-small" data-screen="2" title="Screen 2 · News">2</button><button class="tab-small" data-screen="3" title="Screen 3 · Markets">3</button><button class="tab-small" data-screen="4" title="Screen 4 · Vessels">4</button>
     </nav>
     <div class="ticker" id="ticker"><span class="ticker-label">MARKET SNAPSHOT</span><span id="tickerQuotes" class="ticker-quotes">FETCHING PUBLIC QUOTES…</span><span class="ticker-source">YAHOO FINANCE · BSE SOFIX</span></div>

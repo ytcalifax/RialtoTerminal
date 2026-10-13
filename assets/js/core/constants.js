@@ -31,6 +31,7 @@ const SESSION_LABELS = {
   war: 'CONFLICT MONITOR',
   alerts: 'ALERTS & TRENDS',
   marketplace: 'MARKETPLACE',
+  chat: 'CHAT',
 };
 const COMMAND_PAGES = {
   TOP: 'top',
@@ -41,6 +42,7 @@ const COMMAND_PAGES = {
   ALT: 'alerts', ALERTS: 'alerts',
   MPL: 'marketplace', MARKETPLACE: 'marketplace',
   CON: 'war', CONFLICT: 'war',
+  LLM: 'chat',
 };
 const COMMAND_NAMES = {
   TOP: 'Top News',
@@ -51,6 +53,7 @@ const COMMAND_NAMES = {
   AIR: 'Aircraft Tracking',
   ALT: 'Alert Settings',
   MPL: 'Marketplace',
+  LLM: 'LLM Chat',
 };
 const MENU_ITEMS = [
   ['TOP', 'Top News'],
@@ -61,6 +64,7 @@ const MENU_ITEMS = [
   ['AIR', 'Aircraft Tracking'],
   ['ALT', 'Alert Settings'],
   ['MPL', 'Marketplace'],
+  ['LLM', 'LLM Chat'],
 ];
 const HELP_ITEMS = [
   ['TOP', 'Top News'],
@@ -71,6 +75,7 @@ const HELP_ITEMS = [
   ['AIR', 'Aircraft Tracking'],
   ['ALT', 'Alert Settings'],
   ['MPL', 'Marketplace'],
+  ['LLM', 'LLM Chat'],
 ];
 const TOPIC_TERMS = {
   business: /business|company|market|econom|finance|trade|bank|oil|stock/i,
@@ -89,6 +94,7 @@ const MARKET_GROUPS = [
 const TICKER_SYMBOLS = ['^GSPC', '^IXIC', '^FTSE', '^SOFIX', 'EURUSD=X', 'GC=F', 'BZ=F', 'BTC-USD', 'ETH-USD', 'SOL-USD'];
 const COINBASE_SLUGS = { 'BTC-USD': 'bitcoin', 'ETH-USD': 'ethereum', 'SOL-USD': 'solana' };
 const PINNED_COOKIE = 'rialto_pins_v1';
+const CHAT_COOKIE = 'rialto_chat_v1';
 const MAX_PINNED_SYMBOLS = 24;
 const CUSTOM_GROUP = 'CUSTOM';
 const osmTileUrl = (z, x, y) => `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
@@ -133,7 +139,7 @@ export {
   COMMAND_PAGES, COMMAND_NAMES, MENU_ITEMS, HELP_ITEMS,
   TOPIC_TERMS,
   MARKET_GROUPS, TICKER_SYMBOLS, COINBASE_SLUGS,
-  PINNED_COOKIE, MAX_PINNED_SYMBOLS, CUSTOM_GROUP,
+  PINNED_COOKIE, MAX_PINNED_SYMBOLS, CUSTOM_GROUP, CHAT_COOKIE,
   osmTileUrl, OSM_CREDIT,
   VESSEL_LOOKUP_URL, vesselTypeLabel,
 };

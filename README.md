@@ -102,6 +102,7 @@ attached to the server process.
 | `AIR` | Aircraft | Explore aircraft positions, details, and available tracks. |
 | `ALT` | Alerts | Set alerts for headlines, conflict, outbreaks, market moves, vessels, and aircraft. |
 | `MPL` | Marketplace | Search public Bazar.bg listings. |
+| `CHAT` | Chat | Chat with an LLM endpoint and fetch terminal data via function calls. |
 
 Keyboard shortcuts: `/` focuses the command line, `F2` opens help, `↑` and `↓` browse command history, and `Esc` returns to the top screen.
 

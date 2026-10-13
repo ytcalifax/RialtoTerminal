@@ -40,6 +40,7 @@ const state = {
   deductionBaseline: { conflict: {}, news: {} },
   marketplace: [],
   marketplaceQuery: '',
+  chatMessages: [],
   market: [],
   marketGroup: 'INDICES',
   marketQuery: '',

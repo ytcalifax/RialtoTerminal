@@ -41,6 +41,8 @@ const state = {
   marketplace: [],
   marketplaceQuery: '',
   chatMessages: [],
+  chatToolCalls: [],
+  chatRun: null,
   market: [],
   marketGroup: 'INDICES',
   marketQuery: '',

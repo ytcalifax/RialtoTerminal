@@ -1,4 +1,5 @@
 import { $, esc } from './dom.js';
+import { on } from './hooks.js';
 import { state } from './state.js';
 
 const bytes = (value) => {
@@ -38,6 +39,32 @@ function renderDecisionDiagnostics(data) {
     const trendArrow = rule.status === 'FIRED' ? '' : (upCount > downCount ? '↑' : downCount > upCount ? '↓' : '=');
     return `<article class="debug-rule"><div class="debug-rule-head"><b>${esc(rule.title)}${trendArrow ? ` <span class="trend-arrow">${esc(trendArrow)}</span>` : ''}</b><span class="debug-rule-status ${statusClass}">${esc(rule.status)}</span></div><div class="debug-rule-meta">SCORE ${rule.score}/${rule.maxScore} · MINIMUM ${rule.minScore}</div><div class="debug-rule-summary">${esc(rule.summary)}</div>${rule.watchReason ? `<div class="debug-rule-meta">WATCHING · ${esc(rule.watchReason)}</div>` : ''}<div class="debug-rule-gate">GATE ${rule.gatePassed ? 'OPEN' : 'CLOSED'} · ${esc(rule.gateDescription)}${gates ? `<div class="debug-gate-checks">${gates}</div>` : ''}</div><div class="debug-rule-evidence">${requirements}</div><div class="debug-rule-effects">${effects}</div></article>`;
   }).join('') || '<div class="debug-empty">NO RULES EVALUATED</div>';
+}
+
+function renderChatToolCalls() {
+  const run = state.chatRun;
+  const runBox = $('#debugChatRun');
+  const callBox = $('#debugChatCalls');
+  if (!runBox || !callBox) return;
+  if (!run) {
+    runBox.textContent = 'No chat run recorded.';
+    callBox.innerHTML = '<div class="debug-empty">NO CHAT TOOL CALLS</div>';
+    return;
+  }
+  const elapsed = run.elapsed != null ? `${(run.elapsed / 1000).toFixed(1)}s` : 'running';
+  const statusClass = run.outcome === 'ANSWERED' ? 'pass' : 'fail';
+  runBox.innerHTML = `<b class="${statusClass}">${esc(run.outcome)}</b>`
+    + `<span>MODEL ${esc(run.model)} · MAX ROUNDS ${run.rounds} · ${esc(elapsed)} · ${state.chatToolCalls.length} CALLS TRACED</span>`
+    + (run.reason ? `<span class="debug-chat-reason">${esc(run.reason)}</span>` : '');
+  callBox.innerHTML = state.chatToolCalls.length
+    ? state.chatToolCalls.map((call) => {
+      const cls = call.status === 'OK' ? 'pass' : 'fail';
+      return `<div class="debug-chat-call"><b class="${cls}">R${call.round}</b>`
+        + `<span><em>${esc(call.name)}</em> <small>${esc(call.args || '{}')}</small></span>`
+        + `<span class="debug-chat-meta">${esc(call.status)}${call.ms ? ` · ${call.ms} ms` : ''}`
+        + `${call.chars ? ` · ${call.chars} chars${call.shrunk ? ' (trimmed)' : ''}` : ''} · ${esc(call.detail || '')}</span></div>`;
+    }).join('')
+    : '<div class="debug-empty">NO CHAT TOOL CALLS</div>';
 }
 
 function renderDebugStats(data) {
@@ -110,6 +137,7 @@ async function refreshDebugStats() {
     $('#debugButton').hidden = false;
     renderDebugStats(data);
     renderDecisionDiagnostics(state.deductionDiagnostics);
+    renderChatToolCalls();
     return true;
   } catch {
     $('#debugButton').hidden = true;
@@ -123,6 +151,9 @@ function initDebugPanel() {
   const panel = $('#debugPanel');
   refreshDebugStats();
   setInterval(refreshDebugStats, 3000);
+  // Tool calls land faster than the poll interval; refresh immediately so a
+  // run in progress is visible rather than appearing up to 3s late.
+  on('chat:tools', () => { if (!panel.hidden) renderChatToolCalls(); });
   button.onclick = () => {
     panel.hidden = !panel.hidden;
     button.setAttribute('aria-expanded', String(!panel.hidden));

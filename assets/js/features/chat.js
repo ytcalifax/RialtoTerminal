@@ -1,4 +1,6 @@
 import { CHAT_COOKIE, LLM_TIMEOUT_MS } from '../core/constants.js';
+import { emit } from '../core/hooks.js';
+import { state } from '../core/state.js';
 import { req } from '../core/net.js';
 
 /**
@@ -431,6 +433,29 @@ async function callProvider(cfg, payload) {
  * @returns {Promise<{messages: Array, content: string, limits: object|null}>}
  */
 const KNOWN_TOOLS = new Set(CHAT_TOOLS.map((tool) => tool.function.name));
+const CHAT_TRACE_LIMIT = 60;
+
+/** Append one entry to the tool-call trace the debug pane renders. */
+function traceCall(entry) {
+  state.chatToolCalls.unshift({ at: Date.now(), ...entry });
+  if (state.chatToolCalls.length > CHAT_TRACE_LIMIT) {
+    state.chatToolCalls.length = CHAT_TRACE_LIMIT;
+  }
+  emit('chat:tools', state.chatToolCalls);
+}
+
+function startTrace(model, rounds) {
+  state.chatRun = { at: Date.now(), model, rounds, outcome: 'RUNNING', reason: '', calls: 0 };
+  emit('chat:tools', state.chatToolCalls);
+}
+
+function endTrace(outcome, reason = '') {
+  if (!state.chatRun) return;
+  state.chatRun.outcome = outcome;
+  state.chatRun.reason = reason;
+  state.chatRun.elapsed = Date.now() - state.chatRun.at;
+  emit('chat:tools', state.chatToolCalls);
+}
 
 export async function sendChat(settings, messages, onProgress) {
   const cfg = { ...CHAT_DEFAULTS, ...(settings || {}) };
@@ -442,85 +467,131 @@ export async function sendChat(settings, messages, onProgress) {
   const seenCalls = new Set();
   let inventedCalls = 0;
   let limits = null;
+  startTrace(cfg.model, maxRounds);
 
-  for (let round = 0; round < maxRounds; round += 1) {
-    const { messages: trimmed, tokens } = pruneConversation(conversation, budget, toolsTokens);
-    const { data, limits: seen } = await callProvider(cfg, {
-      model: cfg.model,
-      messages: trimmed,
-      tools: CHAT_TOOLS,
-      tool_choice: 'auto',
-      temperature: num(cfg.temperature, CHAT_DEFAULTS.temperature, 0, 2),
-      max_completion_tokens: num(cfg.maxCompletionTokens, CHAT_DEFAULTS.maxCompletionTokens, 64, 32000),
-      stream: false,
-    });
-
-    limits = seen;
-    if (onProgress) onProgress({ round: round + 1, limits, inputTokens: tokens });
-
-    const message = data?.choices?.[0]?.message;
-    if (!message) throw new Error('No chat completion returned.');
-
-    // Preserve the provider's tool_call ids verbatim: the next round pairs
-    // them with `tool` results, and a regenerated id breaks that pairing.
-    conversation.push({ ...message, role: 'assistant' });
-
-    const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
-    if (!toolCalls.length) {
-      return { messages: conversation, content: message.content || '', limits };
-    }
-
-    // A model that asks for a function we do not define has invented it. Give
-    // it one correction naming the real functions — most questions have a
-    // usable proxy, and aborting outright would block answers it could have
-    // produced. A second invention means it is not recovering, so stop before
-    // the remaining rounds burn the per-minute budget.
-    const invented = toolCalls.find((call) => !KNOWN_TOOLS.has(call?.function?.name));
-    if (invented) {
-      inventedCalls += 1;
-      if (inventedCalls > 1) {
-        throw new Error(
-          `The model tried to call "${invented.function?.name}", which this terminal does not have. `
-          + 'Rialto covers news, markets, vessels, aircraft, conflicts, outbreaks, listings, and the current screen state.',
-        );
-      }
-      conversation.push({
-        role: 'tool',
-        tool_call_id: invented.id,
-        name: invented.function?.name,
-        content: `No such function. Available functions: ${[...KNOWN_TOOLS].join(', ')}. `
-          + 'Pick the closest one that informs the answer, or reply without calling anything.',
+  try {
+    for (let round = 0; round < maxRounds; round += 1) {
+      const { messages: trimmed, tokens } = pruneConversation(conversation, budget, toolsTokens);
+      const { data, limits: seen } = await callProvider(cfg, {
+        model: cfg.model,
+        messages: trimmed,
+        tools: CHAT_TOOLS,
+        tool_choice: 'auto',
+        temperature: num(cfg.temperature, CHAT_DEFAULTS.temperature, 0, 2),
+        max_completion_tokens: num(cfg.maxCompletionTokens, CHAT_DEFAULTS.maxCompletionTokens, 64, 32000),
+        stream: false,
       });
-      continue;
+
+      limits = seen;
+      if (onProgress) onProgress({ round: round + 1, limits, inputTokens: tokens });
+
+      const message = data?.choices?.[0]?.message;
+      if (!message) throw new Error('No chat completion returned.');
+
+      // Preserve the provider's tool_call ids verbatim: the next round pairs
+      // them with `tool` results, and a regenerated id breaks that pairing.
+      conversation.push({ ...message, role: 'assistant' });
+
+      const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+      if (!toolCalls.length) {
+        endTrace('ANSWERED');
+        return { messages: conversation, content: message.content || '', limits };
+      }
+
+      // A model that asks for a function we do not define has invented it. Give
+      // it one correction naming the real functions — most questions have a
+      // usable proxy, and aborting outright would block answers it could have
+      // produced. A second invention means it is not recovering, so stop before
+      // the remaining rounds burn the per-minute budget.
+      const invented = toolCalls.find((call) => !KNOWN_TOOLS.has(call?.function?.name));
+      if (invented) {
+        inventedCalls += 1;
+        traceCall({
+          round: round + 1,
+          name: invented.function?.name || '(unnamed)',
+          args: String(invented.function?.arguments || ''),
+          status: 'INVENTED',
+          detail: `no such function · correction issued (${inventedCalls}/1)`,
+          chars: 0,
+          ms: 0,
+        });
+        if (inventedCalls > 1) {
+          throw new Error(
+            `The model tried to call "${invented.function?.name}", which this terminal does not have. `
+            + 'Rialto covers news, markets, vessels, aircraft, conflicts, outbreaks, listings, and the current screen state.',
+          );
+        }
+        conversation.push({
+          role: 'tool',
+          tool_call_id: invented.id,
+          name: invented.function?.name,
+          content: `No such function. Available functions: ${[...KNOWN_TOOLS].join(', ')}. `
+            + 'Pick the closest one that informs the answer, or reply without calling anything.',
+        });
+        continue;
+      }
+
+      for (const call of toolCalls) {
+        let args = {};
+        try { args = JSON.parse(call?.function?.arguments || '{}'); } catch { args = {}; }
+        const signature = `${call?.function?.name}:${JSON.stringify(args)}`;
+        if (seenCalls.has(signature)) {
+          traceCall({
+            round: round + 1,
+            name: call?.function?.name,
+            args: JSON.stringify(args),
+            status: 'REPEAT',
+            detail: 'identical call already made in this run',
+            chars: 0,
+            ms: 0,
+          });
+          throw new Error(
+            `The model repeated the same call (${call?.function?.name}) without new information. `
+            + 'It is looping rather than answering — try rephrasing the question.',
+          );
+        }
+        seenCalls.add(signature);
+        const startedAt = Date.now();
+        let out;
+        let status = 'OK';
+        let detail = '';
+        try {
+          out = await executeChatTool(call?.function?.name, args);
+          if (out && typeof out === 'object' && out.error) {
+            status = 'ERROR';
+            detail = String(out.error);
+          }
+        } catch (err) {
+          out = { error: String(err?.message || err) };
+          status = 'ERROR';
+          detail = String(err?.message || err);
+        }
+        const content = shrinkToolResult(out, toolChars);
+        const rawChars = (typeof out === 'string' ? out : JSON.stringify(out) || '').length;
+        traceCall({
+          round: round + 1,
+          name: call?.function?.name,
+          args: JSON.stringify(args),
+          status,
+          detail: detail || `sent ${rawChars} chars`,
+          chars: content.length,
+          shrunk: content.length < rawChars,
+          ms: Date.now() - startedAt,
+        });
+        conversation.push({
+          role: 'tool',
+          tool_call_id: call.id,
+          name: call?.function?.name,
+          content,
+        });
+      }
     }
 
-    for (const call of toolCalls) {
-      let args = {};
-      try { args = JSON.parse(call?.function?.arguments || '{}'); } catch { args = {}; }
-      const signature = `${call?.function?.name}:${JSON.stringify(args)}`;
-      if (seenCalls.has(signature)) {
-        throw new Error(
-          `The model repeated the same call (${call?.function?.name}) without new information. `
-          + 'It is looping rather than answering — try rephrasing the question.',
-        );
-      }
-      seenCalls.add(signature);
-      let out;
-      try {
-        out = await executeChatTool(call?.function?.name, args);
-      } catch (err) {
-        out = { error: String(err?.message || err) };
-      }
-      conversation.push({
-        role: 'tool',
-        tool_call_id: call.id,
-        name: call?.function?.name,
-        content: shrinkToolResult(out, toolChars),
-      });
-    }
+    throw new Error(
+      `Stopped at the ${maxRounds}-round tool limit without an answer. Raise "Max rounds" in ⚙ CHAT, or ask something narrower.`,
+    );
+  } catch (err) {
+    endTrace('ABORTED', String(err?.message || err));
+    throw err;
   }
-
-  throw new Error(
-    `Stopped at the ${maxRounds}-round tool limit without an answer. Raise "Max rounds" in ⚙ CHAT, or ask something narrower.`,
-  );
 }

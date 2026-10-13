@@ -988,6 +988,17 @@
 .debug-decision-inputs b { color: #d1a346; }
 .debug-decision-inputs span { white-space: nowrap; }
 .debug-decisions { display: grid; gap: 6px; padding: 7px; }
+.debug-chat-run { display: flex; flex-wrap: wrap; gap: 5px 10px; padding: 7px 9px; border-bottom: 1px solid #30383b; color: #87969b; font-size: 8px; line-height: 1.4; }
+.debug-chat-run .debug-chat-reason { width: 100%; color: #c98b7f; overflow-wrap: anywhere; }
+.debug-chat-calls { display: grid; gap: 4px; padding: 7px; max-height: 340px; overflow: auto; }
+.debug-chat-call { display: grid; grid-template-columns: 24px 1fr; gap: 3px 7px; padding-bottom: 4px; border-bottom: 1px solid #262d30; }
+.debug-chat-call > b { color: #d1a346; font: 700 8px Roboto Mono, monospace; }
+.debug-chat-call > b.pass { color: #91c7aa; }
+.debug-chat-call > b.fail { color: #d1705c; }
+.debug-chat-call span { color: #c5d5d9; font-size: 9px; overflow-wrap: anywhere; }
+.debug-chat-call em { color: #8fc4d1; font-style: normal; font-weight: 600; }
+.debug-chat-call small { color: #788b91; font: 8px Roboto Mono, monospace; }
+.debug-chat-meta { grid-column: 2; color: #788b91 !important; }
 .debug-rule { padding: 7px; border: 1px solid #30383b; background: #12181a; }
 .debug-rule-head { display: flex; justify-content: space-between; gap: 8px; color: #e2e7e9; }
 .debug-rule-status { font-weight: 700; }

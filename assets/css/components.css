@@ -386,6 +386,7 @@
   width: 100%;
   border-collapse: collapse;
   font: 10px Roboto Mono, monospace;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
@@ -687,6 +688,10 @@
   50% {
     opacity: .35;
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .connection[data-state="loading"] i { animation: none; }
 }
 
 .data-table tr.chosen td,

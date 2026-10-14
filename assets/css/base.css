@@ -1,6 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;600;700&family=Roboto:wght@400;500;700;900&display=swap');
 
 :root {
+  color-scheme: dark;
   /* Global UI scale. The whole terminal is rendered through this one knob, so
      changing it enlarges every panel, row and label proportionally. */
   --zoom: 1.1;

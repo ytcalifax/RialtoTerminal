@@ -14,15 +14,46 @@ const HEADLINE_STOP_WORDS = new Set('a an and are as at be by for from has have 
 const DEDUCTION_STOP_WORDS = new Set([...HEADLINE_STOP_WORDS, 'event', 'report', 'reports', 'news', 'latest', 'update', 'updates', 'world', 'global', 'breaking', 'source', 'public', 'official', 'according', 'people', 'country', 'government', 'officials', 'should', 'would', 'could', 'your', 'you', 'how', 'soon']);
 const fingerprintOf = notificationFingerprint;
 
-function readableFeedCode(value) {
-  const code = String(value || '').trim().toUpperCase();
-  const labels = {
-    OUTAGE_SEVERITY_MAJOR: 'MAJOR OUTAGE',
-    OUTAGE_SEVERITY_TOTAL: 'TOTAL OUTAGE',
-    OUTAGE_SEVERITY_PARTIAL: 'PARTIAL OUTAGE',
-    OUTAGE_SEVERITY_UNSPECIFIED: 'SEVERITY UNREPORTED',
-  };
-  return labels[code] || code.replace(/^OUTAGE_SEVERITY_/, '').replaceAll('_', ' ');
+const FEED_CODE_LABELS = {
+  OUTAGE_SEVERITY_MAJOR: 'MAJOR OUTAGE',
+  OUTAGE_SEVERITY_TOTAL: 'TOTAL OUTAGE',
+  OUTAGE_SEVERITY_PARTIAL: 'PARTIAL OUTAGE',
+  OUTAGE_SEVERITY_UNSPECIFIED: 'SEVERITY UNREPORTED',
+  GOVERNMENT_DIRECTED: 'GOVERNMENT-DIRECTED',
+  CABLE_CUT: 'CABLE CUT',
+  NATURAL_DISASTER: 'NATURAL DISASTER',
+};
+
+function humanizeFeedText(value) {
+  return String(value || '').replace(/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\b/g, (code) =>
+    FEED_CODE_LABELS[code] || code.replaceAll('_', ' '));
+}
+
+function uniqueDetailParts(values) {
+  const seen = new Set();
+  return values.flatMap((value) => humanizeFeedText(value).split(/\s*·\s*/))
+    .map((part) => part.trim())
+    .filter((part) => {
+      const key = part.toLocaleLowerCase();
+      if (!part || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function normalizeActivity(item) {
+  return { ...item, title: humanizeFeedText(item.title), detail: humanizeFeedText(item.detail) };
+}
+
+function isEmptyConflictPlaceholder(item) {
+  return item.title === 'NEW CONFLICT REPORT'
+    && /^reported event\s*(?:·\s*)?$/i.test(String(item.detail || '').trim());
+}
+
+function migrateActivityItem(original, normalized) {
+  if (original.title === normalized.title && original.detail === normalized.detail) return;
+  deletePersistedActivity({ action: 'delete', id: original.id })
+    .then(() => persistActivity(normalized));
 }
 
 function saveSettings() {
@@ -34,7 +65,7 @@ function saveNotifications() {
 }
 
 function persistActivity(item) {
-  fetch('/api/alerts/activity', {
+  return fetch('/api/alerts/activity', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(item),
@@ -43,7 +74,7 @@ function persistActivity(item) {
 }
 
 function deletePersistedActivity(action) {
-  fetch('/api/alerts/activity', {
+  return fetch('/api/alerts/activity', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(action), keepalive: true,
   }).catch(() => {});
@@ -54,10 +85,20 @@ async function hydrateActivity() {
     const response = await fetch('/api/alerts/activity');
     if (!response.ok) return;
     const payload = await response.json();
-    const rawHeadlineItems = (payload.items || []).filter((item) => item.title === 'NEW HEADLINE');
-    rawHeadlineItems.forEach((item) => deletePersistedActivity({ action: 'delete', id: item.id }));
-    const merged = new Map([...(payload.items || []).filter((item) => item.title !== 'NEW HEADLINE'), ...state.notifications]
-      .filter((item) => item.title !== 'NEW HEADLINE').map((item) => [item.id, item]));
+    const serverItems = (payload.items || []).map((item) => {
+      const normalized = normalizeActivity(item);
+      migrateActivityItem(item, normalized);
+      return normalized;
+    });
+    const obsoleteItems = serverItems.filter((item) => item.title === 'NEW HEADLINE' || isEmptyConflictPlaceholder(item));
+    obsoleteItems.forEach((item) => deletePersistedActivity({ action: 'delete', id: item.id }));
+    const localItems = state.notifications.map((item) => {
+      const normalized = normalizeActivity(item);
+      migrateActivityItem(item, normalized);
+      return normalized;
+    });
+    const merged = new Map([...serverItems.filter((item) => item.title !== 'NEW HEADLINE' && !isEmptyConflictPlaceholder(item)), ...localItems]
+      .filter((item) => item.title !== 'NEW HEADLINE' && !isEmptyConflictPlaceholder(item)).map((item) => [item.id, item]));
     state.notifications = [...merged.values()].sort((a, b) => Number(b.at) - Number(a.at)).slice(0, 500);
     state.notifications.slice(0, 100).forEach(persistActivity);
     saveNotifications();
@@ -66,6 +107,8 @@ async function hydrateActivity() {
 }
 
 function addNotification(title, detail, link = '', relatedHeadline = '', deliveryKey = '') {
+  title = humanizeFeedText(title);
+  detail = humanizeFeedText(detail);
   const relatedKey = fingerprintOf(title === 'NEW HEADLINE' ? detail : relatedHeadline, '');
   if (title === 'NEW HEADLINE' && relatedKey && state.notifications.some((item) =>
     item.title !== 'NEW HEADLINE' && fingerprintOf(item.detail, '').includes(relatedKey))) return;
@@ -295,17 +338,31 @@ function observeDerivedSignals(source, items) {
 }
 
 function observeConflict(reports) {
-  const ids = reports.map((x) => x.id || x.url || `${x.date}-${x.name}`);
+  const idFor = (report) => String(report.id || report.url || report.properties?.event_id || report.properties?.url
+    || `${report.date || report.properties?.event_date || ''}-${report.name || report.properties?.name || report.location || ''}`);
+  const ids = reports.map(idFor);
   if (!state.alertBaselines.conflict) {
     state.alertBaselines.conflict = ids;
     return [];
   }
-  const newReports = reports.filter((x) => !state.alertBaselines.conflict.includes(x.id || x.url || `${x.date}-${x.name}`));
+  const newReports = reports.filter((report) => !state.alertBaselines.conflict.includes(idFor(report)));
   if (state.alertSettings.conflict) {
     newReports
       .filter((x) => matchesTerms(x, state.alertSettings.conflictTerms, ['properties', 'title', 'headline', 'description', 'summary', 'name', 'location', 'names', 'themes', 'mentionednames', 'mentionedthemes', 'actors', 'country', 'admin1', 'sideA', 'sideB']))
       .filter(matchesTopics)
-      .slice(0, 5).forEach((x) => addNotification('NEW CONFLICT REPORT', `${x.name || x.location || 'Reported event'} · ${x.date || ''}`, x.url || ''));
+      .slice(0, 5).forEach((report) => {
+        const properties = report.properties || {};
+        const detail = [
+          report.name, report.locationName, report.location, report.country,
+          properties.name, properties.location, properties.mentionednames,
+          properties.mentionedthemes, properties.domain,
+          report.date, report.event_date, properties.event_date,
+        ].map(humanizeFeedText).filter(Boolean);
+        const uniqueDetail = [...new Set(detail)].join(' · ');
+        if (!uniqueDetail) return;
+        addNotification('NEW CONFLICT REPORT', uniqueDetail,
+          [report.url, properties.url].find((url) => typeof url === 'string' && url.startsWith('https://')) || '');
+      });
   }
   state.alertBaselines.conflict = ids;
   return newReports;
@@ -332,10 +389,13 @@ function observeWorldMonitor(layers) {
       .slice(0, 5)
       .forEach((item) => {
         const title = item.alertKind;
-        const detail = [item.locationName, item.admin1, item.country, item.title, item.provider, item.severity ? readableFeedCode(item.severity) : '', item.sideA, item.sideB]
-          .filter(Boolean).join(' · ') || 'New World Monitor report';
+        const detail = uniqueDetailParts([
+          item.locationName, item.admin1, item.country, item.title, item.provider,
+          item.severity, item.cause, item.outageType,
+          item.sideA, item.sideB, item.location && item.location.name,
+        ]);
         const link = [item.url, item.sourceUrl].find((value) => typeof value === 'string' && value.startsWith('https://')) || '';
-        addNotification(title, detail, link);
+        if (detail.length) addNotification(title, detail.join(' · '), link);
       });
   }
   state.alertBaselines.worldMonitor = current;
@@ -482,7 +542,7 @@ function renderNotifications() {
   }
   const list = $('#notificationList');
   if (list) list.innerHTML = state.notifications.length
-    ? state.notifications.map((x) => `<div class="notification-item"><b>${esc(x.title)}</b><span>${esc(x.detail)}</span>${x.link ? `<a href="${esc(x.link)}" target="_blank" rel="noopener">OPEN ↗</a>` : ''}<button type="button" data-remove-notification="${esc(x.id)}" aria-label="Remove alert">×</button></div>`).join('')
+    ? state.notifications.map((x) => `<div class="notification-item"><b>${esc(humanizeFeedText(x.title))}</b><span>${esc(humanizeFeedText(x.detail))}</span>${x.link ? `<a href="${esc(x.link)}" target="_blank" rel="noopener">OPEN ↗</a>` : ''}<button type="button" data-remove-notification="${esc(x.id)}" aria-label="Remove alert">×</button></div>`).join('')
     : '<div class="notification-empty">NO ALERTS YET</div>';
   const count = $('#notificationCount');
   if (count) count.textContent = String(state.notifications.length);
@@ -591,12 +651,18 @@ function initNotifications() {
     state.alertSettings = { ...state.alertSettings, ...saved };
     if (hadFuelSettings) saveSettings();
   } catch { /* use defaults when storage is unavailable */ }
-  const oldHeadlineAlerts = state.notifications.filter((item) => item.title === 'NEW HEADLINE');
-  if (oldHeadlineAlerts.length) {
-    state.notifications = state.notifications.filter((item) => item.title !== 'NEW HEADLINE');
-    oldHeadlineAlerts.forEach((item) => deletePersistedActivity({ action: 'delete', id: item.id }));
-    saveNotifications();
+  const originalItems = state.notifications;
+  const normalizedItems = originalItems.map(normalizeActivity);
+  const obsoleteItems = originalItems.filter((item) => item.title === 'NEW HEADLINE' || isEmptyConflictPlaceholder(item));
+  if (obsoleteItems.length) {
+    obsoleteItems.forEach((item) => deletePersistedActivity({ action: 'delete', id: item.id }));
   }
+  normalizedItems.forEach((item, index) => {
+    if (item.title !== 'NEW HEADLINE') migrateActivityItem(originalItems[index], item);
+  });
+  state.notifications = normalizedItems.filter((item) => item.title !== 'NEW HEADLINE' && !isEmptyConflictPlaceholder(item));
+  if (obsoleteItems.length || normalizedItems.some((item, index) =>
+    item.title !== originalItems[index].title || item.detail !== originalItems[index].detail)) saveNotifications();
   renderNotifications();
   hydrateActivity();
 }

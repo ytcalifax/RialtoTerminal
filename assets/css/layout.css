@@ -27,7 +27,37 @@
 .brand {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 7px;
+}
+
+.brand-mark {
+  width: 25px;
+  height: 20px;
+  flex: none;
+  align-self: center;
+  overflow: visible;
+}
+
+.brand-mark path {
+  fill: none;
+  stroke-linecap: square;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.brand-mark .bridge-deck {
+  stroke: var(--amber2);
+  stroke-width: 1.5;
+}
+
+.brand-mark .bridge-arch {
+  stroke: var(--cyan);
+  stroke-width: 1.6;
+}
+
+.brand-mark .bridge-water {
+  stroke: #52646a;
+  stroke-width: 1;
 }
 
 .wordmark {
@@ -175,7 +205,20 @@
 }
 
 .function-nav > button.selected {
+  position: relative;
   box-shadow: inset 0 -2px var(--amber);
+}
+
+.function-nav > button[data-page].selected::after {
+  content: "";
+  position: absolute;
+  right: 7px;
+  bottom: 0;
+  width: 4px;
+  height: 4px;
+  background: var(--amber);
+  border-radius: 50%;
+  box-shadow: 0 0 5px #f5a62366;
 }
 
 .function-nav > button[data-page="alerts"] {

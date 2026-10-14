@@ -14,6 +14,17 @@ const HEADLINE_STOP_WORDS = new Set('a an and are as at be by for from has have 
 const DEDUCTION_STOP_WORDS = new Set([...HEADLINE_STOP_WORDS, 'event', 'report', 'reports', 'news', 'latest', 'update', 'updates', 'world', 'global', 'breaking', 'source', 'public', 'official', 'according', 'people', 'country', 'government', 'officials', 'should', 'would', 'could', 'your', 'you', 'how', 'soon']);
 const fingerprintOf = notificationFingerprint;
 
+function readableFeedCode(value) {
+  const code = String(value || '').trim().toUpperCase();
+  const labels = {
+    OUTAGE_SEVERITY_MAJOR: 'MAJOR OUTAGE',
+    OUTAGE_SEVERITY_TOTAL: 'TOTAL OUTAGE',
+    OUTAGE_SEVERITY_PARTIAL: 'PARTIAL OUTAGE',
+    OUTAGE_SEVERITY_UNSPECIFIED: 'SEVERITY UNREPORTED',
+  };
+  return labels[code] || code.replace(/^OUTAGE_SEVERITY_/, '').replaceAll('_', ' ');
+}
+
 function saveSettings() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state.alertSettings));
 }
@@ -43,7 +54,10 @@ async function hydrateActivity() {
     const response = await fetch('/api/alerts/activity');
     if (!response.ok) return;
     const payload = await response.json();
-    const merged = new Map([...(payload.items || []), ...state.notifications].map((item) => [item.id, item]));
+    const rawHeadlineItems = (payload.items || []).filter((item) => item.title === 'NEW HEADLINE');
+    rawHeadlineItems.forEach((item) => deletePersistedActivity({ action: 'delete', id: item.id }));
+    const merged = new Map([...(payload.items || []).filter((item) => item.title !== 'NEW HEADLINE'), ...state.notifications]
+      .filter((item) => item.title !== 'NEW HEADLINE').map((item) => [item.id, item]));
     state.notifications = [...merged.values()].sort((a, b) => Number(b.at) - Number(a.at)).slice(0, 500);
     state.notifications.slice(0, 100).forEach(persistActivity);
     saveNotifications();
@@ -144,8 +158,9 @@ function observeNews(items) {
   const previous = state.alertBaselines.news;
   const newItems = items.filter((x) => !previous.includes(x.url));
   state.alertBaselines.news = [...current];
-  if (!state.alertSettings.news) return newItems;
-  newItems.filter(matchesTopics).slice(0, 5).forEach((x) => addNotification('NEW HEADLINE', x.title, x.url));
+  // Stories belong in TOP/NEWS. The headline subscription lets them
+  // corroborate a conflict, market, outage, or outbreak signal; it does not
+  // create a standalone alert for every matching story.
   return newItems;
 }
 
@@ -317,7 +332,7 @@ function observeWorldMonitor(layers) {
       .slice(0, 5)
       .forEach((item) => {
         const title = item.alertKind;
-        const detail = [item.locationName, item.admin1, item.country, item.title, item.provider, item.severity, item.sideA, item.sideB]
+        const detail = [item.locationName, item.admin1, item.country, item.title, item.provider, item.severity ? readableFeedCode(item.severity) : '', item.sideA, item.sideB]
           .filter(Boolean).join(' · ') || 'New World Monitor report';
         const link = [item.url, item.sourceUrl].find((value) => typeof value === 'string' && value.startsWith('https://')) || '';
         addNotification(title, detail, link);
@@ -443,8 +458,11 @@ function renderNotifications() {
         const sourceLine = disagreement ? `SOURCE DISAGREEMENT · ${disagreement}` : '';
         const path = rule.minimalPath?.text || 'Threshold path unavailable';
         const qualityFlags = confidence?.qualityFlags?.length ? ` · ${confidence.qualityFlags.join('; ')}` : '';
+        const impactLine = fired && rule.potentialImpact
+          ? `<span><b>POTENTIAL IMPACT</b> ${esc(rule.potentialImpact)} This is a possible consequence, not a personalized forecast.</span>`
+          : '';
         const open = expandedRules.has(rule.id) ? ' open' : '';
-        return `<article class="decision-watch-item${fired ? ' fired' : ''}${gateClosed ? ' closed' : ''}" data-rule-id="${esc(rule.id)}"><details class="decision-watch-disclosure" data-rule-id="${esc(rule.id)}"${open}><summary><span class="decision-watch-title"><b>${esc(rule.title)} <span class="trend-arrow" aria-label="Score trend ${esc(trend.direction || 'unknown')}">${esc(trendArrow)}</span></b><span class="${fired ? 'fired-score' : gateClosed ? 'closed-score' : ''}">${esc(scoreLine)}</span></span><span class="decision-watch-tldr">${esc(shortSummary)}</span><span class="decision-watch-chevron" aria-hidden="true">⌄</span></summary><div class="decision-watch-diagnostics"><span><b>GATE DETAIL</b> ${esc(gateClosed ? gateReason : rule.gateDescription || 'No separate activation gate.')}${rule.contextReason ? ` · ${esc(rule.contextReason)}` : ''}</span><span class="path"><b>THRESHOLD PATH</b> ${esc(path)}</span><span><b>INPUT HEALTH</b> ${esc(confidence?.label || 'UNKNOWN')} · ${Number.isFinite(confidence?.coveragePct) ? `${confidence.coveragePct}% available` : 'coverage not reported'}${esc(qualityFlags)} · not an alert probability</span><span><b>${esc(historyLine)}</b></span>${evidenceLine ? `<span><b>REQUIREMENTS</b> ${esc(evidenceLine)}</span>` : ''}${marketLine ? `<span><b>${esc(marketLine)}</b></span>` : ''}${sourceLine ? `<span class="source-disagreement"><b>${esc(sourceLine)}</b></span>` : ''}</div></details></article>`;
+        return `<article class="decision-watch-item${fired ? ' fired' : ''}${gateClosed ? ' closed' : ''}" data-rule-id="${esc(rule.id)}"><details class="decision-watch-disclosure" data-rule-id="${esc(rule.id)}"${open}><summary><span class="decision-watch-title"><b>${esc(rule.title)} <span class="trend-arrow" aria-label="Score trend ${esc(trend.direction || 'unknown')}">${esc(trendArrow)}</span></b><span class="${fired ? 'fired-score' : gateClosed ? 'closed-score' : ''}">${esc(scoreLine)}</span></span><span class="decision-watch-tldr">${esc(shortSummary)}</span><span class="decision-watch-chevron" aria-hidden="true">⌄</span></summary><div class="decision-watch-diagnostics">${impactLine}<span><b>GATE DETAIL</b> ${esc(gateClosed ? gateReason : rule.gateDescription || 'No separate activation gate.')}${rule.contextReason ? ` · ${esc(rule.contextReason)}` : ''}</span><span class="path"><b>THRESHOLD PATH</b> ${esc(path)}</span><span><b>INPUT HEALTH</b> ${esc(confidence?.label || 'UNKNOWN')} · ${Number.isFinite(confidence?.coveragePct) ? `${confidence.coveragePct}% available` : 'coverage not reported'}${esc(qualityFlags)} · not an alert probability</span><span><b>${esc(historyLine)}</b></span>${evidenceLine ? `<span><b>REQUIREMENTS</b> ${esc(evidenceLine)}</span>` : ''}${marketLine ? `<span><b>${esc(marketLine)}</b></span>` : ''}${sourceLine ? `<span class="source-disagreement"><b>${esc(sourceLine)}</b></span>` : ''}</div></details></article>`;
       }).join('')
       : '<div class="notification-empty">NO RULE EVALUATIONS AVAILABLE</div>';
   }
@@ -573,6 +591,12 @@ function initNotifications() {
     state.alertSettings = { ...state.alertSettings, ...saved };
     if (hadFuelSettings) saveSettings();
   } catch { /* use defaults when storage is unavailable */ }
+  const oldHeadlineAlerts = state.notifications.filter((item) => item.title === 'NEW HEADLINE');
+  if (oldHeadlineAlerts.length) {
+    state.notifications = state.notifications.filter((item) => item.title !== 'NEW HEADLINE');
+    oldHeadlineAlerts.forEach((item) => deletePersistedActivity({ action: 'delete', id: item.id }));
+    saveNotifications();
+  }
   renderNotifications();
   hydrateActivity();
 }

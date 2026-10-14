@@ -1055,6 +1055,29 @@ const RULES = [
   },
 ];
 
+const POTENTIAL_IMPACT = {
+  'risk-off': 'Broad market declines and higher volatility may affect diversified investments; actual exposure depends on holdings.',
+  'outbreak-travel': 'Travel disruption or weaker airline demand may affect trips, schedules, and travel-related costs.',
+  'defense-escalation': 'Security escalation may affect defense-sector volatility and government procurement expectations.',
+  'food-security-risk': 'Grain supply disruption may affect food availability, commodity prices, and import costs.',
+  'critical-infrastructure': 'Infrastructure disruption may affect local power, fuel, transport, or essential services.',
+  'airspace-navigation-risk': 'Navigation interference may prompt flight rerouting, delays, or additional safety restrictions.',
+  'volatility-panic': 'Broad market volatility may increase portfolio swings; the effect depends on personal holdings.',
+  hormuz: 'Disruption near Hormuz may affect oil shipping, energy prices, freight, and delivery costs.',
+  redsea: 'Red Sea disruption may extend shipping routes and affect freight, insurance, and delivery times.',
+  suez: 'Suez disruption may delay Europe–Asia shipping and raise freight or inventory costs.',
+  bosphorus: 'Black Sea access disruption may affect grain and energy shipments and regional delivery costs.',
+  blacksea: 'Black Sea corridor disruption may affect grain exports, food prices, and shipping costs.',
+  taiwan: 'Taiwan Strait disruption may affect semiconductor supply and regional shipping.',
+  malacca: 'Malacca disruption may delay a major Asia shipping route and raise freight costs.',
+};
+
+function potentialImpact(ruleId) {
+  if (POTENTIAL_IMPACT[ruleId]) return POTENTIAL_IMPACT[ruleId];
+  if (ruleId?.startsWith('theater-')) return POTENTIAL_IMPACT[ruleId.slice('theater-'.length)] || 'Regional disruption may affect shipping, supply chains, or prices.';
+  return '';
+}
+
 /**
  * Build the cross-feed context snapshot and run every rule. Records new
  * deductions in state and raises an ACTIVITY alert through `notify` whenever
@@ -1208,6 +1231,7 @@ function runRule(rule, ctx, diagnostics = null) {
     id: rule.id,
     title: rule.title,
     summary: rule.summary,
+    potentialImpact: potentialImpact(rule.id),
     shockType: rule.shockType || null,
     gateDescription: rule.gateDescription || (rule.gate ? 'Rule-specific activation conditions.' : 'No separate gate.'),
     gateRequired: Boolean(rule.gate),
@@ -1235,6 +1259,7 @@ function runRule(rule, ctx, diagnostics = null) {
     rule: rule.id,
     title: rule.title,
     summary: rule.summary,
+    potentialImpact: potentialImpact(rule.id),
     causes,
     effects,
     evidenceCoveragePct: Math.round(100 * score / Math.max(1, maxScore)),
@@ -1253,6 +1278,7 @@ function commitDeductions(candidates, notify) {
     if (existing) {
       existing.causes = candidate.causes;
       existing.effects = candidate.effects;
+      existing.potentialImpact = candidate.potentialImpact;
       existing.evidenceCoveragePct = candidate.evidenceCoveragePct;
       existing.score = candidate.score;
       existing.maxScore = candidate.maxScore;
@@ -1337,6 +1363,7 @@ function deductionNotificationText(deduction) {
   const lines = [
     ...causes.map((cause) => `• ${cause}`),
     ...(effects.length ? [`→ Seen: ${effects.join(' · ')}`] : []),
+    ...(deduction.potentialImpact ? [`POTENTIAL IMPACT: ${deduction.potentialImpact}`] : []),
   ];
   return { title: `DEDUCTION · ${head}`, body: lines.join('\n') };
 }
